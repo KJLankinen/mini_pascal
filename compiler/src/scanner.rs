@@ -1,5 +1,4 @@
 use std::fs;
-use std::process;
 use std::string::String;
 
 // =====================================================
@@ -31,21 +30,21 @@ pub enum TokenType {
 
 #[derive(Debug)]
 pub struct TokenData {
-    pub column: u32, // How much white space from line start to start of this token
-    pub line: u32,   // How many \n characters from file start
-    pub start: u32, // At which index of the content string does this token start from. A "pointer".
-    pub end: u32, // Until which index does this token continue to. Use with start like token_value = &contents[start..end]
+    pub column: usize, // How much white space from line start to start of this token
+    pub line: usize,   // How many \n characters from file start
+    pub start: usize, // At which index of the content string does this token start from. A "pointer".
+    pub end: usize, // Until which index does this token continue to. Use with start like token_value = &contents[start..end]
     pub token_type: TokenType, // What is the type of this token.
 }
 
-impl Default for TokenData {
-    fn default() -> TokenData {
+impl TokenData {
+    fn new() -> TokenData {
         TokenData {
             column: 0,
             line: 0,
             start: 0,
             end: 0,
-            token_type: TokenType::Invalid,
+            token_type: TokenType::Undefined,
         }
     }
 }
@@ -56,21 +55,21 @@ impl Default for TokenData {
 // Storage for useful variables related to scanning.
 
 #[derive(Debug)]
-pub struct ScannerState {
-    pub line_number: u32,        // how many \n characters have we found
-    pub column_number: u32,      // how many characters since the last \n
-    pub scanner_location: u32,   // how many characters from the start of the program string
+pub struct Scanner {
+    pub line: usize,             // how many \n characters have we found
+    pub column: usize,           // how many characters since the last \n
+    pub location: usize,         // how many characters from the start of the program string
     pub latest_token: TokenData, // the lates token we have found
     pub contents: String,        // the entire program as a string
 }
 
-impl Default for ScannerState {
-    fn default() -> ScannerState {
-        ScannerState {
-            line_number: 0,
-            column_number: 0,
-            scanner_location: 0,
-            latest_token: Default::default(),
+impl Scanner {
+    pub fn new() -> Scanner {
+        Scanner {
+            line: 0,
+            column: 0,
+            location: 0,
+            latest_token: TokenData::new(),
             contents: Default::default(),
         }
     }
@@ -93,8 +92,25 @@ pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str>
 }
 
 // Parser calls this function to receive tokens
-pub fn get_next_token(scanner_state: &mut ScannerState) -> Result<(), &'static str> {
-    scanner_state.latest_token = TokenData {
+pub fn get_next_token(scanner: &mut Scanner) -> Result<(), &'static str> {
+    if scanner.location == scanner.contents.len() {
+        return Err("Reached EOF, no more tokens.");
+    }
+
+    let mut token_found = false;
+    while !token_found && scanner.location < scanner.contents.len() {
+        // TODO should use iterators, indexing string by a number is crappy, since rust uses utf8,
+        // i.e. multibyte stuff.
+        let cur_char = scanner.contents[scanner.location];
+        match cur_char {
+            ' ' => println!("space: {}", cur_char),
+            '\t' => println!("tab: {}", cur_char),
+            '\n' => println!("newline: {}", cur_char),
+        }
+        scanner.location += 1;
+    }
+
+    scanner.latest_token = TokenData {
         column: 0,
         line: 0,
         start: 5,

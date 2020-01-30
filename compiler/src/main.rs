@@ -23,8 +23,8 @@ fn run() {
     .cloned()
     .collect();
 
-    let mut scanner_state: scanner::ScannerState = Default::default();
-    scanner_state.contents = match scanner::read_program_to_string(env::args().collect()) {
+    let mut scanner = scanner::Scanner::new();
+    scanner.contents = match scanner::read_program_to_string(env::args().collect()) {
         Ok(contents) => contents,
         Err(err) => {
             eprintln!("Application error: {}", err);
@@ -32,12 +32,12 @@ fn run() {
         }
     };
 
-    if let Err(err) = scanner::get_next_token(&mut scanner_state) {
+    if let Err(err) = scanner::get_next_token(&mut scanner) {
         eprintln!("Error getting next token: {}", err);
         process::exit(1);
     }
 
-    println!("Received token {:#?}", scanner_state.latest_token);
+    println!("Received token {:#?}", scanner.latest_token);
 
     //for (index, matched) in contents.match_indices("/*")
 
