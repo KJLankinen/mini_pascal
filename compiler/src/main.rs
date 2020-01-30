@@ -39,19 +39,21 @@ enum TokenType {
 }
 
 #[derive(Debug)]
-struct TokenData<'a> {
+struct TokenData {
     column: u32,
     line: u32,
-    value: &'a str,
+    start: u32,
+    end: u32,
     token_type: TokenType,
 }
 
-impl<'a> Default for TokenData<'a> {
-    fn default() -> TokenData<'a> {
+impl Default for TokenData {
+    fn default() -> TokenData {
         TokenData {
             column: 0,
             line: 0,
-            value: Default::default(),
+            start: 0,
+            end: 0,
             token_type: TokenType::Invalid,
         }
     }
@@ -59,16 +61,16 @@ impl<'a> Default for TokenData<'a> {
 
 // Storage for useful variables related to scanning.
 #[derive(Debug)]
-struct ScannerState<'a> {
-    line_number: u32,            // how many \n characters have we found
-    column_number: u32,          // how many characters since the last \n
-    scanner_location: u32,       // how many characters from the start of the program string
-    latest_token: TokenData<'a>, // the lates token we have found
-    contents: String,            // the entire program as a string
+struct ScannerState {
+    line_number: u32,        // how many \n characters have we found
+    column_number: u32,      // how many characters since the last \n
+    scanner_location: u32,   // how many characters from the start of the program string
+    latest_token: TokenData, // the lates token we have found
+    contents: String,        // the entire program as a string
 }
 
-impl<'a> Default for ScannerState<'a> {
-    fn default() -> ScannerState<'a> {
+impl Default for ScannerState {
+    fn default() -> ScannerState {
         ScannerState {
             line_number: 0,
             column_number: 0,
@@ -80,11 +82,11 @@ impl<'a> Default for ScannerState<'a> {
 }
 
 fn get_next_token(scanner_state: &mut ScannerState) -> Result<(), &'static str> {
-    let token_value: &str = &scanner_state.contents[0..5];
     scanner_state.latest_token = TokenData {
         column: 0,
         line: 0,
-        value: token_value,
+        start: 5,
+        end: 16,
         token_type: TokenType::Invalid,
     };
     Ok(())
@@ -109,7 +111,7 @@ fn run() {
     .cloned()
     .collect();
 
-    let mut scanner_state: ScannerState;
+    let mut scanner_state: ScannerState = Default::default();
     scanner_state.contents = match read_contents(env::args().collect()) {
         Ok(contents) => contents,
         Err(err) => {
