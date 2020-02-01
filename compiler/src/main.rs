@@ -11,7 +11,7 @@ use std::string::String;
 // No disctinction between different operator overloads,
 // that's for parser to decide.
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     Identifier,
     Keyword,
@@ -31,12 +31,12 @@ pub enum TokenType {
 // =====================================================
 // What data we want to store for each token
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TokenData<'a> {
     pub column: u32, // How much white space from line start to start of this token
     pub line: u32,   // How many \n characters from file start
-    pub value: &'a str,
     pub token_type: TokenType, // What is the type of this token.
+    pub value: &'a str,
 }
 
 impl<'a> TokenData<'a> {
@@ -98,55 +98,50 @@ fn run() {
     let mut line_num = 1;
     let mut col_num = 1;
     let mut token_type = TokenType::Undefined;
+    let mut tokenizing = false;
+    let mut token_start = 0;
+    let mut token_col = 1;
 
-    while let Some((start, ch)) = chars.peek() {
-        if ch.is_alphanumeric() {
-            while let Some((pos, ch)) = chars.peek() {
-                if ch.is_alphanumeric() {
-                    chars.next();
-                    col_num += 1;
-                } else {
-                    token_type = TokenType::Identifier;
-                    tokens.push(TokenData::new(
-                        line_num,
-                        col_num,
-                        token_type,
-                        &contents[start..pos],
-                    ));
+    while let Some((pos, ch)) = chars.next() {
+        if tokenizing {
+            match token_type {
+                TokenType::Identifier => {
+                    if false == ch.is_alphanumeric() {
+                        tokens.push(TokenData::new(
+                            token_col,
+                            line_num,
+                            token_type,
+                            &contents[token_start..pos],
+                        ));
 
-                    break;
+                        tokenizing = false;
+                        token_type = TokenType::Undefined;
+                        token_start = pos;
+                    }
                 }
+                _ => println!("Some other token."),
             }
-        } else if ch == &'\n' {
-            line_num += 1;
         }
+
+        // Tokenizing can be changed above, so don't merge this to the above if as an else.
+        if false == tokenizing {
+            if ch.is_alphanumeric() {
+                token_type = TokenType::Identifier;
+                tokenizing = true;
+                token_start = pos;
+                token_col = col_num;
+            }
+        }
+
+        if ch == '\n' {
+            line_num += 1;
+            col_num = 0;
+        }
+
+        col_num += 1;
     }
 
     println!("Tokens {:#?}", tokens);
-
-    //for word in contents.split_whitespace() {
-    //    if let Some(_) = keywords.get(word) {
-    //        println!("{}", word);
-    //    } else {
-    //        println!("{} is not a keyword", word);
-    //    }
-    //}
-
-    //let mut result = Vec::new();
-    //for word in contents.split_whitespace() {
-    //    let mut last = 0;
-    //    for (index, matched) in word.match_indices(|c: char| !c.is_alphanumeric()) {
-    //        if last != index {
-    //            result.push(&word[last..index]);
-    //        }
-    //        result.push(matched);
-    //        last = index + matched.len();
-    //    }
-    //    if last < word.len() {
-    //        result.push(&word[last..]);
-    //    }
-    //}
-    //println!("{:?}", result);
 }
 
 fn main() {
