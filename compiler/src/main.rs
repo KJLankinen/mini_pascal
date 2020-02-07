@@ -10,7 +10,6 @@ use std::string::String;
 // All the legal tokens of Mini PL.
 // No disctinction between different operator overloads,
 // that's for parser to decide.
-
 #[derive(Debug, Clone, Copy)]
 pub enum TokenType {
     Identifier,
@@ -30,24 +29,12 @@ pub enum TokenType {
 // Token data
 // =====================================================
 // What data we want to store for each token
-
 #[derive(Debug, Clone, Copy)]
 pub struct TokenData<'a> {
     pub column: u32, // How much white space from line start to start of this token
     pub line: u32,   // How many \n characters from file start
     pub token_type: TokenType, // What is the type of this token.
     pub value: &'a str,
-}
-
-impl<'a> TokenData<'a> {
-    fn new(column: u32, line: u32, token_type: TokenType, value: &'a str) -> TokenData<'a> {
-        TokenData {
-            column: column,
-            line: line,
-            value: value,
-            token_type: token_type,
-        }
-    }
 }
 
 pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str> {
@@ -66,82 +53,137 @@ pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str>
     Ok(contents)
 }
 
-fn run() {
-    // The value is essentially useless, because the map will never have any false entries.
-    let keywords: HashMap<&str, bool> = [
-        ("var", true),
-        ("for", true),
-        ("end", true),
-        ("in", true),
-        ("do", true),
-        ("read", true),
-        ("print", true),
-        ("int", true),
-        ("string", true),
-        ("bool", true),
-        ("assert", true),
-    ]
-    .iter()
-    .cloned()
-    .collect();
+#[derive(Debug)]
+pub struct Parser<'a> {
+    pub column: u32,
+    pub line: u32,
+    pub chars: std::iter::Peekable<std::str::CharIndices<'a>>,
+    pub keywords: HashMap<&'static str, bool>,
+}
 
-    let contents = match read_program_to_string(env::args().collect()) {
-        Ok(contents) => contents,
+fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenData<'a>> {
+    let mut skip_until_newline = false;
+    let mut num_nested_comments: i32 = 0;
+    let mut token = TokenData {
+        column: parser.column,
+        line: parser.line,
+        value: "null",
+        token_type: TokenType::Undefined,
+    };
+
+    loop {
+        parser.column += 1;
+
+        match parser.chars.next() {
+            Some((pos, ch)) => {
+                // ALWAYS increment the line number on newline characters
+                if ch == '\n' {
+                    parser.line += 1;
+                    parser.column = 0;
+                    skip_until_newline = false;
+                }
+
+                if skip_until_newline || ch.is_whitespace() {
+                    continue;
+                }
+
+                if num_nested_comments > 0 {
+                    if ch == '*' {
+                        if let Some((_, ch)) = parser.chars.peek() {
+                            if ch == &'/' {
+                                parser.chars.next();
+                                num_nested_comments -= 1;
+
+                                assert!(num_nested_comments >= 0);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                token.column = parser.column;
+                token.line = parser.line;
+                token.value = &source_str[pos..pos + 1];
+                token.token_type = TokenType::Undefined;
+
+                match ch {
+                    '+' | '-' | '*' | '=' | '<' | '&' | '!' | '.' | '/' => {
+                        token.token_type = TokenType::Operator;
+
+                        if ch == '.' {
+                            if let Some((_, ch)) = parser.chars.peek() {
+                                if ch == &'.' {
+                                    // Two dots in a sequence, it's the range operator
+                                    parser.chars.next();
+                                    token.value = &source_str[pos..pos + 2];
+                                } else {
+                                    // A single dot is not a valid token, because floating point
+                                    // values are not supported. Return an invalid token.
+                                    token.token_type = TokenType::Invalid;
+                                }
+                            }
+                        } else if ch == '/' {
+                            if let Some((_, ch)) = parser.chars.peek() {
+                                if ch == &'*' || ch == &'/' {
+                                    // Commence comment
+                                    if ch == &'*' {
+                                        num_nested_comments += 1;
+                                    } else {
+                                        skip_until_newline = true;
+                                    }
+                                    parser.chars.next();
+                                    continue;
+                                }
+                            }
+                        }
+
+                        return Some(token);
+                    }
+                    _ => println!("Unhandled case for character \"{}\"", ch),
+                }
+            }
+            None => {
+                return None;
+            }
+        }
+    }
+}
+
+fn run() {
+    // Must stay alive until the end of the interpreter
+    let source_str = match read_program_to_string(env::args().collect()) {
+        Ok(source_str) => source_str,
         Err(err) => {
             eprintln!("Application error: {}", err);
             process::exit(1);
         }
     };
 
-    let mut chars = contents.char_indices().peekable();
-    let mut tokens = Vec::new();
-    let mut line_num = 1;
-    let mut col_num = 1;
-    let mut token_type = TokenType::Undefined;
-    let mut tokenizing = false;
-    let mut token_start = 0;
-    let mut token_col = 1;
+    let mut parser = Parser {
+        column: 0,
+        line: 1,
+        chars: source_str.char_indices().peekable(),
+        keywords: [
+            ("var", true),
+            ("for", true),
+            ("end", true),
+            ("in", true),
+            ("do", true),
+            ("read", true),
+            ("print", true),
+            ("int", true),
+            ("string", true),
+            ("bool", true),
+            ("assert", true),
+        ]
+        .iter()
+        .cloned()
+        .collect(),
+    };
 
-    while let Some((pos, ch)) = chars.next() {
-        if tokenizing {
-            match token_type {
-                TokenType::Identifier => {
-                    if false == ch.is_alphanumeric() {
-                        tokens.push(TokenData::new(
-                            token_col,
-                            line_num,
-                            token_type,
-                            &contents[token_start..pos],
-                        ));
-
-                        tokenizing = false;
-                        token_type = TokenType::Undefined;
-                        token_start = pos;
-                    }
-                }
-                _ => println!("Some other token."),
-            }
-        }
-
-        // Tokenizing can be changed above, so don't merge this to the above if as an else.
-        if false == tokenizing {
-            if ch.is_alphanumeric() {
-                token_type = TokenType::Identifier;
-                tokenizing = true;
-                token_start = pos;
-                token_col = col_num;
-            }
-        }
-
-        if ch == '\n' {
-            line_num += 1;
-            col_num = 0;
-        }
-
-        col_num += 1;
+    while let Some(token) = get_token(&mut parser, &source_str) {
+        println!("{:#?}", token);
     }
-
-    println!("Tokens {:#?}", tokens);
 }
 
 fn main() {

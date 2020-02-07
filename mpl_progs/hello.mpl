@@ -1,4 +1,23 @@
 var ntimes : int := 0;
+nTimes = nTimes + 1;
+// Testing a comment, wow
+/* how bout
+
+this here
+
+dunno
+
+how it wouuld
+
+ print ! // ;+,..,-
+
+ work
+ */
+
+// /*
+/*
+// /*
+*/
 print "How many times?";
 read nTimes;
 var x : int;
