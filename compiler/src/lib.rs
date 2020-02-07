@@ -49,7 +49,7 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn step(&mut self) {
+    pub fn step(&mut self) -> Option<&TokenData<'a>> {
         if self.current_token.is_none() {
             self.current_token = self.get_token().take();
             self.next_token = self.get_token().take();
@@ -57,6 +57,8 @@ impl<'a> Scanner<'a> {
             self.current_token = self.next_token.take();
             self.next_token = self.get_token();
         }
+
+        self.current_token.as_ref()
     }
 
     fn get_token(&mut self) -> Option<TokenData<'a>> {
