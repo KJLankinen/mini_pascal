@@ -1,25 +1,20 @@
-use compiler::get_token;
+use compiler::read_program_to_string;
 use compiler::Scanner;
+use compiler::TokenData;
 use compiler::TokenType;
 use std::env;
-use std::fs;
 use std::process;
-use std::string::String;
 
-fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str> {
-    if 2 > args.len() {
-        return Err("Provide the name of the file to compile.");
-    }
+fn parse<'a>(scanner: &'a mut Scanner<'a>) {
+    loop {
+        scanner.step();
+        println!("{:?}", scanner.current_token.expect("Panic 1."));
+        println!("{:?}", scanner.next_token.expect("Panic 2."));
 
-    let filename: &str = &args[1];
-    let contents = match fs::read_to_string(&filename) {
-        Ok(contents) => contents,
-        Err(err) => {
-            eprintln!("Error with file {}: {}", filename, err);
-            return Err("Problem with reading file");
+        if TokenType::EndOfProgram == scanner.current_token.expect("Panic 3.").token_type {
+            break;
         }
-    };
-    Ok(contents)
+    }
 }
 
 fn run() {
@@ -35,6 +30,9 @@ fn run() {
         column: 0,
         line: 1,
         chars: source_str.char_indices().peekable(),
+        source_str: &source_str,
+        current_token: None,
+        next_token: None,
         keywords: [
             ("var", true),
             ("for", true),
@@ -53,10 +51,7 @@ fn run() {
         .collect(),
     };
 
-    while let Some(token) = get_token(&mut scanner, &source_str) {
-        println!("{:#?}", token);
-        assert!(TokenType::Undefined != token.token_type);
-    }
+    parse(&mut scanner);
 }
 
 fn main() {
