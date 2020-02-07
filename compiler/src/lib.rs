@@ -1,9 +1,24 @@
 use std::collections::HashMap;
 use std::fs;
 
-// =====================================================
+// Read the entire source code to a string and return that string
+pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str> {
+    if 2 > args.len() {
+        return Err("Provide the name of the file to compile.");
+    }
+
+    let filename: &str = &args[1];
+    let contents = match fs::read_to_string(&filename) {
+        Ok(contents) => contents,
+        Err(err) => {
+            eprintln!("Error with file {}: {}", filename, err);
+            return Err("Problem with reading file");
+        }
+    };
+    Ok(contents)
+}
+
 // Token types
-// =====================================================
 // All the legal tokens of Mini PL.
 // No disctinction between different operator overloads,
 // that's for parser to decide.
@@ -25,30 +40,30 @@ pub enum TokenType {
     NumTokens,
 }
 
-// =====================================================
 // Token data
-// =====================================================
 // What data we want to store for each token
 #[derive(Debug, Clone, Copy)]
 pub struct TokenData<'a> {
     pub column: u32, // How much white space from line start to start of this token
     pub line: u32,   // How many \n characters from file start
-    pub token_type: TokenType, // What is the type of this token.
-    pub value: &'a str,
+    pub token_type: TokenType, // Type of this token.
+    pub value: &'a str, // The lexeme as a string slice
 }
 
 #[derive(Debug)]
 pub struct Scanner<'a> {
-    pub column: u32,
-    pub line: u32,
-    pub chars: std::iter::Peekable<std::str::CharIndices<'a>>,
-    pub keywords: HashMap<&'static str, bool>,
-    pub source_str: &'a str,
-    pub current_token: Option<TokenData<'a>>,
-    pub next_token: Option<TokenData<'a>>,
+    pub column: u32,                                           // Current column
+    pub line: u32,                                             // Current line
+    pub chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
+    pub keywords: HashMap<&'static str, bool>, // All the keywords for convenient check
+    pub source_str: &'a str,                   // The entire source as a string slice
+    pub current_token: Option<TokenData<'a>>,  // The current token
+    pub next_token: Option<TokenData<'a>>,     // Next incoming token for peeking
 }
 
 impl<'a> Scanner<'a> {
+    // Update the current and next tokens
+    // Called by parser
     pub fn step(&mut self) -> Option<&TokenData<'a>> {
         if self.current_token.is_none() {
             self.current_token = self.get_token().take();
@@ -61,6 +76,7 @@ impl<'a> Scanner<'a> {
         self.current_token.as_ref()
     }
 
+    // Get the next token(s) to member variables
     fn get_token(&mut self) -> Option<TokenData<'a>> {
         let mut skip_until_newline = false;
         let mut num_nested_comments: i32 = 0;
@@ -222,18 +238,211 @@ impl<'a> Scanner<'a> {
     }
 }
 
-pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str> {
-    if 2 > args.len() {
-        return Err("Provide the name of the file to compile.");
+pub struct Parser<'a> {
+    pub scanner: Scanner<'a>,
+}
+
+// A recursive descent parser
+impl<'a> Parser<'a> {
+    pub fn parse(&mut self) {
+        self.process_program();
     }
 
-    let filename: &str = &args[1];
-    let contents = match fs::read_to_string(&filename) {
-        Ok(contents) => contents,
-        Err(err) => {
-            eprintln!("Error with file {}: {}", filename, err);
-            return Err("Problem with reading file");
+    fn process_program(&mut self) {
+        self.process_statement_list();
+        assert!(
+            TokenType::EndOfProgram == self.scanner.step().unwrap().token_type,
+            "{:?}",
+            self.scanner.current_token.unwrap()
+        );
+    }
+
+    fn process_statement_list(&mut self) {
+        self.process_statement();
+        self.process_end_of_statement();
+
+        // Stop if we've reached end of program or the end of 'for' block
+        if TokenType::EndOfProgram != self.scanner.next_token.unwrap().token_type
+            && "end" != self.scanner.next_token.unwrap().value
+        {
+            self.process_statement_list();
         }
-    };
-    Ok(contents)
+    }
+
+    fn process_statement(&mut self) {
+        let token = self.scanner.step().unwrap();
+        match token.token_type {
+            TokenType::Keyword => match token.value {
+                "var" => {
+                    assert!(
+                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    assert!(
+                        TokenType::TypeSeparator == self.scanner.step().unwrap().token_type,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    self.process_type();
+
+                    if TokenType::Assignment == self.scanner.next_token.unwrap().token_type {
+                        self.scanner.step();
+                        self.process_expression();
+                    }
+                }
+                "for" => {
+                    assert!(
+                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    assert!(
+                        "in" == self.scanner.step().unwrap().value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    self.process_expression();
+                    assert!(
+                        TokenType::Range == self.scanner.step().unwrap().token_type,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    self.process_expression();
+                    assert!(
+                        "do" == self.scanner.step().unwrap().value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    self.process_statement_list();
+                    assert!(
+                        "end" == self.scanner.step().unwrap().value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    assert!(
+                        "for" == self.scanner.step().unwrap().value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                }
+                "read" => {
+                    assert!(
+                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                }
+                "print" => {
+                    self.process_expression();
+                }
+                "assert" => {
+                    let token = self.scanner.step().unwrap();
+                    assert!(
+                        "(" == token.value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                    self.process_expression();
+                    let token = self.scanner.step().unwrap();
+                    assert!(
+                        ")" == token.value,
+                        "{:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                }
+                _ => {
+                    assert!(
+                        false,
+                        "Unhandled statement case {:?}",
+                        self.scanner.current_token.unwrap()
+                    );
+                }
+            },
+            TokenType::Identifier => {
+                let token = self.scanner.step().unwrap();
+                assert!(
+                    TokenType::Assignment == token.token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_expression();
+            }
+            _ => assert!(false, "{:?}", self.scanner.current_token.unwrap()),
+        }
+    }
+
+    fn process_end_of_statement(&mut self) {
+        assert!(
+            TokenType::EndOfStatement == self.scanner.step().unwrap().token_type,
+            "{:?}",
+            self.scanner.current_token.unwrap()
+        );
+    }
+
+    fn process_type(&mut self) {
+        let token = self.scanner.step().unwrap();
+        assert!(
+            TokenType::Keyword == token.token_type,
+            "{:?}",
+            self.scanner.current_token.unwrap()
+        );
+        assert!(
+            "int" == token.value || "string" == token.value || "bool" == token.value,
+            "{:?}",
+            self.scanner.current_token.unwrap()
+        );
+    }
+
+    fn process_expression(&mut self) {
+        if TokenType::Operator == self.scanner.next_token.unwrap().token_type {
+            let token = self.scanner.step().unwrap();
+            assert!(
+                "!" == token.value,
+                "{:?}",
+                self.scanner.current_token.unwrap()
+            );
+            self.process_operand();
+        } else {
+            self.process_operand();
+            if TokenType::Operator == self.scanner.next_token.unwrap().token_type {
+                let token = self.scanner.step().unwrap();
+                // Need to take into account operator overloading
+                // and suitable operands on both sides
+                assert!(
+                    TokenType::Operator == token.token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_operand();
+            }
+        }
+    }
+
+    fn process_operand(&mut self) {
+        let token = self.scanner.step().unwrap();
+        if TokenType::Paren == token.token_type {
+            assert!(
+                "(" == token.value,
+                "{:?}",
+                self.scanner.current_token.unwrap()
+            );
+            self.process_expression();
+            let token = self.scanner.step().unwrap();
+            assert!(
+                ")" == token.value,
+                "{:?}",
+                self.scanner.current_token.unwrap()
+            );
+        } else {
+            assert!(
+                TokenType::IntLiteral == token.token_type
+                    || TokenType::StrLiteral == token.token_type
+                    || TokenType::Identifier == token.token_type
+                    || TokenType::BoolLiteral == token.token_type,
+                "{:?}",
+                self.scanner.current_token.unwrap()
+            );
+        }
+    }
 }
