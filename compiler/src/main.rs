@@ -72,10 +72,10 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
     };
 
     loop {
-        parser.column += 1;
-
         match parser.chars.next() {
             Some((pos, ch)) => {
+                parser.column += 1;
+
                 // ALWAYS increment the line number on newline characters
                 if ch == '\n' {
                     parser.line += 1;
@@ -103,8 +103,8 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
 
                 token.column = parser.column;
                 token.line = parser.line;
-                token.value = &source_str[pos..pos + 1];
                 token.token_type = TokenType::Undefined;
+                let mut token_length = 1;
 
                 match ch {
                     '+' | '-' | '*' | '=' | '<' | '&' | '!' | '.' | '/' => {
@@ -115,7 +115,7 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                                 if ch == &'.' {
                                     // Two dots in a sequence, it's the range operator
                                     parser.chars.next();
-                                    token.value = &source_str[pos..pos + 2];
+                                    token_length = 2;
                                 } else {
                                     // A single dot is not a valid token, because floating point
                                     // values are not supported. Return an invalid token.
@@ -136,11 +136,43 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                                 }
                             }
                         }
+                    }
+                    'A'..='z' => {
+                        token.token_type = TokenType::Identifier;
 
-                        return Some(token);
+                        while let Some((_, ch)) = parser.chars.peek() {
+                            if ch.is_alphanumeric() || ch == &'_' {
+                                parser.chars.next();
+                                token_length += 1;
+                                continue;
+                            }
+                            break;
+                        }
+                    }
+                    '0'..='9' => {
+                        token.token_type = TokenType::IntLiteral;
+
+                        while let Some((_, ch)) = parser.chars.peek() {
+                            if ch.is_numeric() {
+                                parser.chars.next();
+                                token_length += 1;
+                                continue;
+                            }
+                            break;
+                        }
                     }
                     _ => println!("Unhandled case for character \"{}\"", ch),
                 }
+
+                token.value = &source_str[pos..pos + token_length];
+                // We've already added 1 to the column at the start of the loop
+                parser.column += (token_length - 1) as u32;
+
+                if parser.keywords.contains_key(token.value) {
+                    token.token_type = TokenType::Keyword;
+                }
+
+                return Some(token);
             }
             None => {
                 return None;
