@@ -10,18 +10,20 @@ use std::string::String;
 // All the legal tokens of Mini PL.
 // No disctinction between different operator overloads,
 // that's for parser to decide.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Identifier,
     Keyword,
     BoolLiteral,
     IntLiteral,
     StrLiteral,
-    Assignment,
     Operator,
-    Punctuation,
+    Range,
+    EndOfStatement,
+    TypeSeparator,
+    Assignment,
+    Paren,
     Undefined,
-    Invalid,
     NumTokens,
 }
 
@@ -38,7 +40,7 @@ pub struct TokenData<'a> {
 }
 
 pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str> {
-    if args.len() < 2 {
+    if 2 > args.len() {
         return Err("Provide the name of the file to compile.");
     }
 
@@ -77,7 +79,7 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                 parser.column += 1;
 
                 // ALWAYS increment the line number on newline characters
-                if ch == '\n' {
+                if '\n' == ch {
                     parser.line += 1;
                     parser.column = 0;
                     skip_until_newline = false;
@@ -88,9 +90,9 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                 }
 
                 if num_nested_comments > 0 {
-                    if ch == '*' {
+                    if '*' == ch {
                         if let Some((_, ch)) = parser.chars.peek() {
-                            if ch == &'/' {
+                            if &'/' == ch {
                                 parser.chars.next();
                                 num_nested_comments -= 1;
 
@@ -107,44 +109,84 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                 let mut token_length = 1;
 
                 match ch {
-                    '+' | '-' | '*' | '=' | '<' | '&' | '!' | '.' | '/' => {
+                    '+' | '-' | '*' | '<' | '=' | '&' | '!' => {
                         token.token_type = TokenType::Operator;
-
-                        if ch == '.' {
-                            if let Some((_, ch)) = parser.chars.peek() {
-                                if ch == &'.' {
-                                    // Two dots in a sequence, it's the range operator
-                                    parser.chars.next();
-                                    token_length = 2;
+                    }
+                    '(' | ')' => {
+                        token.token_type = TokenType::Paren;
+                    }
+                    '.' => {
+                        if let Some((_, ch)) = parser.chars.peek() {
+                            if &'.' == ch {
+                                // Two dots in a sequence, it's the range operator
+                                token.token_type = TokenType::Range;
+                                parser.chars.next();
+                                token_length += 1;
+                            } else {
+                                // A single dot is not a valid token, because floating point
+                                // values are not supported.
+                                token.token_type = TokenType::Undefined;
+                            }
+                        }
+                    }
+                    '/' => {
+                        if let Some((_, ch)) = parser.chars.peek() {
+                            if &'*' == ch || &'/' == ch {
+                                // Commence comment
+                                if &'*' == ch {
+                                    num_nested_comments += 1;
                                 } else {
-                                    // A single dot is not a valid token, because floating point
-                                    // values are not supported. Return an invalid token.
-                                    token.token_type = TokenType::Invalid;
+                                    skip_until_newline = true;
                                 }
+                                parser.chars.next();
+                                continue;
                             }
-                        } else if ch == '/' {
-                            if let Some((_, ch)) = parser.chars.peek() {
-                                if ch == &'*' || ch == &'/' {
-                                    // Commence comment
-                                    if ch == &'*' {
-                                        num_nested_comments += 1;
-                                    } else {
-                                        skip_until_newline = true;
-                                    }
-                                    parser.chars.next();
-                                    continue;
-                                }
+                            // Else it's divide op
+                            token.token_type = TokenType::Operator;
+                        }
+                    }
+                    ':' => {
+                        token.token_type = TokenType::TypeSeparator;
+
+                        if let Some((_, ch)) = parser.chars.peek() {
+                            if &'=' == ch {
+                                token.token_type = TokenType::Assignment;
+                                parser.chars.next();
+                                token_length += 1;
                             }
+                        }
+                    }
+                    ';' => {
+                        token.token_type = TokenType::EndOfStatement;
+                    }
+                    '"' => {
+                        token.token_type = TokenType::StrLiteral;
+
+                        let mut escape_next = false;
+                        while let Some((_, ch)) = parser.chars.peek() {
+                            if &'"' == ch && false == escape_next {
+                                parser.chars.next();
+                                token_length += 1;
+                                break;
+                            }
+
+                            escape_next = &'\\' == ch;
+                            parser.chars.next();
+                            token_length += 1;
                         }
                     }
                     'A'..='z' => {
                         token.token_type = TokenType::Identifier;
 
                         while let Some((_, ch)) = parser.chars.peek() {
-                            if ch.is_alphanumeric() || ch == &'_' {
+                            let token_str = &source_str[pos..pos + token_length];
+
+                            if ch.is_alphanumeric() || &'_' == ch {
                                 parser.chars.next();
                                 token_length += 1;
                                 continue;
+                            } else if "true" == token_str || "false" == token_str {
+                                token.token_type = TokenType::BoolLiteral;
                             }
                             break;
                         }
@@ -161,7 +203,7 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
                             break;
                         }
                     }
-                    _ => println!("Unhandled case for character \"{}\"", ch),
+                    _ => {}
                 }
 
                 token.value = &source_str[pos..pos + token_length];
@@ -182,7 +224,6 @@ fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenDa
 }
 
 fn run() {
-    // Must stay alive until the end of the interpreter
     let source_str = match read_program_to_string(env::args().collect()) {
         Ok(source_str) => source_str,
         Err(err) => {
@@ -215,6 +256,7 @@ fn run() {
 
     while let Some(token) = get_token(&mut parser, &source_str) {
         println!("{:#?}", token);
+        assert!(TokenType::Undefined != token.token_type);
     }
 }
 

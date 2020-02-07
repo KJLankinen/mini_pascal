@@ -1,5 +1,5 @@
 var ntimes : int := 0;
-nTimes = nTimes + 1;
+nTimes := nTimes + 1;
 // Testing a comment, wow
 /* how bout
 
@@ -19,6 +19,8 @@ how it wouuld
 // /*
 */
 print "How many times?";
+var true_var : bool := true;
+var false_ : bool := false;
 read nTimes;
 var x : int;
 for x in 0..ntimes - 1 do
