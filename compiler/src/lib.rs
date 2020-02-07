@@ -5,7 +5,7 @@ use std::collections::HashMap;
 // =====================================================
 // All the legal tokens of Mini PL.
 // No disctinction between different operator overloads,
-// that's for parser to decide.
+// that's for scanner.to decide.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Identifier,
@@ -36,32 +36,32 @@ pub struct TokenData<'a> {
 }
 
 #[derive(Debug)]
-pub struct Parser<'a> {
+pub struct Scanner<'a> {
     pub column: u32,
     pub line: u32,
     pub chars: std::iter::Peekable<std::str::CharIndices<'a>>,
     pub keywords: HashMap<&'static str, bool>,
 }
 
-pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<TokenData<'a>> {
+pub fn get_token<'a>(scanner: &mut Scanner<'a>, source_str: &'a str) -> Option<TokenData<'a>> {
     let mut skip_until_newline = false;
     let mut num_nested_comments: i32 = 0;
     let mut token = TokenData {
-        column: parser.column,
-        line: parser.line,
+        column: scanner.column,
+        line: scanner.line,
         value: "null",
         token_type: TokenType::Undefined,
     };
 
     loop {
-        match parser.chars.next() {
+        match scanner.chars.next() {
             Some((pos, ch)) => {
-                parser.column += 1;
+                scanner.column += 1;
 
                 // ALWAYS increment the line number on newline characters
                 if '\n' == ch {
-                    parser.line += 1;
-                    parser.column = 0;
+                    scanner.line += 1;
+                    scanner.column = 0;
                     skip_until_newline = false;
                 }
 
@@ -71,9 +71,9 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
 
                 if num_nested_comments > 0 {
                     if '*' == ch {
-                        if let Some((_, ch)) = parser.chars.peek() {
+                        if let Some((_, ch)) = scanner.chars.peek() {
                             if &'/' == ch {
-                                parser.chars.next();
+                                scanner.chars.next();
                                 num_nested_comments -= 1;
 
                                 assert!(num_nested_comments >= 0);
@@ -83,8 +83,8 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                     continue;
                 }
 
-                token.column = parser.column;
-                token.line = parser.line;
+                token.column = scanner.column;
+                token.line = scanner.line;
                 token.token_type = TokenType::Undefined;
                 let mut token_length = 1;
 
@@ -96,11 +96,11 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                         token.token_type = TokenType::Paren;
                     }
                     '.' => {
-                        if let Some((_, ch)) = parser.chars.peek() {
+                        if let Some((_, ch)) = scanner.chars.peek() {
                             if &'.' == ch {
                                 // Two dots in a sequence, it's the range operator
                                 token.token_type = TokenType::Range;
-                                parser.chars.next();
+                                scanner.chars.next();
                                 token_length += 1;
                             } else {
                                 // A single dot is not a valid token, because floating point
@@ -110,7 +110,7 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                         }
                     }
                     '/' => {
-                        if let Some((_, ch)) = parser.chars.peek() {
+                        if let Some((_, ch)) = scanner.chars.peek() {
                             if &'*' == ch || &'/' == ch {
                                 // Commence comment
                                 if &'*' == ch {
@@ -118,7 +118,7 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                                 } else {
                                     skip_until_newline = true;
                                 }
-                                parser.chars.next();
+                                scanner.chars.next();
                                 continue;
                             }
                             // Else it's divide op
@@ -128,10 +128,10 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                     ':' => {
                         token.token_type = TokenType::TypeSeparator;
 
-                        if let Some((_, ch)) = parser.chars.peek() {
+                        if let Some((_, ch)) = scanner.chars.peek() {
                             if &'=' == ch {
                                 token.token_type = TokenType::Assignment;
-                                parser.chars.next();
+                                scanner.chars.next();
                                 token_length += 1;
                             }
                         }
@@ -143,26 +143,26 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                         token.token_type = TokenType::StrLiteral;
 
                         let mut escape_next = false;
-                        while let Some((_, ch)) = parser.chars.peek() {
+                        while let Some((_, ch)) = scanner.chars.peek() {
                             if &'"' == ch && false == escape_next {
-                                parser.chars.next();
+                                scanner.chars.next();
                                 token_length += 1;
                                 break;
                             }
 
                             escape_next = &'\\' == ch;
-                            parser.chars.next();
+                            scanner.chars.next();
                             token_length += 1;
                         }
                     }
                     'A'..='z' => {
                         token.token_type = TokenType::Identifier;
 
-                        while let Some((_, ch)) = parser.chars.peek() {
+                        while let Some((_, ch)) = scanner.chars.peek() {
                             let token_str = &source_str[pos..pos + token_length];
 
                             if ch.is_alphanumeric() || &'_' == ch {
-                                parser.chars.next();
+                                scanner.chars.next();
                                 token_length += 1;
                                 continue;
                             } else if "true" == token_str || "false" == token_str {
@@ -174,9 +174,9 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
                     '0'..='9' => {
                         token.token_type = TokenType::IntLiteral;
 
-                        while let Some((_, ch)) = parser.chars.peek() {
+                        while let Some((_, ch)) = scanner.chars.peek() {
                             if ch.is_numeric() {
-                                parser.chars.next();
+                                scanner.chars.next();
                                 token_length += 1;
                                 continue;
                             }
@@ -188,9 +188,9 @@ pub fn get_token<'a>(parser: &mut Parser<'a>, source_str: &'a str) -> Option<Tok
 
                 token.value = &source_str[pos..pos + token_length];
                 // We've already added 1 to the column at the start of the loop
-                parser.column += (token_length - 1) as u32;
+                scanner.column += (token_length - 1) as u32;
 
-                if parser.keywords.contains_key(token.value) {
+                if scanner.keywords.contains_key(token.value) {
                     token.token_type = TokenType::Keyword;
                 }
 

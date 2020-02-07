@@ -1,7 +1,6 @@
 use compiler::get_token;
-use compiler::Parser;
+use compiler::Scanner;
 use compiler::TokenType;
-
 use std::env;
 use std::fs;
 use std::process;
@@ -32,7 +31,7 @@ fn run() {
         }
     };
 
-    let mut parser = Parser {
+    let mut scanner = Scanner {
         column: 0,
         line: 1,
         chars: source_str.char_indices().peekable(),
@@ -54,7 +53,7 @@ fn run() {
         .collect(),
     };
 
-    while let Some(token) = get_token(&mut parser, &source_str) {
+    while let Some(token) = get_token(&mut scanner, &source_str) {
         println!("{:#?}", token);
         assert!(TokenType::Undefined != token.token_type);
     }
