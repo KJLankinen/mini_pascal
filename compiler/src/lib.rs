@@ -52,16 +52,43 @@ pub struct TokenData<'a> {
 
 #[derive(Debug)]
 pub struct Scanner<'a> {
-    pub column: u32,                                           // Current column
-    pub line: u32,                                             // Current line
-    pub chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
-    pub keywords: HashMap<&'static str, bool>, // All the keywords for convenient check
-    pub source_str: &'a str,                   // The entire source as a string slice
-    pub current_token: Option<TokenData<'a>>,  // The current token
-    pub next_token: Option<TokenData<'a>>,     // Next incoming token for peeking
+    column: u32,                                           // Current column
+    line: u32,                                             // Current line
+    chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
+    keywords: HashMap<&'static str, bool>,                 // All the keywords for convenient check
+    source_str: &'a str,                                   // The entire source as a string slice
+    pub current_token: Option<TokenData<'a>>,              // The current token
+    pub next_token: Option<TokenData<'a>>,                 // Next incoming token for peeking
 }
 
 impl<'a> Scanner<'a> {
+    pub fn new(source_str: &'a str) -> Scanner<'a> {
+        Scanner {
+            column: 0,
+            line: 1,
+            chars: source_str.char_indices().peekable(),
+            source_str: source_str,
+            current_token: None,
+            next_token: None,
+            keywords: [
+                ("var", true),
+                ("for", true),
+                ("end", true),
+                ("in", true),
+                ("do", true),
+                ("read", true),
+                ("print", true),
+                ("int", true),
+                ("string", true),
+                ("bool", true),
+                ("assert", true),
+            ]
+            .iter()
+            .cloned()
+            .collect(),
+        }
+    }
+
     // Update the current and next tokens
     // Called by parser
     pub fn step(&mut self) -> Option<&TokenData<'a>> {
