@@ -19,29 +19,43 @@ pub fn read_program_to_string(args: Vec<String>) -> Result<String, &'static str>
 }
 
 // Token types
-// All the legal tokens of Mini PL.
-// No disctinction between different operator overloads,
-// that's for parser to decide.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Identifier,
-    Keyword,
-    BoolLiteral,
-    IntLiteral,
-    StrLiteral,
-    Operator,
+    KeywordVar,
+    KeywordFor,
+    KeywordEnd,
+    KeywordIn,
+    KeywordDo,
+    KeywordRead,
+    KeywordPrint,
+    KeywordAssert,
+    TypeInt,
+    TypeString,
+    TypeBool,
+    LiteralBool,
+    LiteralInt,
+    LiteralString,
+    OperatorPlus,
+    OperatorMinus,
+    OperatorMultiply,
+    OperatorDivide,
+    OperatorLessThan,
+    OperatorEqual,
+    OperatorAnd,
+    OperatorNot,
     Range,
     EndOfStatement,
     TypeSeparator,
     Assignment,
-    Paren,
+    LParen,
+    RParen,
     Undefined,
     EndOfProgram,
     NumTokens,
 }
 
 // Token data
-// What data we want to store for each token
 #[derive(Debug, Clone, Copy)]
 pub struct TokenData<'a> {
     pub column: u32, // How much white space from line start to start of this token
@@ -55,7 +69,7 @@ pub struct Scanner<'a> {
     column: u32,                                           // Current column
     line: u32,                                             // Current line
     chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
-    keywords: HashMap<&'static str, bool>,                 // All the keywords for convenient check
+    token_map: HashMap<&'static str, TokenType>,           // Map for getting the type of a token
     source_str: &'a str,                                   // The entire source as a string slice
     pub current_token: Option<TokenData<'a>>,              // The current token
     pub next_token: Option<TokenData<'a>>,                 // Next incoming token for peeking
@@ -70,18 +84,34 @@ impl<'a> Scanner<'a> {
             source_str: source_str,
             current_token: None,
             next_token: None,
-            keywords: [
-                ("var", true),
-                ("for", true),
-                ("end", true),
-                ("in", true),
-                ("do", true),
-                ("read", true),
-                ("print", true),
-                ("int", true),
-                ("string", true),
-                ("bool", true),
-                ("assert", true),
+            token_map: [
+                ("var", TokenType::KeywordVar),
+                ("for", TokenType::KeywordFor),
+                ("end", TokenType::KeywordEnd),
+                ("in", TokenType::KeywordIn),
+                ("do", TokenType::KeywordDo),
+                ("read", TokenType::KeywordRead),
+                ("print", TokenType::KeywordPrint),
+                ("assert", TokenType::KeywordAssert),
+                ("int", TokenType::TypeInt),
+                ("string", TokenType::TypeString),
+                ("bool", TokenType::TypeBool),
+                ("(", TokenType::LParen),
+                (")", TokenType::RParen),
+                (";", TokenType::EndOfStatement),
+                ("+", TokenType::OperatorPlus),
+                ("-", TokenType::OperatorMinus),
+                ("*", TokenType::OperatorMultiply),
+                ("/", TokenType::OperatorDivide),
+                ("<", TokenType::OperatorLessThan),
+                ("=", TokenType::OperatorEqual),
+                ("&", TokenType::OperatorAnd),
+                ("!", TokenType::OperatorNot),
+                ("..", TokenType::Range),
+                (":", TokenType::TypeSeparator),
+                (":=", TokenType::Assignment),
+                ("true", TokenType::LiteralBool),
+                ("false", TokenType::LiteralBool),
             ]
             .iter()
             .cloned()
@@ -110,7 +140,7 @@ impl<'a> Scanner<'a> {
         let mut token = TokenData {
             column: self.column,
             line: self.line,
-            value: "\0",
+            value: "",
             token_type: TokenType::Undefined,
         };
 
@@ -149,28 +179,22 @@ impl<'a> Scanner<'a> {
                     token.token_type = TokenType::Undefined;
                     let mut token_length = 1;
 
+                    // Most tokens get their type from the map access at the bottom.
+                    // This match disambiguates between some situations like comment vs divide op
+                    // when '/' is encountered. Also longer tokens are handled by this match.
                     match ch {
-                        '+' | '-' | '*' | '<' | '=' | '&' | '!' => {
-                            token.token_type = TokenType::Operator;
-                        }
-                        '(' | ')' => {
-                            token.token_type = TokenType::Paren;
-                        }
                         '.' => {
+                            // See if there's a second dot following the first
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'.' == ch {
-                                    // Two dots in a sequence, it's the range operator
-                                    token.token_type = TokenType::Range;
                                     self.chars.next();
                                     token_length += 1;
-                                } else {
-                                    // A single dot is not a valid token, because floating point
-                                    // values are not supported.
-                                    token.token_type = TokenType::Undefined;
                                 }
                             }
                         }
                         '/' => {
+                            // See whether or not a comment of one or another sort is starting
+                            // If it's just the divide operator, it gets its type at the end
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'*' == ch || &'/' == ch {
                                     // Commence comment
@@ -182,26 +206,20 @@ impl<'a> Scanner<'a> {
                                     self.chars.next();
                                     continue;
                                 }
-                                // Else it's divide op
-                                token.token_type = TokenType::Operator;
                             }
                         }
                         ':' => {
-                            token.token_type = TokenType::TypeSeparator;
-
+                            // Disambiguate between separator and assignment
+                            // Type is received from map at the end
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'=' == ch {
-                                    token.token_type = TokenType::Assignment;
                                     self.chars.next();
                                     token_length += 1;
                                 }
                             }
                         }
-                        ';' => {
-                            token.token_type = TokenType::EndOfStatement;
-                        }
                         '"' => {
-                            token.token_type = TokenType::StrLiteral;
+                            token.token_type = TokenType::LiteralString;
 
                             let mut escape_next = false;
                             while let Some((_, ch)) = self.chars.peek() {
@@ -220,20 +238,16 @@ impl<'a> Scanner<'a> {
                             token.token_type = TokenType::Identifier;
 
                             while let Some((_, ch)) = self.chars.peek() {
-                                let token_str = &self.source_str[pos..pos + token_length];
-
                                 if ch.is_alphanumeric() || &'_' == ch {
                                     self.chars.next();
                                     token_length += 1;
                                     continue;
-                                } else if "true" == token_str || "false" == token_str {
-                                    token.token_type = TokenType::BoolLiteral;
                                 }
                                 break;
                             }
                         }
                         '0'..='9' => {
-                            token.token_type = TokenType::IntLiteral;
+                            token.token_type = TokenType::LiteralInt;
 
                             while let Some((_, ch)) = self.chars.peek() {
                                 if ch.is_numeric() {
@@ -251,11 +265,14 @@ impl<'a> Scanner<'a> {
                     // We've already added 1 to the column at the start of the loop
                     self.column += (token_length - 1) as u32;
 
-                    if self.keywords.contains_key(token.value) {
-                        token.token_type = TokenType::Keyword;
+                    // Get your type here, if you're in the map
+                    if let Some(tt) = self.token_map.get(token.value) {
+                        token.token_type = *tt;
                     }
                 }
                 None => {
+                    // Out of characters
+                    token.value = "\0";
                     token.token_type = TokenType::EndOfProgram;
                 }
             }
@@ -289,8 +306,8 @@ impl<'a> Parser<'a> {
         self.process_end_of_statement();
 
         // Stop if we've reached end of program or the end of 'for' block
-        if TokenType::EndOfProgram != self.scanner.next_token.unwrap().token_type
-            && "end" != self.scanner.next_token.unwrap().value
+        let token = self.scanner.next_token.unwrap();
+        if TokenType::EndOfProgram != token.token_type && TokenType::KeywordEnd != token.token_type
         {
             self.process_statement_list();
         }
@@ -299,97 +316,85 @@ impl<'a> Parser<'a> {
     fn process_statement(&mut self) {
         let token = self.scanner.step().unwrap();
         match token.token_type {
-            TokenType::Keyword => match token.value {
-                "var" => {
-                    assert!(
-                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    assert!(
-                        TokenType::TypeSeparator == self.scanner.step().unwrap().token_type,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    self.process_type();
-
-                    if TokenType::Assignment == self.scanner.next_token.unwrap().token_type {
-                        self.scanner.step();
-                        self.process_expression();
-                    }
-                }
-                "for" => {
-                    assert!(
-                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    assert!(
-                        "in" == self.scanner.step().unwrap().value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    self.process_expression();
-                    assert!(
-                        TokenType::Range == self.scanner.step().unwrap().token_type,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    self.process_expression();
-                    assert!(
-                        "do" == self.scanner.step().unwrap().value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    self.process_statement_list();
-                    assert!(
-                        "end" == self.scanner.step().unwrap().value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    assert!(
-                        "for" == self.scanner.step().unwrap().value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                }
-                "read" => {
-                    assert!(
-                        TokenType::Identifier == self.scanner.step().unwrap().token_type,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                }
-                "print" => {
-                    self.process_expression();
-                }
-                "assert" => {
-                    let token = self.scanner.step().unwrap();
-                    assert!(
-                        "(" == token.value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                    self.process_expression();
-                    let token = self.scanner.step().unwrap();
-                    assert!(
-                        ")" == token.value,
-                        "{:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                }
-                _ => {
-                    assert!(
-                        false,
-                        "Unhandled statement case {:?}",
-                        self.scanner.current_token.unwrap()
-                    );
-                }
-            },
-            TokenType::Identifier => {
-                let token = self.scanner.step().unwrap();
+            TokenType::KeywordVar => {
                 assert!(
-                    TokenType::Assignment == token.token_type,
+                    TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                assert!(
+                    TokenType::TypeSeparator == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_type();
+
+                if TokenType::Assignment == self.scanner.next_token.unwrap().token_type {
+                    self.scanner.step();
+                    self.process_expression();
+                }
+            }
+            TokenType::KeywordFor => {
+                assert!(
+                    TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                assert!(
+                    TokenType::KeywordIn == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_expression();
+                assert!(
+                    TokenType::Range == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_expression();
+                assert!(
+                    TokenType::KeywordDo == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_statement_list();
+                assert!(
+                    TokenType::KeywordEnd == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                assert!(
+                    TokenType::KeywordFor == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+            }
+            TokenType::KeywordRead => {
+                assert!(
+                    TokenType::Identifier == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+            }
+            TokenType::KeywordPrint => {
+                self.process_expression();
+            }
+            TokenType::KeywordAssert => {
+                assert!(
+                    TokenType::LParen == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+                self.process_expression();
+                assert!(
+                    TokenType::RParen == self.scanner.step().unwrap().token_type,
+                    "{:?}",
+                    self.scanner.current_token.unwrap()
+                );
+            }
+            TokenType::Identifier => {
+                assert!(
+                    TokenType::Assignment == self.scanner.step().unwrap().token_type,
                     "{:?}",
                     self.scanner.current_token.unwrap()
                 );
@@ -410,37 +415,36 @@ impl<'a> Parser<'a> {
     fn process_type(&mut self) {
         let token = self.scanner.step().unwrap();
         assert!(
-            TokenType::Keyword == token.token_type,
-            "{:?}",
-            self.scanner.current_token.unwrap()
-        );
-        assert!(
-            "int" == token.value || "string" == token.value || "bool" == token.value,
+            TokenType::TypeInt == token.token_type
+                || TokenType::TypeBool == token.token_type
+                || TokenType::TypeString == token.token_type,
             "{:?}",
             self.scanner.current_token.unwrap()
         );
     }
 
     fn process_expression(&mut self) {
-        if TokenType::Operator == self.scanner.next_token.unwrap().token_type {
-            let token = self.scanner.step().unwrap();
-            assert!(
-                "!" == token.value,
-                "{:?}",
-                self.scanner.current_token.unwrap()
-            );
+        // Starts with unary op
+        if TokenType::OperatorNot == self.scanner.next_token.unwrap().token_type {
+            self.scanner.step().unwrap();
             self.process_operand();
         } else {
+            // Either just a single operand or operand operator operand
             self.process_operand();
-            if TokenType::Operator == self.scanner.next_token.unwrap().token_type {
-                let token = self.scanner.step().unwrap();
-                // Need to take into account operator overloading
-                // and suitable operands on both sides
-                assert!(
-                    TokenType::Operator == token.token_type,
-                    "{:?}",
-                    self.scanner.current_token.unwrap()
-                );
+            let mut is_operator = true;
+            match self.scanner.next_token.unwrap().token_type {
+                TokenType::OperatorPlus => {}
+                TokenType::OperatorMinus => {}
+                TokenType::OperatorMultiply => {}
+                TokenType::OperatorDivide => {}
+                TokenType::OperatorLessThan => {}
+                TokenType::OperatorEqual => {}
+                TokenType::OperatorAnd => {}
+                _ => is_operator = false, // Not any operator
+            }
+
+            if is_operator {
+                self.scanner.step();
                 self.process_operand();
             }
         }
@@ -448,25 +452,19 @@ impl<'a> Parser<'a> {
 
     fn process_operand(&mut self) {
         let token = self.scanner.step().unwrap();
-        if TokenType::Paren == token.token_type {
-            assert!(
-                "(" == token.value,
-                "{:?}",
-                self.scanner.current_token.unwrap()
-            );
+        if TokenType::LParen == token.token_type {
             self.process_expression();
-            let token = self.scanner.step().unwrap();
             assert!(
-                ")" == token.value,
+                TokenType::RParen == self.scanner.step().unwrap().token_type,
                 "{:?}",
                 self.scanner.current_token.unwrap()
             );
         } else {
             assert!(
-                TokenType::IntLiteral == token.token_type
-                    || TokenType::StrLiteral == token.token_type
-                    || TokenType::Identifier == token.token_type
-                    || TokenType::BoolLiteral == token.token_type,
+                TokenType::LiteralInt == token.token_type
+                    || TokenType::LiteralString == token.token_type
+                    || TokenType::LiteralBool == token.token_type
+                    || TokenType::Identifier == token.token_type,
                 "{:?}",
                 self.scanner.current_token.unwrap()
             );
