@@ -46,6 +46,17 @@ pub struct TokenData<'a> {
     pub value: &'a str, // The lexeme as a string slice
 }
 
+impl<'a> Default for TokenData<'a> {
+    fn default() -> TokenData<'a> {
+        TokenData {
+            column: 0,
+            line: 0,
+            token_type: TokenType::Undefined,
+            value: "",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Scanner<'a> {
     column: u32,                                           // Current column
