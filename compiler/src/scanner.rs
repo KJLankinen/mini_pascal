@@ -62,10 +62,11 @@ pub struct Scanner<'a> {
     column: u32,                                           // Current column
     line: u32,                                             // Current line
     chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
-    token_map: HashMap<&'static str, TokenType>,           // Map for getting the type of a token
-    source_str: &'a str,                                   // The entire source as a string slice
-    current_token: Option<TokenData<'a>>,                  // The current token
-    next_token: Option<TokenData<'a>>,                     // Next incoming token for peeking
+    lines: Vec<&'a str>, // All the lines of code for error messaging
+    token_map: HashMap<&'static str, TokenType>, // Map for getting the type of a token
+    source_str: &'a str, // The entire source as a string slice
+    current_token: Option<TokenData<'a>>, // The current token
+    next_token: Option<TokenData<'a>>, // Next incoming token for peeking
 }
 
 impl<'a> Scanner<'a> {
@@ -74,6 +75,7 @@ impl<'a> Scanner<'a> {
             column: 0,
             line: 1,
             chars: source_str.char_indices().peekable(),
+            lines: source_str.lines().collect(),
             source_str: source_str,
             current_token: None,
             next_token: None,
@@ -110,6 +112,13 @@ impl<'a> Scanner<'a> {
             .cloned()
             .collect(),
         }
+    }
+
+    pub fn print_line(&mut self, line: usize, column: usize) {
+        assert!(line < self.lines.len(), "Line number is too large.");
+        println!("\n\"{}\"", self.lines[line]);
+        let arrow: String = vec!['-'; column + 1].into_iter().collect();
+        println!("{}\n", arrow + "^---this");
     }
 
     // Consume the previous token and take a look at the next

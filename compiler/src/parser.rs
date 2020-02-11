@@ -90,8 +90,12 @@ pub fn parse<'a>(parser: &mut Parser<'a>) {
 }
 
 fn print_unexpected<'a>(parser: &mut Parser<'a>) {
-    for &item in &parser.unexpected_nodes {
-        println!("{:#?}", parser.parse_tree[item]);
+    for &id in &parser.unexpected_nodes {
+        let item = &parser.parse_tree[id];
+        println!("{:#?}", item);
+        parser
+            .scanner
+            .print_line((item.line - 1) as usize, (item.column - 1) as usize);
     }
 }
 
@@ -137,8 +141,8 @@ fn verify_token<'a>(
 }
 
 fn process_program<'a>(parser: &mut Parser<'a>) {
-    let me = verify_token(parser, true, &TokenData::default(), NodeType::Program, 0, 0);
-
+    let token = parser.scanner.peek().copied().unwrap();
+    let me = verify_token(parser, true, &token, NodeType::Program, 0, 0);
     let previous = process_statement_list(parser, me, me);
     process_end_of_program(parser, me, previous);
 }
@@ -156,18 +160,18 @@ fn process_end_of_program<'a>(parser: &mut Parser<'a>, parent: usize, previous: 
 }
 
 fn process_statement_list<'a>(parser: &mut Parser<'a>, parent: usize, previous: usize) -> usize {
+    let token = parser.scanner.peek().copied().unwrap();
     let me = verify_token(
         parser,
         true,
-        &TokenData::default(),
+        &token,
         NodeType::StatementList,
         parent,
         previous,
     );
 
     // Stop if we've reached end of program or the end of 'for' block
-    let token_type = parser.scanner.peek().unwrap().token_type;
-    if TokenType::EndOfProgram != token_type && TokenType::KeywordEnd != token_type {
+    if TokenType::EndOfProgram != token.token_type && TokenType::KeywordEnd != token.token_type {
         let previous = process_statement(parser, me, me);
         process_statement_list(parser, me, previous);
     }
@@ -185,7 +189,7 @@ fn process_statement<'a>(parser: &mut Parser<'a>, parent: usize, previous: usize
 }
 
 fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous: usize) -> usize {
-    let token = parser.scanner.next().copied().unwrap();
+    let token = parser.scanner.peek().copied().unwrap();
     let me = verify_token(
         parser,
         true,
@@ -198,6 +202,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
     match token.token_type {
         TokenType::KeywordVar => {
             // 'var'
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::KeywordVar == token.token_type,
@@ -257,6 +262,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
         }
         TokenType::KeywordFor => {
             // 'for'
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::KeywordFor == token.token_type,
@@ -343,6 +349,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
         }
         TokenType::KeywordRead => {
             // 'read'
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::KeywordRead == token.token_type,
@@ -365,6 +372,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
         }
         TokenType::KeywordPrint => {
             // 'print'
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::KeywordPrint == token.token_type,
@@ -379,6 +387,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
         }
         TokenType::KeywordAssert => {
             // 'assert'
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::KeywordAssert == token.token_type,
@@ -415,6 +424,7 @@ fn process_statement_prefix<'a>(parser: &mut Parser<'a>, parent: usize, previous
         }
         TokenType::Identifier => {
             // identifier
+            let token = parser.scanner.next().copied().unwrap();
             let previous = verify_token(
                 parser,
                 TokenType::Identifier == token.token_type,

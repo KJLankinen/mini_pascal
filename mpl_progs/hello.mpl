@@ -1,4 +1,5 @@
-var ntimes : int := 0;;
+;
+vaar ntimes : int := 0;;
 nTimes := nTimes + 1;
 // Testing a comment, wow
 /* how bout
