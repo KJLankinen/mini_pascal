@@ -33,5 +33,5 @@ pub fn run() {
     };
 
     let mut parser = Parser::new(&source_str);
-    parser.parse();
+    parser::parse(&mut parser);
 }

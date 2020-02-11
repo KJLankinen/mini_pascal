@@ -134,11 +134,6 @@ impl<'a> Scanner<'a> {
         self.next_token.as_ref()
     }
 
-    // Look at current. Used for debugging mostly.
-    pub fn current(&mut self) -> Option<&TokenData<'a>> {
-        self.current_token.as_ref()
-    }
-
     fn get_token(&mut self) -> Option<TokenData<'a>> {
         let mut skip_until_newline = false;
         let mut num_nested_comments: i32 = 0;
