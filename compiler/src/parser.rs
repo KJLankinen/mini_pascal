@@ -25,7 +25,6 @@ enum NodeType {
     TypeSeparator,
     Range,
     Unexpected,
-    NumTypes,
 }
 
 #[derive(Debug)]

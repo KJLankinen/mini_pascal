@@ -34,7 +34,6 @@ pub enum TokenType {
     RParen,
     Undefined,
     EndOfProgram,
-    NumTokens,
 }
 
 // Token data
@@ -59,8 +58,11 @@ impl<'a> Default for TokenData<'a> {
 
 #[derive(Debug)]
 pub struct Scanner<'a> {
-    column: u32,                                           // Current column
-    line: u32,                                             // Current line
+    column: u32, // Current column
+    line: u32,   // Current line
+    skip_until_newline: bool,
+    token_length: usize,
+    previous_newline: usize,
     chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
     lines: Vec<&'a str>, // All the lines of code for error messaging
     token_map: HashMap<&'static str, TokenType>, // Map for getting the type of a token
@@ -74,8 +76,11 @@ impl<'a> Scanner<'a> {
         Scanner {
             column: 0,
             line: 1,
+            skip_until_newline: false,
+            token_length: 0,
+            previous_newline: 0,
             chars: source_str.char_indices().peekable(),
-            lines: source_str.lines().collect(),
+            lines: vec![],
             source_str: source_str,
             current_token: None,
             next_token: None,
@@ -143,9 +148,79 @@ impl<'a> Scanner<'a> {
         self.next_token.as_ref()
     }
 
+    fn get_char(&mut self) -> Option<(usize, char)> {
+        match self.chars.peek() {
+            Some((pos, ch)) => {
+                self.column += 1;
+                self.token_length += 1;
+                if &'\n' == ch {
+                    self.line += 1;
+                    self.column = 0;
+                    self.skip_until_newline = false;
+                    self.lines
+                        .push(&self.source_str[self.previous_newline..*pos]);
+                    self.previous_newline = *pos + 1;
+                }
+                self.chars.next()
+            }
+            None => None,
+        }
+    }
+
+    fn skipped_comment(&mut self) -> bool {
+        // Enter this function with a single '/'. Peek ahead, and if a comment is starting, skip
+        // it. If not, return false and let the scanner continue.
+        match self.chars.peek() {
+            Some((_, ch)) => {
+                match ch {
+                    &'/' => {
+                        // Singe line comment
+                        self.skip_until_newline = true;
+                        while self.skip_until_newline {
+                            self.get_char();
+                        }
+                    }
+                    &'*' => {
+                        // Multi line comment
+                        let mut depth: i32 = 1;
+                        self.get_char();
+                        while let Some((_, ch)) = self.get_char() {
+                            match ch {
+                                '*' => {
+                                    if let Some((_, ch)) = self.chars.peek() {
+                                        if &'/' == ch {
+                                            self.get_char();
+                                            depth -= 1;
+                                        }
+                                    }
+                                }
+                                '/' => {
+                                    if let Some((_, ch)) = self.chars.peek() {
+                                        if &'*' == ch {
+                                            self.get_char();
+                                            depth += 1;
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+
+                            if 0 == depth {
+                                break;
+                            }
+
+                            assert!(depth > 0);
+                        }
+                    }
+                    _ => return false,
+                }
+                true
+            }
+            None => false,
+        }
+    }
+
     fn get_token(&mut self) -> Option<TokenData<'a>> {
-        let mut skip_until_newline = false;
-        let mut num_nested_comments: i32 = 0;
         let mut token = TokenData {
             column: self.column,
             line: self.line,
@@ -154,39 +229,15 @@ impl<'a> Scanner<'a> {
         };
 
         loop {
-            match self.chars.next() {
+            match self.get_char() {
                 Some((pos, ch)) => {
-                    self.column += 1;
-
-                    // ALWAYS increment the line number on newline characters
-                    if '\n' == ch {
-                        self.line += 1;
-                        self.column = 0;
-                        skip_until_newline = false;
-                    }
-
-                    if skip_until_newline || ch.is_whitespace() {
-                        continue;
-                    }
-
-                    if num_nested_comments > 0 {
-                        if '*' == ch {
-                            if let Some((_, ch)) = self.chars.peek() {
-                                if &'/' == ch {
-                                    self.chars.next();
-                                    num_nested_comments -= 1;
-
-                                    assert!(num_nested_comments >= 0);
-                                }
-                            }
-                        }
+                    if ch.is_whitespace() {
                         continue;
                     }
 
                     token.column = self.column;
                     token.line = self.line;
-                    token.token_type = TokenType::Undefined;
-                    let mut token_length = 1;
+                    self.token_length = 1;
 
                     // Most tokens get their type from the map access at the bottom.
                     // This match disambiguates between some situations like comment vs divide op
@@ -196,51 +247,35 @@ impl<'a> Scanner<'a> {
                             // See if there's a second dot following the first
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'.' == ch {
-                                    self.chars.next();
-                                    token_length += 1;
+                                    self.get_char();
                                 }
                             }
                         }
                         '/' => {
-                            // See whether or not a comment of one or another sort is starting
-                            // If it's just the divide operator, it gets its type at the end
-                            if let Some((_, ch)) = self.chars.peek() {
-                                if &'*' == ch || &'/' == ch {
-                                    // Commence comment
-                                    if &'*' == ch {
-                                        num_nested_comments += 1;
-                                    } else {
-                                        skip_until_newline = true;
-                                    }
-                                    self.chars.next();
-                                    continue;
-                                }
+                            if self.skipped_comment() {
+                                continue;
                             }
                         }
                         ':' => {
                             // Disambiguate between separator and assignment
-                            // Type is received from map at the end
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'=' == ch {
-                                    self.chars.next();
-                                    token_length += 1;
+                                    self.get_char();
                                 }
                             }
                         }
                         '"' => {
                             token.token_type = TokenType::LiteralString;
-
                             let mut escape_next = false;
+
                             while let Some((_, ch)) = self.chars.peek() {
-                                if &'"' == ch && false == escape_next {
-                                    self.chars.next();
-                                    token_length += 1;
+                                let is_finished = &'"' == ch && false == escape_next;
+                                escape_next = &'\\' == ch;
+                                self.get_char();
+
+                                if is_finished {
                                     break;
                                 }
-
-                                escape_next = &'\\' == ch;
-                                self.chars.next();
-                                token_length += 1;
                             }
                         }
                         'A'..='z' => {
@@ -248,8 +283,7 @@ impl<'a> Scanner<'a> {
 
                             while let Some((_, ch)) = self.chars.peek() {
                                 if ch.is_alphanumeric() || &'_' == ch {
-                                    self.chars.next();
-                                    token_length += 1;
+                                    self.get_char();
                                     continue;
                                 }
                                 break;
@@ -260,8 +294,7 @@ impl<'a> Scanner<'a> {
 
                             while let Some((_, ch)) = self.chars.peek() {
                                 if ch.is_numeric() {
-                                    self.chars.next();
-                                    token_length += 1;
+                                    self.get_char();
                                     continue;
                                 }
                                 break;
@@ -270,9 +303,7 @@ impl<'a> Scanner<'a> {
                         _ => {}
                     }
 
-                    token.value = &self.source_str[pos..pos + token_length];
-                    // We've already added 1 to the column at the start of the loop
-                    self.column += (token_length - 1) as u32;
+                    token.value = &self.source_str[pos..pos + self.token_length];
 
                     // Get your type here, if you're in the map
                     if let Some(tt) = self.token_map.get(token.value) {

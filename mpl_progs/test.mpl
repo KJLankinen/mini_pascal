@@ -1,6 +1,13 @@
 var X : int:=1 * (5 / 3);
 var x : int := (1 * 2) + 5;
 
+print "joo kyllä\n onhan se niinkin totta...";
+
+var x : string := "voihan turskan
+
+\"
+perkeet";
+
 for x in (5 * 5)..(10 * 10) do
     for X in 1..100 do
         var y : int;
