@@ -572,21 +572,11 @@ fn process_operand<'a>(parser: &mut Parser<'a>, parent: usize, previous: usize) 
         let mut node_type: NodeType = NodeType::Unexpected;
         let mut expected = true;
         match token.token_type {
-            TokenType::LiteralInt => {
-                node_type = NodeType::LiteralInt;
-            }
-            TokenType::LiteralString => {
-                node_type = NodeType::LiteralString;
-            }
-            TokenType::LiteralBool => {
-                node_type = NodeType::LiteralBool;
-            }
-            TokenType::Identifier => {
-                node_type = NodeType::Identifier;
-            }
-            _ => {
-                expected = false;
-            }
+            TokenType::LiteralInt => node_type = NodeType::LiteralInt,
+            TokenType::LiteralString => node_type = NodeType::LiteralString,
+            TokenType::LiteralBool => node_type = NodeType::LiteralBool,
+            TokenType::Identifier => node_type = NodeType::Identifier,
+            _ => expected = false,
         }
         verify_token(parser, expected, &token, node_type, me, me);
     }
