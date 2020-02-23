@@ -6,18 +6,21 @@ pub struct Parser<'a> {
     scanner: Scanner<'a>,
 }
 
-enum Expression<'a> {
-    Expr(&'a str),
-    Error,
+struct Node<'a> {
+    parent: usize,
+    left_child: usize,
+    right_sibling: usize,
+    own_id: usize,
+    node_type: NodeType<'a>,
 }
 
-enum Operand<'a> {
-    Expr(Expression<'a>),
-    Int(&'a str),
-    String(&'a str),
-    Identifier(&'a str),
-    Error,
+// Very much WIP
+enum NodeType<'a> {
+    Expression(Expression<'a>),
+    Operand(TokenData<'a>),
 }
+
+enum Expression<'a> {}
 
 // A recursive descent parser
 impl<'a> Parser<'a> {
@@ -132,7 +135,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn process_expression(&mut self) -> Expression {
+    fn process_expression(&mut self) {
         // Starts with unary op
         if TokenType::OperatorNot == self.scanner.peek().unwrap().token_type {
             self.match_token(TokenType::OperatorNot);
@@ -154,33 +157,21 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
         }
-
-        Expression::Error
     }
 
-    fn process_operand(&mut self) -> Operand {
-        let mut operand = Operand::Error;
+    fn process_operand(&mut self) {
         match self.scanner.peek().unwrap().token_type {
             token_type @ TokenType::LParen => {
                 self.match_token(token_type);
-                let expr = self.process_expression();
-                operand = Operand::Expr(expr);
+                self.process_expression();
                 self.match_token(TokenType::RParen);
             }
-            token_type @ TokenType::LiteralInt => {
-                operand = Operand::Int(self.match_token(token_type).value);
-            }
-            token_type @ TokenType::LiteralString => {
-                operand = Operand::String(self.match_token(token_type).value);
-            }
-            token_type @ TokenType::Identifier => {
-                operand = Operand::Identifier(self.match_token(token_type).value);
-            }
+            token_type @ TokenType::LiteralInt => {}
+            token_type @ TokenType::LiteralString => {}
+            token_type @ TokenType::Identifier => {}
             _ => {
                 println!("Missing operand!");
             }
         }
-
-        operand
     }
 }
