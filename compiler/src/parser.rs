@@ -21,9 +21,9 @@ impl<'a> Parser<'a> {
     fn match_token(&mut self, token_type: TokenType) -> &TokenData<'a> {
         let token = self.scanner.next().unwrap();
         if token_type == token.token_type {
-            println!("Dandy!");
+            println!("Dandy! {:?}", token);
         } else {
-            println!("Unexpected token!");
+            println!("Unexpected token {:?}", token);
         }
 
         token
@@ -35,7 +35,14 @@ impl<'a> Parser<'a> {
     }
 
     fn process_end_of_program(&mut self) {
-        self.match_token(TokenType::EndOfProgram);
+        if self.scanner.unmatched_multiline_comment_prefixes.is_empty() {
+            self.match_token(TokenType::EndOfProgram);
+        } else {
+            for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
+                println!("Runaway multi line comment:");
+                self.scanner.print_line(*line as usize, *col as usize);
+            }
+        }
     }
 
     fn process_statement_list(&mut self) {

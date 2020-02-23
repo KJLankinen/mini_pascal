@@ -13,7 +13,6 @@ pub enum TokenType {
     KeywordPrint,
     KeywordAssert,
     Type,
-    LiteralBool,
     LiteralInt,
     LiteralString,
     OperatorPlus,
@@ -30,8 +29,8 @@ pub enum TokenType {
     Assignment,
     LParen,
     RParen,
-    Undefined,
     EndOfProgram,
+    Undefined,
 }
 
 // Token data
@@ -61,6 +60,7 @@ pub struct Scanner<'a> {
     skip_until_newline: bool,
     token_length: usize,
     previous_newline: usize,
+    pub unmatched_multiline_comment_prefixes: Vec<(u32, u32)>,
     chars: std::iter::Peekable<std::str::CharIndices<'a>>, // Iterator over the source string
     lines: Vec<&'a str>, // All the lines of code for error messaging
     token_map: HashMap<&'static str, TokenType>, // Map for getting the type of a token
@@ -77,6 +77,7 @@ impl<'a> Scanner<'a> {
             skip_until_newline: false,
             token_length: 0,
             previous_newline: 0,
+            unmatched_multiline_comment_prefixes: vec![],
             chars: source_str.char_indices().peekable(),
             lines: vec![],
             source_str: source_str,
@@ -108,8 +109,6 @@ impl<'a> Scanner<'a> {
                 ("..", TokenType::Range),
                 (":", TokenType::TypeSeparator),
                 (":=", TokenType::Assignment),
-                ("true", TokenType::LiteralBool),
-                ("false", TokenType::LiteralBool),
             ]
             .iter()
             .cloned()
@@ -117,11 +116,60 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn print_line(&mut self, line: usize, column: usize) {
+    pub fn print_line(&self, line: usize, column: usize) {
+        assert!(line > 0);
+        // Lines start from '1' in editors but vector indexing starts from '0'
+        let line = line - 1;
         assert!(line < self.lines.len(), "Line number is too large.");
-        println!("\n\"{}\"", self.lines[line]);
-        let arrow: String = vec!['-'; column + 1].into_iter().collect();
-        println!("{}\n", arrow + "^---this");
+
+        let mut max_chars = 0;
+
+        // If not the first line, print the line before as context
+        let mut print_before = false;
+        if line > 0 {
+            print_before = true;
+            let line_len = self.lines[line - 1].len();
+            if line_len > max_chars {
+                max_chars = line_len;
+            }
+        }
+
+        // If not the last line, print the line after as context
+        let mut print_after = false;
+        if line < self.lines.len() - 1 {
+            print_after = true;
+            let line_len = self.lines[line + 1].len();
+            if line_len > max_chars {
+                max_chars = line_len;
+            }
+        }
+
+        let line_len = self.lines[line].len();
+        if line_len > max_chars {
+            max_chars = line_len;
+        }
+
+        let expl_string = format!(
+            "{}^--- this at line {}, column {}",
+            vec!['-'; column - 1].into_iter().collect::<String>(),
+            line + 1,
+            column
+        );
+        if expl_string.len() > max_chars {
+            max_chars = expl_string.len();
+        }
+        let separator: String = vec!['-'; max_chars].into_iter().collect();
+
+        println!("{}", separator);
+        if print_before {
+            println!("{}", self.lines[line - 1]);
+        }
+        println!("{}", self.lines[line]);
+        println!("{}", expl_string);
+        if print_after {
+            println!("{}", self.lines[line + 1]);
+        }
+        println!("{}", separator);
     }
 
     // Consume the previous token and take a look at the next
@@ -181,6 +229,8 @@ impl<'a> Scanner<'a> {
                     &'*' => {
                         // Multi line comment
                         let mut depth: i32 = 1;
+                        self.unmatched_multiline_comment_prefixes
+                            .push((self.line, self.column));
                         self.get_char();
                         while let Some((_, ch)) = self.get_char() {
                             match ch {
@@ -189,12 +239,15 @@ impl<'a> Scanner<'a> {
                                         if &'/' == ch {
                                             self.get_char();
                                             depth -= 1;
+                                            self.unmatched_multiline_comment_prefixes.pop();
                                         }
                                     }
                                 }
                                 '/' => {
                                     if let Some((_, ch)) = self.chars.peek() {
                                         if &'*' == ch {
+                                            self.unmatched_multiline_comment_prefixes
+                                                .push((self.line, self.column));
                                             self.get_char();
                                             depth += 1;
                                         }
