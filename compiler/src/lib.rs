@@ -38,32 +38,40 @@ struct JsonNode<'a> {
 // serialized by the first child. The root of the tree then serializes itself and return a json
 // value.
 fn recursive_serialize<'a>(
-    my_id: usize,
-    tree: &'a Vec<parser::Node<'a>>,
+    my_id: &Option<usize>,
+    tree: &'a Vec<parser::Node<parser::NodeData<'a>>>,
     siblings: &mut Vec<JsonNode<'a>>,
 ) -> Option<serde_json::Value> {
-    if tree.len() > my_id {
-        // Pass this vector to the children. I will never use this, because my first child will
-        // serialize the vector and return a json to me.
-        let mut my_children = vec![];
+    if let Some(my_id) = *my_id {
+        if tree.len() > my_id {
+            // Pass this vector to the children. I will never use this, because my first child will
+            // serialize the vector and return a json to me.
+            let mut my_children = vec![];
 
-        // First add myself and my children
-        siblings.push(JsonNode {
-            token: tree[my_id].token,
-            node_type: tree[my_id].node_type,
-            children: recursive_serialize(tree[my_id].left_child, tree, &mut my_children),
-        });
+            // First add myself and my children
+            siblings.push(JsonNode {
+                token: tree[my_id].data.token,
+                node_type: tree[my_id].data.node_type.unwrap(),
+                children: recursive_serialize(&tree[my_id].left_child, tree, &mut my_children),
+            });
 
-        // Then call my first sibling who does what I did above.
-        recursive_serialize(tree[my_id].right_sibling, tree, siblings);
+            // Then call my first sibling who does what I did above.
+            recursive_serialize(&tree[my_id].right_sibling, tree, siblings);
 
-        // If I am the first child of my parent, I will serialize the vector given to me by my
-        // parent that now contains me and all my siblings with all our children
-        if tree.len() > tree[my_id].parent && tree[tree[my_id].parent].left_child == my_id {
-            return Some(json!(&siblings));
-        } else if 0 == my_id {
-            // I am (G)root
-            return Some(json!(&siblings[0]));
+            // If I am the first child of my parent, I will serialize the vector given to me by my
+            // parent that now contains me and all my siblings with all our children
+            if let Some(parent) = tree[my_id].parent {
+                if let Some(first_child) = tree[parent].left_child {
+                    if first_child == my_id {
+                        return Some(json!(&siblings));
+                    }
+                }
+            }
+
+            if 0 == my_id {
+                // I am (G)root
+                return Some(json!(&siblings[0]));
+            }
         }
     }
     // I am nulbody
@@ -71,9 +79,9 @@ fn recursive_serialize<'a>(
 }
 
 // Serialize the tree to a json via a recursive function.
-pub fn write_tree_to_json<'a>(tree: &'a Vec<parser::Node<'a>>) {
+pub fn write_tree_to_json<'a>(tree: &'a Vec<parser::Node<parser::NodeData<'a>>>) {
     let mut siblings = vec![];
-    if let Some(children) = recursive_serialize(0, tree, &mut siblings) {
+    if let Some(children) = recursive_serialize(&Some(0), tree, &mut siblings) {
         println!("{}", children.to_string());
     }
 }
