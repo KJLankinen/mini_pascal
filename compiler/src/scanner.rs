@@ -1,7 +1,8 @@
+use serde::Serialize;
 use std::collections::HashMap;
 
 // Token types
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum TokenType {
     Identifier,
     KeywordVar,
@@ -12,7 +13,9 @@ pub enum TokenType {
     KeywordRead,
     KeywordPrint,
     KeywordAssert,
-    Type,
+    TypeInt,
+    TypeString,
+    TypeBool,
     LiteralInt,
     LiteralString,
     OperatorPlus,
@@ -30,11 +33,12 @@ pub enum TokenType {
     LParen,
     RParen,
     EndOfProgram,
+    Default,
     Undefined,
 }
 
 // Token data
-#[derive(Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy)]
 pub struct TokenData<'a> {
     pub column: u32, // How much white space from line start to start of this token
     pub line: u32,   // How many \n characters from file start
@@ -47,7 +51,7 @@ impl<'a> Default for TokenData<'a> {
         TokenData {
             column: 0,
             line: 0,
-            token_type: TokenType::Undefined,
+            token_type: TokenType::Default,
             value: "",
         }
     }
@@ -92,9 +96,9 @@ impl<'a> Scanner<'a> {
                 ("read", TokenType::KeywordRead),
                 ("print", TokenType::KeywordPrint),
                 ("assert", TokenType::KeywordAssert),
-                ("int", TokenType::Type),
-                ("string", TokenType::Type),
-                ("bool", TokenType::Type),
+                ("int", TokenType::TypeInt),
+                ("string", TokenType::TypeString),
+                ("bool", TokenType::TypeBool),
                 ("(", TokenType::LParen),
                 (")", TokenType::RParen),
                 (";", TokenType::EndOfStatement),
@@ -173,7 +177,7 @@ impl<'a> Scanner<'a> {
     }
 
     // Consume the previous token and take a look at the next
-    pub fn next(&mut self) -> Option<&TokenData<'a>> {
+    pub fn next(&mut self) -> Option<TokenData<'a>> {
         if self.next_token.is_none() {
             self.current_token = self.get_token().take();
             self.next_token = self.get_token().take();
@@ -182,7 +186,7 @@ impl<'a> Scanner<'a> {
             self.next_token = self.get_token().take();
         }
 
-        self.current_token.as_ref()
+        self.current_token
     }
 
     // Peek at the next token without consuming anything
