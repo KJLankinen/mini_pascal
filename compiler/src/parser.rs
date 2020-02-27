@@ -1,10 +1,11 @@
+use super::lcrs_tree::{LcRsTree, Update};
 use super::scanner::Scanner;
 use super::scanner::TokenData;
 use super::scanner::TokenType;
 use serde::Serialize;
 
 #[derive(Serialize, Debug, Clone, Copy)]
-pub enum NodeType {
+enum NodeType {
     Program,
     Operand,
     Expression,
@@ -18,48 +19,36 @@ pub enum NodeType {
     Unexpected,
 }
 
-pub struct NodeData<'a> {
-    pub node_type: Option<NodeType>,
-    pub token: TokenData<'a>,
+#[derive(Serialize, Copy, Clone)]
+struct NodeData<'a> {
+    node_type: Option<NodeType>,
+    token: Option<TokenData<'a>>,
 }
 
 impl<'a> Default for NodeData<'a> {
     fn default() -> Self {
         NodeData {
             node_type: None,
-            token: TokenData::default(),
+            token: None,
         }
     }
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct Node<T>
-where
-    T: Default,
-{
-    pub parent: Option<usize>,
-    pub left_child: Option<usize>,
-    pub right_sibling: Option<usize>,
-    pub data: T,
-}
+impl<'a> Update for NodeData<'a> {
+    fn update(&mut self, data: Self) {
+        if data.node_type.is_some() {
+            self.node_type = data.node_type;
+        }
 
-impl<T> Default for Node<T>
-where
-    T: Default,
-{
-    fn default() -> Self {
-        Node {
-            parent: None,
-            left_child: None,
-            right_sibling: None,
-            data: T::default(),
+        if data.token.is_some() {
+            self.token = data.token;
         }
     }
 }
 
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
-    tree: Vec<Node<NodeData<'a>>>,
+    tree: LcRsTree<NodeData<'a>>,
 }
 
 // A recursive descent parser
@@ -67,32 +56,22 @@ impl<'a> Parser<'a> {
     pub fn new(source_str: &'a str) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
-            tree: vec![],
+            tree: LcRsTree::new(),
         }
     }
 
     pub fn parse(&mut self) {
         self.process_program();
-        super::write_tree_to_json(&self.tree);
+        if let Some(json) = self.tree.serialize() {
+            println!("{}", json.to_string());
+        }
     }
 
-    // If tree and node stuff is moved to a separate file (because tree can contain arbitrary
-    // data), this function should be made a part of tree.
-    fn add_node(&mut self, parent: Option<usize>, previous: Option<usize>) -> Option<usize> {
-        let id = self.tree.len();
-        self.tree.push(Node::default());
-        self.tree[id].parent = parent;
-
-        if 0 == id {
-            // This is the first node, don't bother modifying the non-existent previous entry
-        } else if previous == parent {
-            // This node is the first child of the parent node
-            self.tree[previous.unwrap()].left_child = Some(id);
-        } else {
-            self.tree[previous.unwrap()].right_sibling = Some(id);
+    // Serialize the tree to a json
+    pub fn write_tree_to_json(&mut self) {
+        if let Some(json_tree) = self.tree.serialize() {
+            println!("{}", json_tree.to_string());
         }
-
-        Some(id)
     }
 
     fn match_token(&mut self, token_type: TokenType) -> TokenData<'a> {
@@ -107,9 +86,15 @@ impl<'a> Parser<'a> {
     }
 
     fn process_program(&mut self) {
-        let my_id = self.add_node(None, None);
-        self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Program);
-        self.process_statement_list(my_id, my_id);
+        let my_id = self.tree.add_child(None);
+        self.tree.update_data(
+            my_id,
+            NodeData {
+                node_type: Some(NodeType::Program),
+                token: None,
+            },
+        );
+        self.process_statement_list(my_id);
         self.process_end_of_program();
     }
 
@@ -124,177 +109,219 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn process_statement_list(&mut self, parent: Option<usize>, previous: Option<usize>) {
+    fn process_statement_list(&mut self, parent: Option<usize>) {
         // Stop recursion if the next token is end of program
         // or 'end' keyword that ends the for loop.
         match self.scanner.peek().unwrap().token_type {
             TokenType::EndOfProgram | TokenType::KeywordEnd => {}
             _ => {
-                let previous = self.process_statement(parent, previous);
-                self.process_statement_list(parent, previous);
+                self.process_statement(parent);
+                self.process_statement_list(parent);
             }
         }
     }
 
-    fn process_statement(
-        &mut self,
-        parent: Option<usize>,
-        previous: Option<usize>,
-    ) -> Option<usize> {
-        let my_id = self.process_statement_prefix(parent, previous);
+    fn process_statement(&mut self, parent: Option<usize>) {
+        self.process_statement_prefix(parent);
         self.match_token(TokenType::EndOfStatement);
-
-        my_id
     }
 
-    fn process_statement_prefix(
-        &mut self,
-        parent: Option<usize>,
-        previous: Option<usize>,
-    ) -> Option<usize> {
+    fn process_statement_prefix(&mut self, parent: Option<usize>) {
         match self.scanner.peek().unwrap().token_type {
             TokenType::KeywordVar => {
                 // Declaration with an optional assignment
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Declaration);
+                let my_id = self.tree.add_child(parent);
                 self.match_token(TokenType::KeywordVar);
 
                 // Add node for the identifier
                 // Literals and identifiers use the same node type, Operand.
                 // Which the node actually represents can be disambiguated by the type of the token.
-                let previous = self.add_node(my_id, my_id);
-                self.tree[previous.unwrap()].data.token = self.match_token(TokenType::Identifier);
-                self.tree[previous.unwrap()].data.node_type = Some(NodeType::Operand);
+                let id = self.tree.add_child(my_id);
+                let token = self.match_token(TokenType::Identifier);
+                self.tree.update_data(
+                    id,
+                    NodeData {
+                        node_type: Some(NodeType::Operand),
+                        token: Some(token),
+                    },
+                );
 
                 self.match_token(TokenType::TypeSeparator);
 
                 // Store the type as the token of the declaration node
+                let token: Option<TokenData>;
                 match self.scanner.peek().unwrap().token_type {
                     token_type @ TokenType::TypeInt
                     | token_type @ TokenType::TypeString
                     | token_type @ TokenType::TypeBool => {
-                        self.tree[my_id.unwrap()].data.token = self.match_token(token_type);
+                        token = Some(self.match_token(token_type));
                     }
                     _ => {
                         // A syntax error, let's pass something that we know it's not
-                        self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::TypeInt);
+                        // so the given token is a syntax error
+                        token = Some(self.match_token(TokenType::TypeInt));
                     }
                 }
+
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Declaration),
+                        token: token,
+                    },
+                );
 
                 // The statement can contain an assignment. If it does, use the value the user
                 // provided as the right sibling. Otherwise use some default.
                 if TokenType::Assignment == self.scanner.peek().unwrap().token_type {
                     self.match_token(TokenType::Assignment);
-                    self.process_expression(my_id, previous);
+                    self.process_expression(my_id);
                 } else {
-                    let previous = self.add_node(my_id, previous);
-                    self.tree[previous.unwrap()].data.node_type = Some(NodeType::Operand);
+                    let my_id = self.tree.add_child(my_id);
+                    self.tree.update_data(
+                        my_id,
+                        NodeData {
+                            node_type: Some(NodeType::Operand),
+                            token: None,
+                        },
+                    );
                 }
-
-                return my_id;
             }
             TokenType::KeywordFor => {
                 // For loop
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::For);
-                self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::KeywordFor);
+                let my_id = self.tree.add_child(parent);
+                let token = self.match_token(TokenType::KeywordFor);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::For),
+                        token: Some(token),
+                    },
+                );
 
-                // Identifier is the first child of for loop
-                let previous = self.add_node(my_id, my_id);
-                self.tree[previous.unwrap()].data.node_type = Some(NodeType::Operand);
-                self.tree[previous.unwrap()].data.token = self.match_token(TokenType::Identifier);
+                let id = self.tree.add_child(my_id);
+                let token = self.match_token(TokenType::Identifier);
+                self.tree.update_data(
+                    id,
+                    NodeData {
+                        node_type: Some(NodeType::Operand),
+                        token: Some(token),
+                    },
+                );
 
                 self.match_token(TokenType::KeywordIn);
 
-                // Range is the second child of for, i.e. the sibling of identifier
-                let range_id = self.add_node(my_id, previous);
-                self.tree[range_id.unwrap()].data.node_type = Some(NodeType::Range);
+                // The range token '..' is the parent of the two expressions
+                let range_id = self.tree.add_child(my_id);
+                self.process_expression(range_id);
+                let token = self.match_token(TokenType::Range);
+                self.tree.update_data(
+                    range_id,
+                    NodeData {
+                        node_type: Some(NodeType::Range),
+                        token: Some(token),
+                    },
+                );
+                self.process_expression(range_id);
 
-                // First child expression of range
-                let previous = self.process_expression(range_id, range_id);
-
-                self.tree[range_id.unwrap()].data.token = self.match_token(TokenType::Range);
-
-                // Second child expression of range, i.e. sibling of first expression
-                self.process_expression(range_id, previous);
                 self.match_token(TokenType::KeywordDo);
                 // Process however many statements there are inside the for block
-                self.process_statement_list(my_id, range_id);
+                self.process_statement_list(my_id);
                 self.match_token(TokenType::KeywordEnd);
                 self.match_token(TokenType::KeywordFor);
-
-                return my_id;
             }
             TokenType::KeywordRead => {
                 // Read statement
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Read);
-                self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::KeywordRead);
+                let my_id = self.tree.add_child(parent);
+                let token = self.match_token(TokenType::KeywordRead);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Read),
+                        token: Some(token),
+                    },
+                );
 
-                let previous = self.add_node(my_id, my_id);
-                self.tree[previous.unwrap()].data.node_type = Some(NodeType::Operand);
-                self.tree[previous.unwrap()].data.token = self.match_token(TokenType::Identifier);
-
-                return my_id;
+                let id = self.tree.add_child(my_id);
+                let token = self.match_token(TokenType::Identifier);
+                self.tree.update_data(
+                    id,
+                    NodeData {
+                        node_type: Some(NodeType::Operand),
+                        token: Some(token),
+                    },
+                );
             }
             TokenType::KeywordPrint => {
                 // Print statement
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Print);
-                self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::KeywordPrint);
+                let my_id = self.tree.add_child(parent);
+                let token = self.match_token(TokenType::KeywordPrint);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Print),
+                        token: Some(token),
+                    },
+                );
 
-                self.process_expression(my_id, my_id);
-
-                return my_id;
+                self.process_expression(my_id);
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Assert);
-                self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::KeywordAssert);
+                let my_id = self.tree.add_child(parent);
+                let token = self.match_token(TokenType::KeywordAssert);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Assert),
+                        token: Some(token),
+                    },
+                );
 
                 self.match_token(TokenType::LParen);
-                self.process_expression(my_id, my_id);
+                self.process_expression(my_id);
                 self.match_token(TokenType::RParen);
-
-                return my_id;
             }
             TokenType::Identifier => {
                 // Assignment to a variable
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Assignment);
+                let my_id = self.tree.add_child(parent);
+                let id = self.tree.add_child(my_id);
+                let token = self.match_token(TokenType::Identifier);
 
-                let previous = self.add_node(my_id, my_id);
-                self.tree[previous.unwrap()].data.node_type = Some(NodeType::Operand);
-                self.tree[previous.unwrap()].data.token = self.match_token(TokenType::Identifier);
+                self.tree.update_data(
+                    id,
+                    NodeData {
+                        node_type: Some(NodeType::Operand),
+                        token: Some(token),
+                    },
+                );
 
-                self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::Assignment);
+                let token = self.match_token(TokenType::Assignment);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Assignment),
+                        token: Some(token),
+                    },
+                );
 
-                self.process_expression(my_id, previous);
-
-                return my_id;
+                self.process_expression(my_id);
             }
             _ => {
                 println!("Invalid start of statement!");
-
-                return None;
             }
         }
     }
 
-    fn process_expression(
-        &mut self,
-        parent: Option<usize>,
-        previous: Option<usize>,
-    ) -> Option<usize> {
-        let my_id = self.add_node(parent, previous);
-        self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Expression);
+    fn process_expression(&mut self, parent: Option<usize>) {
+        let my_id = self.tree.add_child(parent);
+        let mut token = TokenData::default();
 
         if TokenType::OperatorNot == self.scanner.peek().unwrap().token_type {
-            self.tree[my_id.unwrap()].data.token = self.match_token(TokenType::OperatorNot);
+            token = self.match_token(TokenType::OperatorNot);
         }
 
-        let previous = self.process_operand(my_id, my_id);
+        self.process_operand(my_id);
 
         match self.scanner.peek().unwrap().token_type {
             token_type @ TokenType::OperatorPlus
@@ -304,36 +331,43 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorLessThan
             | token_type @ TokenType::OperatorEqual
             | token_type @ TokenType::OperatorAnd => {
-                self.tree[my_id.unwrap()].data.token = self.match_token(token_type);
-                self.process_operand(my_id, previous);
+                token = self.match_token(token_type);
+                self.process_operand(my_id);
             }
             _ => {}
         }
 
-        my_id
+        self.tree.update_data(
+            my_id,
+            NodeData {
+                node_type: Some(NodeType::Expression),
+                token: Some(token),
+            },
+        );
     }
 
-    fn process_operand(&mut self, parent: Option<usize>, previous: Option<usize>) -> Option<usize> {
+    fn process_operand(&mut self, parent: Option<usize>) {
         match self.scanner.peek().unwrap().token_type {
             token_type @ TokenType::LParen => {
                 self.match_token(token_type);
-                let my_id = self.process_expression(parent, previous);
+                self.process_expression(parent);
                 self.match_token(TokenType::RParen);
-
-                return my_id;
             }
             token_type @ TokenType::LiteralInt
             | token_type @ TokenType::LiteralString
             | token_type @ TokenType::Identifier => {
-                let my_id = self.add_node(parent, previous);
-                self.tree[my_id.unwrap()].data.node_type = Some(NodeType::Operand);
-                self.tree[my_id.unwrap()].data.token = self.match_token(token_type);
-
-                return my_id;
+                let my_id = self.tree.add_child(parent);
+                let token = self.match_token(token_type);
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Operand),
+                        token: Some(token),
+                    },
+                );
             }
             _ => {
                 println!("Missing operand!");
-                return None;
             }
         }
     }
