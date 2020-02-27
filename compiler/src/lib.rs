@@ -3,11 +3,7 @@ pub mod parser;
 mod scanner;
 
 use parser::Parser;
-use std::{
-    env, fs,
-    io::{BufWriter, Write},
-    process,
-};
+use std::{env, fs, io::BufWriter, process};
 
 pub fn run() {
     let args: Vec<String> = env::args().collect();
@@ -46,7 +42,7 @@ pub fn run() {
                         parser.parse();
 
                         if let Some(filename) = out_file {
-                            if let Some(json) = parser.write_tree_to_json() {
+                            if let Some(json) = parser.serialize() {
                                 let file = fs::File::create(&filename).expect(
                                     format!(
                                         "Could not create a new file with the name {}",

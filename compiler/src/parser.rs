@@ -64,16 +64,20 @@ impl<'a> Parser<'a> {
         self.process_program();
     }
 
-    pub fn write_tree_to_json(&mut self) -> Option<serde_json::Value> {
+    // Serialize the tree to a json
+    pub fn serialize(&mut self) -> Option<serde_json::Value> {
         self.tree.serialize()
     }
 
     fn match_token(&mut self, token_type: TokenType) -> TokenData<'a> {
         let token = self.scanner.next().unwrap();
-        if token_type == token.token_type {
-            println!("Dandy! {:?}", token);
-        } else {
-            println!("Unexpected token {:?}", token);
+
+        if token.token_type != token_type || TokenType::Undefined == token.token_type {
+            // Something unexpected
+            println!(
+                "Unexpected token. Received \"{:#?}\", when \"{:#?}\" was expected.",
+                token.token_type, token_type
+            );
         }
 
         token
@@ -309,10 +313,18 @@ impl<'a> Parser<'a> {
 
     fn process_expression(&mut self, parent: Option<usize>) {
         let my_id = self.tree.add_child(parent);
-        let mut token = TokenData::default();
 
         if TokenType::OperatorNot == self.scanner.peek().unwrap().token_type {
-            token = self.match_token(TokenType::OperatorNot);
+            let token = self.match_token(TokenType::OperatorNot);
+            self.tree.update_data(
+                my_id,
+                NodeData {
+                    node_type: Some(NodeType::Expression),
+                    token: Some(token),
+                },
+            );
+
+            return;
         }
 
         self.process_operand(my_id);
@@ -325,19 +337,25 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorLessThan
             | token_type @ TokenType::OperatorEqual
             | token_type @ TokenType::OperatorAnd => {
-                token = self.match_token(token_type);
+                let token = self.match_token(token_type);
                 self.process_operand(my_id);
-            }
-            _ => {}
-        }
+                self.tree.update_data(
+                    my_id,
+                    NodeData {
+                        node_type: Some(NodeType::Expression),
+                        token: Some(token),
+                    },
+                );
 
-        self.tree.update_data(
-            my_id,
-            NodeData {
-                node_type: Some(NodeType::Expression),
-                token: Some(token),
-            },
-        );
+                return;
+            }
+            _ => {
+                // This expression should have only one child so this node can be removed.
+                if 1 == self.tree.count_children(my_id) {
+                    self.tree.remove_me(my_id);
+                }
+            }
+        }
     }
 
     fn process_operand(&mut self, parent: Option<usize>) {

@@ -47,6 +47,7 @@ where
     T: Serialize,
 {
     nodes: Vec<Node<T>>,
+    unused_ids: Vec<usize>,
 }
 
 impl<T> LcRsTree<T>
@@ -56,7 +57,10 @@ where
     T: Serialize,
 {
     pub fn new() -> Self {
-        LcRsTree { nodes: vec![] }
+        LcRsTree {
+            nodes: vec![],
+            unused_ids: vec![],
+        }
     }
 
     pub fn add_child(&mut self, parent: Option<usize>) -> Option<usize> {
@@ -98,10 +102,96 @@ where
     }
 
     fn new_node(&mut self) -> usize {
-        let id = self.nodes.len();
-        self.nodes.push(Node::default());
+        if let Some(id) = self.unused_ids.pop() {
+            id
+        } else {
+            let id = self.nodes.len();
+            self.nodes.push(Node::default());
 
-        id
+            id
+        }
+    }
+
+    pub fn count_children(&self, id: Option<usize>) -> usize {
+        let mut num_children = 0;
+        if let Some(id) = id {
+            if id < self.nodes.len() {
+                if let Some(id) = self.nodes[id].left_child {
+                    num_children += 1;
+
+                    let mut next = id;
+                    while let Some(id) = self.nodes[next].right_sibling {
+                        num_children += 1;
+                        next = id;
+                    }
+                }
+            }
+        }
+
+        return num_children;
+    }
+
+    pub fn remove_me(&mut self, id: Option<usize>) {
+        let promote_children = |my_id: usize, tree: &mut Self| {
+            // This closure changes the children. Parent of children is set to be the parent
+            // of the given id, and the siblings of the given id are set to be the younger siblings of
+            // the children.
+            let my_child = tree.nodes[my_id].left_child.unwrap();
+            tree.nodes[my_child].parent = tree.nodes[my_id].parent;
+
+            let mut next = my_child;
+            while let Some(my_child) = tree.nodes[next].right_sibling {
+                tree.nodes[my_child].parent = tree.nodes[my_id].parent;
+                next = my_child;
+            }
+
+            tree.nodes[next].right_sibling = tree.nodes[my_id].right_sibling;
+        };
+
+        if let Some(id) = id {
+            if id < self.nodes.len() {
+                if let Some(parent) = self.nodes[id].parent {
+                    if let Some(next_child) = self.nodes[parent].left_child {
+                        if next_child == id {
+                            // I am first child
+                            if self.nodes[id].left_child.is_some() {
+                                // I have children
+                                self.nodes[parent].left_child = self.nodes[id].left_child;
+                                promote_children(id, self);
+                            } else {
+                                // I have no children, so make my next sibling be first child
+                                self.nodes[parent].left_child = self.nodes[id].right_sibling;
+                            }
+                        } else {
+                            // I am not first child
+                            let mut prev = next_child;
+                            while let Some(next_child) = self.nodes[prev].right_sibling {
+                                // If I am the next sibling of prev, stop.
+                                if id == next_child {
+                                    break;
+                                }
+                                prev = next_child;
+                            }
+
+                            if self.nodes[id].left_child.is_some() {
+                                // I have children, make my first child be the next sibling of my
+                                // youngest older sibling and promote my children.
+                                self.nodes[prev].right_sibling = self.nodes[id].left_child;
+                                promote_children(id, self);
+                            } else {
+                                // I have no children, so make my older sibling point to my younger
+                                // sibling
+                                self.nodes[prev].right_sibling = self.nodes[id].right_sibling;
+                            }
+                        }
+
+                        // I am done
+                        self.nodes[id] = Node::default();
+                        self.unused_ids.push(id);
+                    }
+                }
+            }
+        }
     }
 
     pub fn serialize<'a>(&'a mut self) -> Option<serde_json::Value> {
