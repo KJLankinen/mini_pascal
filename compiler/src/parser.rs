@@ -52,7 +52,6 @@ pub struct Parser<'a> {
     tree: LcRsTree<NodeData<'a>>,
 }
 
-// A recursive descent parser
 impl<'a> Parser<'a> {
     pub fn new(source_str: &'a str) -> Self {
         Parser {
@@ -63,16 +62,10 @@ impl<'a> Parser<'a> {
 
     pub fn parse(&mut self) {
         self.process_program();
-        if let Some(json) = self.tree.serialize() {
-            println!("{}", json.to_string());
-        }
     }
 
-    // Serialize the tree to a json
-    pub fn write_tree_to_json(&mut self) {
-        if let Some(json_tree) = self.tree.serialize() {
-            println!("{}", json_tree.to_string());
-        }
+    pub fn write_tree_to_json(&mut self) -> Option<serde_json::Value> {
+        self.tree.serialize()
     }
 
     fn match_token(&mut self, token_type: TokenType) -> TokenData<'a> {
