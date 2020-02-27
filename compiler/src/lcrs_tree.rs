@@ -127,19 +127,23 @@ where
                 }
             }
 
-            if 1 < my_children.len() {
-                return Some(json!(JsonNode {
-                    data: &self.nodes[my_id].data,
-                    children: Some(json!(my_children))
-                }));
-            } else if 1 == my_children.len() {
-                return Some(json!(JsonNode {
-                    data: &self.nodes[my_id].data,
-                    children: Some(json!(my_children[0]))
-                }));
-            } else {
-                return Some(json!(&self.nodes[my_id].data));
+            let mut obj = json!(&self.nodes[my_id].data);
+            match my_children.len() {
+                0 => {}
+                1 => {
+                    let child = my_children[0].as_ref().unwrap();
+                    obj.as_object_mut()
+                        .unwrap()
+                        .insert("child".to_string(), json!(child));
+                }
+                _ => {
+                    obj.as_object_mut()
+                        .unwrap()
+                        .insert("children".to_string(), json!(my_children));
+                }
             }
+
+            return Some(json!(obj));
         }
 
         return None;
