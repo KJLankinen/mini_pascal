@@ -34,12 +34,6 @@ where
     }
 }
 
-#[derive(Serialize)]
-struct JsonNode<'a, T> {
-    data: &'a T,
-    children: Option<serde_json::Value>,
-}
-
 pub struct LcRsTree<T>
 where
     T: Default,
@@ -97,7 +91,9 @@ where
 
     pub fn update_data(&mut self, id: Option<usize>, data: T) {
         if let Some(id) = id {
-            self.nodes[id].data = data;
+            if id < self.nodes.len() {
+                self.nodes[id].data = data;
+            }
         }
     }
 
@@ -185,7 +181,7 @@ where
                             }
                         }
 
-                        // I am done
+                        // I am done, goodbye cruel world
                         self.nodes[id] = Node::default();
                         self.unused_ids.push(id);
                     }
