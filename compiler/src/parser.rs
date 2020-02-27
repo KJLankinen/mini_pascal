@@ -22,6 +22,7 @@ enum NodeType {
 #[derive(Serialize, Copy, Clone)]
 struct NodeData<'a> {
     node_type: Option<NodeType>,
+    #[serde(flatten)]
     token: Option<TokenData<'a>>,
 }
 
