@@ -10,7 +10,6 @@ pub struct Scanner<'a> {
     column: u32,
     line: u32,
     skip_until_newline: bool,
-    token_length: usize,
     previous_newline: usize,
     pub unmatched_multiline_comment_prefixes: Vec<(u32, u32)>,
     chars: std::iter::Peekable<std::str::CharIndices<'a>>,
@@ -53,7 +52,6 @@ impl<'a> Scanner<'a> {
         match self.chars.peek() {
             Some((pos, ch)) => {
                 self.column += 1;
-                self.token_length += 1;
                 if &'\n' == ch {
                     self.line += 1;
                     self.column = 0;
@@ -157,7 +155,6 @@ impl<'a> Scanner<'a> {
 
                     token.column = self.column;
                     token.line = self.line;
-                    self.token_length = 1;
 
                     // Most tokens get their type from the map access at the bottom.
                     // This match disambiguates between some situations like comment vs divide op
@@ -234,7 +231,11 @@ impl<'a> Scanner<'a> {
                         }
                     }
 
-                    token.value = &self.source_str[pos..pos + self.token_length];
+                    let token_end = match self.chars.peek() {
+                        Some((pos, _)) => *pos,
+                        None => self.source_str.len(),
+                    };
+                    token.value = &self.source_str[pos..token_end];
 
                     // Get your type here, if you're in the map
                     if let Some(tt) = self.token_map.get(token.value) {
@@ -264,7 +265,6 @@ impl<'a> Scanner<'a> {
             column: 0,
             line: 1,
             skip_until_newline: false,
-            token_length: 0,
             previous_newline: 0,
             unmatched_multiline_comment_prefixes: vec![],
             chars: source_str.char_indices().peekable(),

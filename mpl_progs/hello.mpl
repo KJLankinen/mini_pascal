@@ -22,7 +22,6 @@ how it wouuld
 print "How many times?" /**/;
 var true_var : bool := true;
 var false_ : bool := false;
-/*
 read nTimes;
 var x : int;
 for x in 0..ntimes - 1 do
@@ -30,4 +29,3 @@ for x in 0..ntimes - 1 do
     print ": Hello world!\n";
 end for;
 assert(x = nTimes);
-                     /*
