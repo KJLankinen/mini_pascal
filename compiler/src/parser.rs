@@ -1,74 +1,19 @@
 use super::lcrs_tree::{LcRsTree, Update};
-use super::scanner::Scanner;
-use super::scanner::TokenData;
-use super::scanner::TokenType;
+use super::scanner::{Scanner, TokenData, TokenType};
 use serde::Serialize;
 
-#[derive(Serialize, Debug, Clone, Copy)]
-enum NodeType {
-    Program,
-    Operand,
-    Expression,
-    Declaration,
-    Assignment,
-    For,
-    Range,
-    Read,
-    Print,
-    Assert,
-    Unexpected,
-}
-
-#[derive(Serialize, Copy, Clone)]
-struct NodeData<'a> {
-    node_type: Option<NodeType>,
-    #[serde(flatten)]
-    token: Option<TokenData<'a>>,
-}
-
-impl<'a> Default for NodeData<'a> {
-    fn default() -> Self {
-        NodeData {
-            node_type: None,
-            token: None,
-        }
-    }
-}
-
-impl<'a> Update for NodeData<'a> {
-    fn update(&mut self, data: Self) {
-        if data.node_type.is_some() {
-            self.node_type = data.node_type;
-        }
-
-        if data.token.is_some() {
-            self.token = data.token;
-        }
-    }
-}
-
+// ---------------------------------------------------------------------
+// Type definition for the recursive descent parser
+// ---------------------------------------------------------------------
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
     tree: LcRsTree<NodeData<'a>>,
 }
 
+// ---------------------------------------------------------------------
+// Method implementations for the parser
+// ---------------------------------------------------------------------
 impl<'a> Parser<'a> {
-    pub fn new(source_str: &'a str) -> Self {
-        Parser {
-            scanner: Scanner::new(source_str),
-            tree: LcRsTree::new(),
-        }
-    }
-
-    pub fn parse(&mut self) {
-        self.process_program();
-    }
-
-    // Serialize the tree to a json
-    pub fn serialize(&mut self) -> Option<serde_json::Value> {
-        self.tree.serialize()
-    }
-
     fn match_token(&mut self, token_type: TokenType) -> TokenData<'a> {
         let token = self.scanner.next().unwrap();
 
@@ -82,6 +27,10 @@ impl<'a> Parser<'a> {
 
         token
     }
+
+    // ---------------------------------------------------------------------
+    // Recursive processing functions
+    // ---------------------------------------------------------------------
 
     fn process_program(&mut self) {
         let my_id = self.tree.add_child(None);
@@ -314,6 +263,7 @@ impl<'a> Parser<'a> {
     fn process_expression(&mut self, parent: Option<usize>) {
         let my_id = self.tree.add_child(parent);
 
+        // First case: Unary operator and operand
         if TokenType::OperatorNot == self.scanner.peek().unwrap().token_type {
             let token = self.match_token(TokenType::OperatorNot);
             self.tree.update_data(
@@ -327,6 +277,7 @@ impl<'a> Parser<'a> {
             return;
         }
 
+        // Second and third case start with an operand
         self.process_operand(my_id);
 
         match self.scanner.peek().unwrap().token_type {
@@ -337,6 +288,7 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorLessThan
             | token_type @ TokenType::OperatorEqual
             | token_type @ TokenType::OperatorAnd => {
+                // Second case: operand, binary operator, operand
                 let token = self.match_token(token_type);
                 self.process_operand(my_id);
                 self.tree.update_data(
@@ -350,9 +302,12 @@ impl<'a> Parser<'a> {
                 return;
             }
             _ => {
-                // This expression should have only one child so this node can be removed.
+                // Third case: a single operand
+                // This expression should have only one child so this node can be removed to
+                // simplify the AST. Otherwise nested parenthesis will cause a long chain of
+                // expr(opnd(expr(opnd))) nodes, which serve no purpose.
                 if 1 == self.tree.count_children(my_id) {
-                    self.tree.remove_me(my_id);
+                    self.tree.remove_node(my_id);
                 }
             }
         }
@@ -379,8 +334,74 @@ impl<'a> Parser<'a> {
                 );
             }
             _ => {
-                println!("Missing operand!");
+                // This is unexpected and an error situation
+                assert!(false, "Missing operand!");
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Public utility functions
+    // ---------------------------------------------------------------------
+
+    pub fn new(source_str: &'a str) -> Self {
+        Parser {
+            scanner: Scanner::new(source_str),
+            tree: LcRsTree::new(),
+        }
+    }
+
+    pub fn parse(&mut self) {
+        self.process_program();
+    }
+
+    pub fn serialize(&mut self) -> Option<serde_json::Value> {
+        self.tree.serialize()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Type definitions and methods for the nodes of the AST
+// ---------------------------------------------------------------------
+#[derive(Serialize, Debug, Clone, Copy)]
+enum NodeType {
+    Program,
+    Operand,
+    Expression,
+    Declaration,
+    Assignment,
+    For,
+    Range,
+    Read,
+    Print,
+    Assert,
+    Unexpected,
+}
+
+#[derive(Serialize, Copy, Clone)]
+struct NodeData<'a> {
+    node_type: Option<NodeType>,
+    #[serde(flatten)]
+    token: Option<TokenData<'a>>,
+}
+
+impl<'a> Default for NodeData<'a> {
+    fn default() -> Self {
+        NodeData {
+            node_type: None,
+            token: None,
+        }
+    }
+}
+
+impl<'a> Update for NodeData<'a> {
+    fn update(&mut self, data: Self) {
+        if data.node_type.is_some() {
+            self.node_type = data.node_type;
+        }
+
+        if data.token.is_some() {
+            self.token = data.token;
         }
     }
 }

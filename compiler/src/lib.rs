@@ -1,3 +1,4 @@
+// Specify here the implemented and used crates
 mod lcrs_tree;
 pub mod parser;
 mod scanner;
@@ -5,6 +6,7 @@ mod scanner;
 use parser::Parser;
 use std::{env, fs, io::BufWriter, process};
 
+// Called from main to kick off the interpretation
 pub fn run() {
     let args: Vec<String> = env::args().collect();
 
@@ -24,9 +26,13 @@ pub fn run() {
             if filename.ends_with(".mpl") {
                 match fs::read_to_string(&filename) {
                     Ok(source_str) => {
+                        // Reading the source string from the given .mpl file was successfull
+                        // Next see if cmd line arguments were passed and if the AST should be
+                        // serialized to a json file
                         let out_file = match args.len() {
                             3 => {
                                 if "--debug" == args[2] {
+                                    // Change "filename.mpl" to "filename.json"
                                     Some(filename.trim_end_matches(".mpl").to_owned() + ".json")
                                 } else {
                                     eprintln!(
@@ -41,6 +47,7 @@ pub fn run() {
                         let mut parser = Parser::new(&source_str);
                         parser.parse();
 
+                        // Parsing is completed, serialize the AST if so specified
                         if let Some(filename) = out_file {
                             if let Some(json) = parser.serialize() {
                                 let file = fs::File::create(&filename).expect(
@@ -63,6 +70,9 @@ pub fn run() {
                                 }
                             }
                         }
+
+                        // Place holder print
+                        println!("Parsing is complete, moving on to semantic analysis.");
                     }
                     Err(err) => {
                         eprintln!("Application error: {}, with filename \"{}\"", err, filename);
