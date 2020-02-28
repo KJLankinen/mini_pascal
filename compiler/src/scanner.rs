@@ -17,8 +17,7 @@ pub struct Scanner<'a> {
     lines: Vec<&'a str>,
     token_map: HashMap<&'static str, TokenType>,
     source_str: &'a str,
-    current_token: Option<TokenData<'a>>,
-    next_token: Option<TokenData<'a>>,
+    next_token: TokenData<'a>,
 }
 
 // ---------------------------------------------------------------------
@@ -28,30 +27,19 @@ impl<'a> Scanner<'a> {
     // ---------------------------------------------------------------------
     // next() and peek() are the main two out facing functions of the scanner.
     // ---------------------------------------------------------------------
-    pub fn next(&mut self) -> Option<TokenData<'a>> {
+    pub fn next(&mut self) -> Result<TokenData<'a>, TokenData<'a>> {
         // The parser receives new tokens by calling this function
-        if self.next_token.is_none() {
-            // This is the first time this is called, so take the next two tokens from the source
-            // string and initialize the current and next tokens with them.
-            self.current_token = self.get_token().take();
-            self.next_token = self.get_token().take();
-        } else {
-            // This (or peek) has been called at least once already, so take the next token from the string and
-            // store that in the next token (that can be peeked) and pass the previous 'next token'
-            // to the current token.
-            self.current_token = self.next_token.take();
-            self.next_token = self.get_token().take();
-        }
+        let token = self.next_token;
+        self.next_token = self.get_token();
 
-        self.current_token
+        match token.token_type {
+            TokenType::Undefined => Err(token),
+            _ => Ok(token),
+        }
     }
 
-    pub fn peek(&mut self) -> Option<&TokenData<'a>> {
-        if self.next_token.is_none() {
-            self.next_token = self.get_token().take();
-        }
-
-        self.next_token.as_ref()
+    pub fn peek(&mut self) -> &TokenData<'a> {
+        &self.next_token
     }
 
     // ---------------------------------------------------------------------
@@ -148,10 +136,10 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn get_token(&mut self) -> Option<TokenData<'a>> {
+    fn get_token(&mut self) -> TokenData<'a> {
         // This function is the main work horse of the scanner. This function will always return
-        // Some(token), even after the source has ended. If there's no more characters left, the
-        // EndOfProgram token is returned repeatedly.
+        // a valid (but maybe undefined) token, even after the source has ended.
+        // If there's no more characters left, the EndOfProgram token is returned repeatedly.
         let mut token = TokenData {
             column: self.column,
             line: self.line,
@@ -264,7 +252,7 @@ impl<'a> Scanner<'a> {
             // EndOfProgram. In the first case, the token is undefined, in the second we'll just
             // repeatedly return the EndOfProgram token until even the most stone headed parser
             // will understand to stop parsing nothingness.
-            return Some(token);
+            return token;
         }
     }
 
@@ -272,7 +260,7 @@ impl<'a> Scanner<'a> {
     // Public auxiliary functions
     // ---------------------------------------------------------------------
     pub fn new(source_str: &'a str) -> Scanner<'a> {
-        Scanner {
+        let mut scanner = Scanner {
             column: 0,
             line: 1,
             skip_until_newline: false,
@@ -282,8 +270,7 @@ impl<'a> Scanner<'a> {
             chars: source_str.char_indices().peekable(),
             lines: vec![],
             source_str: source_str,
-            current_token: None,
-            next_token: None,
+            next_token: TokenData::default(),
             token_map: [
                 ("var", TokenType::KeywordVar),
                 ("for", TokenType::KeywordFor),
@@ -314,7 +301,10 @@ impl<'a> Scanner<'a> {
             .iter()
             .cloned()
             .collect(),
-        }
+        };
+        // Initialize next_token
+        scanner.next_token = scanner.get_token();
+        return scanner;
     }
 
     pub fn print_line(&self, line: usize, column: usize) {

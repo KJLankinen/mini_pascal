@@ -14,25 +14,21 @@ pub struct Parser<'a> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a> Parser<'a> {
-    fn match_token(&mut self, token_type: TokenType) -> TokenData<'a> {
-        let token = self.scanner.next().unwrap();
+    fn match_token(&mut self, token_type: TokenType) -> Result<TokenData<'a>, TokenData<'a>> {
+        let token = self.scanner.next()?;
 
-        if token.token_type != token_type || TokenType::Undefined == token.token_type {
-            // Something unexpected
-            println!(
-                "Unexpected token. Received \"{:#?}\", when \"{:#?}\" was expected.",
-                token.token_type, token_type
-            );
+        if token.token_type == token_type {
+            Ok(token)
+        } else {
+            Err(token)
         }
-
-        token
     }
 
     // ---------------------------------------------------------------------
     // Recursive processing functions
     // ---------------------------------------------------------------------
 
-    fn process_program(&mut self) {
+    fn process_program(&mut self) -> Result<(), TokenData<'a>> {
         let my_id = self.tree.add_child(None);
         self.tree.update_data(
             my_id,
@@ -41,50 +37,54 @@ impl<'a> Parser<'a> {
                 token: None,
             },
         );
-        self.process_statement_list(my_id);
-        self.process_end_of_program();
+        self.process_statement_list(my_id)?;
+        self.process_end_of_program()?;
+        Ok(())
     }
 
-    fn process_end_of_program(&mut self) {
+    fn process_end_of_program(&mut self) -> Result<(), TokenData<'a>> {
         if self.scanner.unmatched_multiline_comment_prefixes.is_empty() {
-            self.match_token(TokenType::EndOfProgram);
+            self.match_token(TokenType::EndOfProgram)?;
         } else {
             for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
                 println!("Runaway multi line comment:");
                 self.scanner.print_line(*line as usize, *col as usize);
             }
         }
+        Ok(())
     }
 
-    fn process_statement_list(&mut self, parent: Option<usize>) {
+    fn process_statement_list(&mut self, parent: Option<usize>) -> Result<(), TokenData<'a>> {
         // Stop recursion if the next token is end of program
         // or 'end' keyword that ends the for loop.
-        match self.scanner.peek().unwrap().token_type {
+        match self.scanner.peek().token_type {
             TokenType::EndOfProgram | TokenType::KeywordEnd => {}
             _ => {
-                self.process_statement(parent);
-                self.process_statement_list(parent);
+                self.process_statement(parent)?;
+                self.process_statement_list(parent)?;
             }
         }
+        Ok(())
     }
 
-    fn process_statement(&mut self, parent: Option<usize>) {
-        self.process_statement_prefix(parent);
-        self.match_token(TokenType::EndOfStatement);
+    fn process_statement(&mut self, parent: Option<usize>) -> Result<(), TokenData<'a>> {
+        self.process_statement_prefix(parent)?;
+        self.match_token(TokenType::EndOfStatement)?;
+        Ok(())
     }
 
-    fn process_statement_prefix(&mut self, parent: Option<usize>) {
-        match self.scanner.peek().unwrap().token_type {
+    fn process_statement_prefix(&mut self, parent: Option<usize>) -> Result<(), TokenData<'a>> {
+        match self.scanner.peek().token_type {
             TokenType::KeywordVar => {
                 // Declaration with an optional assignment
                 let my_id = self.tree.add_child(parent);
-                self.match_token(TokenType::KeywordVar);
+                self.match_token(TokenType::KeywordVar)?;
 
                 // Add node for the identifier
                 // Literals and identifiers use the same node type, Operand.
                 // Which the node actually represents can be disambiguated by the type of the token.
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(TokenType::Identifier);
+                let token = self.match_token(TokenType::Identifier)?;
                 self.tree.update_data(
                     id,
                     NodeData {
@@ -93,20 +93,20 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.match_token(TokenType::TypeSeparator);
+                self.match_token(TokenType::TypeSeparator)?;
 
                 // Store the type as the token of the declaration node
                 let token: Option<TokenData>;
-                match self.scanner.peek().unwrap().token_type {
+                match self.scanner.peek().token_type {
                     token_type @ TokenType::TypeInt
                     | token_type @ TokenType::TypeString
                     | token_type @ TokenType::TypeBool => {
-                        token = Some(self.match_token(token_type));
+                        token = Some(self.match_token(token_type)?);
                     }
                     _ => {
                         // A syntax error, let's pass something that we know it's not
                         // so the given token is a syntax error
-                        token = Some(self.match_token(TokenType::TypeInt));
+                        token = Some(self.match_token(TokenType::TypeInt)?);
                     }
                 }
 
@@ -120,9 +120,9 @@ impl<'a> Parser<'a> {
 
                 // The statement can contain an assignment. If it does, use the value the user
                 // provided as the right sibling. Otherwise use some default.
-                if TokenType::Assignment == self.scanner.peek().unwrap().token_type {
-                    self.match_token(TokenType::Assignment);
-                    self.process_expression(my_id);
+                if TokenType::Assignment == self.scanner.peek().token_type {
+                    self.match_token(TokenType::Assignment)?;
+                    self.process_expression(my_id)?;
                 } else {
                     let my_id = self.tree.add_child(my_id);
                     self.tree.update_data(
@@ -137,7 +137,7 @@ impl<'a> Parser<'a> {
             TokenType::KeywordFor => {
                 // For loop
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(TokenType::KeywordFor);
+                let token = self.match_token(TokenType::KeywordFor)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
                 );
 
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(TokenType::Identifier);
+                let token = self.match_token(TokenType::Identifier)?;
                 self.tree.update_data(
                     id,
                     NodeData {
@@ -156,12 +156,12 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.match_token(TokenType::KeywordIn);
+                self.match_token(TokenType::KeywordIn)?;
 
                 // The range token '..' is the parent of the two expressions
                 let range_id = self.tree.add_child(my_id);
-                self.process_expression(range_id);
-                let token = self.match_token(TokenType::Range);
+                self.process_expression(range_id)?;
+                let token = self.match_token(TokenType::Range)?;
                 self.tree.update_data(
                     range_id,
                     NodeData {
@@ -169,18 +169,18 @@ impl<'a> Parser<'a> {
                         token: Some(token),
                     },
                 );
-                self.process_expression(range_id);
+                self.process_expression(range_id)?;
 
-                self.match_token(TokenType::KeywordDo);
+                self.match_token(TokenType::KeywordDo)?;
                 // Process however many statements there are inside the for block
-                self.process_statement_list(my_id);
-                self.match_token(TokenType::KeywordEnd);
-                self.match_token(TokenType::KeywordFor);
+                self.process_statement_list(my_id)?;
+                self.match_token(TokenType::KeywordEnd)?;
+                self.match_token(TokenType::KeywordFor)?;
             }
             TokenType::KeywordRead => {
                 // Read statement
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(TokenType::KeywordRead);
+                let token = self.match_token(TokenType::KeywordRead)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -190,7 +190,7 @@ impl<'a> Parser<'a> {
                 );
 
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(TokenType::Identifier);
+                let token = self.match_token(TokenType::Identifier)?;
                 self.tree.update_data(
                     id,
                     NodeData {
@@ -202,7 +202,7 @@ impl<'a> Parser<'a> {
             TokenType::KeywordPrint => {
                 // Print statement
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(TokenType::KeywordPrint);
+                let token = self.match_token(TokenType::KeywordPrint)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -211,12 +211,12 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.process_expression(my_id);
+                self.process_expression(my_id)?;
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(TokenType::KeywordAssert);
+                let token = self.match_token(TokenType::KeywordAssert)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -225,15 +225,15 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.match_token(TokenType::LParen);
-                self.process_expression(my_id);
-                self.match_token(TokenType::RParen);
+                self.match_token(TokenType::LParen)?;
+                self.process_expression(my_id)?;
+                self.match_token(TokenType::RParen)?;
             }
             TokenType::Identifier => {
                 // Assignment to a variable
                 let my_id = self.tree.add_child(parent);
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(TokenType::Identifier);
+                let token = self.match_token(TokenType::Identifier)?;
 
                 self.tree.update_data(
                     id,
@@ -243,7 +243,7 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                let token = self.match_token(TokenType::Assignment);
+                let token = self.match_token(TokenType::Assignment)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -252,20 +252,21 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.process_expression(my_id);
+                self.process_expression(my_id)?;
             }
             _ => {
                 println!("Invalid start of statement!");
             }
         }
+        Ok(())
     }
 
-    fn process_expression(&mut self, parent: Option<usize>) {
+    fn process_expression(&mut self, parent: Option<usize>) -> Result<(), TokenData<'a>> {
         let my_id = self.tree.add_child(parent);
 
         // First case: Unary operator and operand
-        if TokenType::OperatorNot == self.scanner.peek().unwrap().token_type {
-            let token = self.match_token(TokenType::OperatorNot);
+        if TokenType::OperatorNot == self.scanner.peek().token_type {
+            let token = self.match_token(TokenType::OperatorNot)?;
             self.tree.update_data(
                 my_id,
                 NodeData {
@@ -274,13 +275,13 @@ impl<'a> Parser<'a> {
                 },
             );
 
-            return;
+            return Ok(());
         }
 
         // Second and third case start with an operand
-        self.process_operand(my_id);
+        self.process_operand(my_id)?;
 
-        match self.scanner.peek().unwrap().token_type {
+        match self.scanner.peek().token_type {
             token_type @ TokenType::OperatorPlus
             | token_type @ TokenType::OperatorMinus
             | token_type @ TokenType::OperatorMultiply
@@ -289,8 +290,8 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorEqual
             | token_type @ TokenType::OperatorAnd => {
                 // Second case: operand, binary operator, operand
-                let token = self.match_token(token_type);
-                self.process_operand(my_id);
+                let token = self.match_token(token_type)?;
+                self.process_operand(my_id)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -299,7 +300,7 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                return;
+                return Ok(());
             }
             _ => {
                 // Third case: a single operand
@@ -311,20 +312,21 @@ impl<'a> Parser<'a> {
                 }
             }
         }
+        Ok(())
     }
 
-    fn process_operand(&mut self, parent: Option<usize>) {
-        match self.scanner.peek().unwrap().token_type {
+    fn process_operand(&mut self, parent: Option<usize>) -> Result<(), TokenData<'a>> {
+        match self.scanner.peek().token_type {
             token_type @ TokenType::LParen => {
-                self.match_token(token_type);
-                self.process_expression(parent);
-                self.match_token(TokenType::RParen);
+                self.match_token(token_type)?;
+                self.process_expression(parent)?;
+                self.match_token(TokenType::RParen)?;
             }
             token_type @ TokenType::LiteralInt
             | token_type @ TokenType::LiteralString
             | token_type @ TokenType::Identifier => {
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(token_type);
+                let token = self.match_token(token_type)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -338,6 +340,7 @@ impl<'a> Parser<'a> {
                 assert!(false, "Missing operand!");
             }
         }
+        Ok(())
     }
 
     // ---------------------------------------------------------------------
@@ -352,7 +355,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) {
-        self.process_program();
+        match self.process_program() {
+            Ok(_) => {}
+            Err(_) => assert!(false, "Unhandled error at parse."),
+        }
     }
 
     pub fn serialize(&mut self) -> Option<serde_json::Value> {
