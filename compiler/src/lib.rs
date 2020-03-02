@@ -45,7 +45,7 @@ pub fn run() {
                             _ => None,
                         };
                         let mut parser = Parser::new(&source_str);
-                        parser.parse();
+                        let success = parser.parse();
 
                         // Parsing is completed, serialize the AST if so specified
                         if let Some(filename) = out_file {
@@ -72,7 +72,11 @@ pub fn run() {
                         }
 
                         // Place holder print
-                        println!("Parsing is complete, moving on to semantic analysis.");
+                        if success {
+                            println!("Parsing is complete, moving on to semantic analysis.");
+                        } else {
+                            println!("Syntax errors encountered during parse.");
+                        }
                     }
                     Err(err) => {
                         eprintln!("Application error: {}, with filename \"{}\"", err, filename);

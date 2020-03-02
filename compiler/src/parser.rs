@@ -11,6 +11,7 @@ pub struct Parser<'a> {
     tree: LcRsTree<NodeData<'a>>,
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
+    unexpected_tokens: Vec<TokenData<'a>>,
 }
 
 // ---------------------------------------------------------------------
@@ -25,6 +26,7 @@ impl<'a> Parser<'a> {
             }
         }
 
+        self.unexpected_tokens.push(*self.scanner.peek());
         // Token was not any of the expected tokens, find the point of recovery
         loop {
             let tt = self.scanner.peek().token_type;
@@ -133,14 +135,7 @@ impl<'a> Parser<'a> {
     }
 
     fn end_of_program(&mut self, _parent: Option<usize>) -> Result<(), ErrorType> {
-        if self.scanner.unmatched_multiline_comment_prefixes.is_empty() {
-            self.match_token(&[TokenType::EndOfProgram])?;
-        } else {
-            for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
-                println!("Runaway multi line comment:");
-                self.scanner.print_line(*line as usize, *col as usize);
-            }
-        }
+        self.match_token(&[TokenType::EndOfProgram])?;
         Ok(())
     }
 
@@ -440,14 +435,29 @@ impl<'a> Parser<'a> {
             tree: LcRsTree::new(),
             recursion_depth: 0,
             recovery_tokens: HashMap::new(),
+            unexpected_tokens: vec![],
         }
     }
 
-    pub fn parse(&mut self) {
+    pub fn parse(&mut self) -> bool {
         match self.process(Parser::program, None, &[]) {
             Ok(_) => {}
             Err(_) => assert!(false, "Unhandled error at parse."),
         }
+
+        for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
+            println!("Runaway multi line comment:");
+            self.scanner.print_line(*line as usize, *col as usize);
+        }
+
+        for token in &self.unexpected_tokens {
+            println!("Unexpected token!");
+            self.scanner
+                .print_line(token.line as usize, token.column as usize);
+        }
+
+        return self.scanner.unmatched_multiline_comment_prefixes.is_empty()
+            && self.unexpected_tokens.is_empty();
     }
 
     pub fn serialize(&mut self) -> Option<serde_json::Value> {
