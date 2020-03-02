@@ -26,15 +26,11 @@ impl<'a> Scanner<'a> {
     // ---------------------------------------------------------------------
     // next() and peek() are the main two out facing functions of the scanner.
     // ---------------------------------------------------------------------
-    pub fn next(&mut self) -> Result<TokenData<'a>, TokenData<'a>> {
+    pub fn next(&mut self) -> TokenData<'a> {
         // The parser receives new tokens by calling this function
         let token = self.next_token;
         self.next_token = self.get_token();
-
-        match token.token_type {
-            TokenType::Undefined => Err(token),
-            _ => Ok(token),
-        }
+        token
     }
 
     pub fn peek(&mut self) -> &TokenData<'a> {
@@ -368,7 +364,7 @@ impl<'a> Scanner<'a> {
 // ---------------------------------------------------------------------
 // Type definitions for the token types and data
 // ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenType {
     Identifier,
     KeywordVar,
