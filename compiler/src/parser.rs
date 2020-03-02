@@ -26,7 +26,6 @@ impl<'a> Parser<'a> {
         }
 
         // Token was not any of the expected tokens, find the point of recovery
-        // FYI: A fixed set can be initialized with [1, 2, 3, 4].iter().cloned().collect()
         loop {
             let tt = self.scanner.peek().token_type;
             if let Some(set) = self.recovery_tokens.get(&tt) {
@@ -50,37 +49,16 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn process<O>(
+    fn process(
         &mut self,
-        func: fn(&mut Self, Option<usize>) -> Result<O, ErrorType>,
+        func: fn(&mut Self, Option<usize>) -> Result<(), ErrorType>,
         arg1: Option<usize>,
-    ) -> Result<O, ErrorType> {
+        recovery_tokens: &[TokenType],
+    ) -> Result<Option<Option<usize>>, ErrorType> {
         // This function handles the errors
         self.recursion_depth += 1;
-        let result = match func(self, arg1) {
-            Ok(o) => Ok(o),
-            Err(e) => {
-                if e.depth == self.recursion_depth {
-                    // Handle the error here. Should return Ok() with correct type
-                    println!("{:#?}", e);
-                    Err(e)
-                } else {
-                    // Handle at a higher level, i.e. smaller recursion depth
-                    assert!(
-                        e.depth < self.recursion_depth,
-                        "The depth at which error should be handled can only be smaller."
-                    );
-                    Err(e)
-                }
-            }
-        };
-        self.recursion_depth -= 1;
-
-        return result;
-    }
-
-    fn add_recovery_tokens(&mut self, token_types: &[TokenType]) {
-        for tt in token_types {
+        // Add recovery tokens
+        for tt in recovery_tokens {
             match self.recovery_tokens.get_mut(tt) {
                 Some(set) => {
                     set.insert(self.recursion_depth);
@@ -91,10 +69,37 @@ impl<'a> Parser<'a> {
                 }
             };
         }
-    }
 
-    fn remove_recovery_tokens(&mut self, token_types: &[TokenType]) {
-        for tt in token_types {
+        let result = match func(self, arg1) {
+            Ok(_) => Ok(None),
+            Err(e) => {
+                if e.depth == self.recursion_depth {
+                    let mut idx = !0;
+                    for i in 0..recovery_tokens.len() {
+                        if e.token_type == recovery_tokens[i] {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    if !0 != idx {
+                        Ok(Some(Some(idx)))
+                    } else {
+                        assert!(false, "Recovery token not found.");
+                        Ok(Some(None))
+                    }
+                } else {
+                    // Handle at a higher level, i.e. smaller recursion depth
+                    assert!(
+                        e.depth < self.recursion_depth,
+                        "The depth at which error should be handled can only be smaller."
+                    );
+                    Err(e)
+                }
+            }
+        };
+
+        // Remove the recovery tokens
+        for tt in recovery_tokens {
             match self.recovery_tokens.get_mut(tt) {
                 Some(set) => {
                     set.remove(&self.recursion_depth);
@@ -102,6 +107,9 @@ impl<'a> Parser<'a> {
                 None => {}
             }
         }
+        self.recursion_depth -= 1;
+
+        return result;
     }
 
     // ---------------------------------------------------------------------
@@ -109,7 +117,7 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
 
     fn program(&mut self, _parent: Option<usize>) -> Result<(), ErrorType> {
-        self.add_recovery_tokens(&[TokenType::EndOfProgram]);
+        let recovery_tokens = [TokenType::EndOfProgram];
         let my_id = self.tree.add_child(None);
         self.tree.update_data(
             my_id,
@@ -118,9 +126,9 @@ impl<'a> Parser<'a> {
                 token: None,
             },
         );
-        self.process(Parser::statement_list, my_id)?;
-        self.process(Parser::end_of_program, None)?;
-        self.remove_recovery_tokens(&[TokenType::EndOfProgram]);
+        self.process(Parser::statement_list, my_id, &recovery_tokens)?;
+        self.process(Parser::end_of_program, None, &[])?;
+
         Ok(())
     }
 
@@ -142,15 +150,24 @@ impl<'a> Parser<'a> {
         match self.scanner.peek().token_type {
             TokenType::EndOfProgram | TokenType::KeywordEnd => {}
             _ => {
-                self.process(Parser::statement, parent)?;
-                self.process(Parser::statement_list, parent)?;
+                let recovery_tokens = [
+                    TokenType::KeywordVar,
+                    TokenType::KeywordFor,
+                    TokenType::KeywordRead,
+                    TokenType::KeywordPrint,
+                    TokenType::KeywordAssert,
+                    TokenType::Identifier,
+                ];
+                self.process(Parser::statement, parent, &recovery_tokens)?;
+                self.process(Parser::statement_list, parent, &[])?;
             }
         }
         Ok(())
     }
 
     fn statement(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
-        self.process(Parser::statement_prefix, parent)?;
+        let recovery_tokens = [TokenType::EndOfStatement];
+        self.process(Parser::statement_prefix, parent, &recovery_tokens)?;
         self.match_token(&[TokenType::EndOfStatement])?;
         Ok(())
     }
@@ -194,7 +211,7 @@ impl<'a> Parser<'a> {
                 // provided as the right sibling. Otherwise use some default.
                 if TokenType::Assignment == self.scanner.peek().token_type {
                     self.match_token(&[TokenType::Assignment])?;
-                    self.process(Parser::expression, my_id)?;
+                    self.process(Parser::expression, my_id, &[])?;
                 } else {
                     let my_id = self.tree.add_child(my_id);
                     self.tree.update_data(
@@ -232,7 +249,7 @@ impl<'a> Parser<'a> {
 
                 // The range token '..' is the parent of the two expressions
                 let range_id = self.tree.add_child(my_id);
-                self.process(Parser::expression, range_id)?;
+                self.process(Parser::expression, range_id, &[])?;
                 let token = self.match_token(&[TokenType::Range])?;
                 self.tree.update_data(
                     range_id,
@@ -241,11 +258,11 @@ impl<'a> Parser<'a> {
                         token: Some(token),
                     },
                 );
-                self.process(Parser::expression, range_id)?;
+                self.process(Parser::expression, range_id, &[])?;
 
                 self.match_token(&[TokenType::KeywordDo])?;
                 // Process however many statements there are inside the for block
-                self.process(Parser::statement_list, my_id)?;
+                self.process(Parser::statement_list, my_id, &[])?;
                 self.match_token(&[TokenType::KeywordEnd])?;
                 self.match_token(&[TokenType::KeywordFor])?;
             }
@@ -283,7 +300,7 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.process(Parser::expression, my_id)?;
+                self.process(Parser::expression, my_id, &[])?;
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
@@ -298,7 +315,7 @@ impl<'a> Parser<'a> {
                 );
 
                 self.match_token(&[TokenType::LParen])?;
-                self.process(Parser::expression, my_id)?;
+                self.process(Parser::expression, my_id, &[])?;
                 self.match_token(&[TokenType::RParen])?;
             }
             TokenType::Identifier => {
@@ -324,10 +341,10 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.process(Parser::expression, my_id)?;
+                self.process(Parser::expression, my_id, &[])?;
             }
             _ => {
-                println!("Invalid start of statement!");
+                self.match_token(&[])?;
             }
         }
         Ok(())
@@ -347,11 +364,13 @@ impl<'a> Parser<'a> {
                 },
             );
 
+            self.process(Parser::operand, my_id, &[])?;
+
             return Ok(());
         }
 
         // Second and third case start with an operand
-        self.process(Parser::operand, my_id)?;
+        self.process(Parser::operand, my_id, &[])?;
 
         match self.scanner.peek().token_type {
             token_type @ TokenType::OperatorPlus
@@ -363,7 +382,7 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorAnd => {
                 // Second case: operand, binary operator, operand
                 let token = self.match_token(&[token_type])?;
-                self.process(Parser::operand, my_id)?;
+                self.process(Parser::operand, my_id, &[])?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -389,8 +408,9 @@ impl<'a> Parser<'a> {
 
     fn operand(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
         if TokenType::LParen == self.scanner.peek().token_type {
+            let recovery_tokens = [TokenType::RParen];
             self.match_token(&[TokenType::LParen])?;
-            self.process(Parser::expression, parent)?;
+            self.process(Parser::expression, parent, &recovery_tokens)?;
             self.match_token(&[TokenType::RParen])?;
         } else {
             let my_id = self.tree.add_child(parent);
@@ -424,7 +444,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) {
-        match self.process(Parser::program, None) {
+        match self.process(Parser::program, None, &[]) {
             Ok(_) => {}
             Err(_) => assert!(false, "Unhandled error at parse."),
         }
