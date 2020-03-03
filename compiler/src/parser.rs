@@ -171,14 +171,20 @@ impl<'a> Parser<'a> {
 
     fn statement(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
         let mut recovery_token = None;
-        self.process(
+        match self.process(
             Parser::statement_prefix,
             parent,
             &[TokenType::EndOfStatement],
             &mut recovery_token,
-        )?;
-        // TODO: Change ? to match to find missing end of statements
-        self.match_token(&[TokenType::EndOfStatement])?;
+        ) {
+            Ok(_) => {
+                self.match_token(&[TokenType::EndOfStatement])?;
+            }
+            Err(_) => {
+                self.unexpected_tokens
+                    .push((*self.scanner.peek(), vec![TokenType::EndOfStatement]));
+            }
+        }
         Ok(())
     }
 
@@ -315,6 +321,7 @@ impl<'a> Parser<'a> {
                     Ok(())
                 };
 
+                // Start by processing the identifier
                 let mut recovery_token = None;
                 let token = self.process(
                     Parser::match_token,
@@ -534,7 +541,7 @@ impl<'a> Parser<'a> {
                     // Identifier was successfully matched
                     in_closure(self)?
                 } else {
-                    // Identifier was not matched, recover at one of these points
+                    // Identifier was not matched, recover at a later point
                     if let Some(tt) = recovery_token {
                         match tt {
                             TokenType::KeywordIn => in_closure(self)?,
@@ -595,11 +602,13 @@ impl<'a> Parser<'a> {
                     },
                 );
 
+                // Recovery point for the ')' token
                 let paren_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     parser.match_token(&[TokenType::RParen])?;
                     Ok(())
                 };
 
+                // Recovery point for the expression
                 let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     let mut recovery_token = None;
                     parser.process(
@@ -612,6 +621,7 @@ impl<'a> Parser<'a> {
                     paren_closure(parser)
                 };
 
+                // Start by processing the '(' token
                 let mut recovery_token = None;
                 let recovery_tokens = [
                     TokenType::OperatorNot,
@@ -646,9 +656,9 @@ impl<'a> Parser<'a> {
             }
             TokenType::Identifier => {
                 // Assignment to a variable
+                let token = self.match_token(&[TokenType::Identifier])?;
                 let my_id = self.tree.add_child(parent);
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(&[TokenType::Identifier])?;
 
                 self.tree.update_data(
                     id,
@@ -658,6 +668,7 @@ impl<'a> Parser<'a> {
                     },
                 );
 
+                // We can recover at the start of an expression, if ':=' is not found.
                 let mut recovery_token = None;
                 let token = self.process(
                     Parser::match_token,
