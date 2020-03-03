@@ -29,3 +29,5 @@ for x in 0..ntimes - 1 do
     print ": Hello world!\n";
 end for;
 assert(x = nTimes);
+
+var X ; string : "false";

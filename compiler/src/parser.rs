@@ -49,7 +49,8 @@ impl<'a> Parser<'a> {
 
             assert!(
                 TokenType::EndOfProgram != tt,
-                "EndOfProgram should be a recovery token."
+                "EndOfProgram should be a recovery token. {:#?}",
+                self.recovery_tokens
             );
         }
     }
@@ -128,7 +129,12 @@ impl<'a> Parser<'a> {
             &[TokenType::EndOfProgram],
             &mut recovery_token,
         )?;
-        self.process(Parser::end_of_program, None, &[], &mut recovery_token)?;
+        self.process(
+            Parser::end_of_program,
+            None,
+            &[TokenType::EndOfProgram],
+            &mut recovery_token,
+        )?;
 
         Ok(())
     }
@@ -154,11 +160,10 @@ impl<'a> Parser<'a> {
                         TokenType::KeywordRead,
                         TokenType::KeywordPrint,
                         TokenType::KeywordAssert,
-                        TokenType::Identifier,
                     ],
                     &mut recovery_token,
                 )?;
-                self.process(Parser::statement_list, parent, &[], &mut recovery_token)?;
+                self.statement_list(parent)?;
             }
         }
         Ok(())
@@ -185,19 +190,19 @@ impl<'a> Parser<'a> {
                 self.match_token(&[TokenType::KeywordVar])?;
 
                 // Revovery point for expression
-                let expr_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     let mut recovery_token = None;
                     parser.process(Parser::expression, my_id, &[], &mut recovery_token)?;
                     Ok(())
                 };
 
                 // Recovery point for ':=' token
-                let assignment_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let assignment_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     // The statement can contain an assignment. If it does, use the value the user
                     // provided as the right sibling. Otherwise use some default.
                     if TokenType::Assignment == parser.scanner.peek().token_type {
                         let mut recovery_token = None;
-                        let token = parser.process(
+                        parser.process(
                             Parser::match_token,
                             &[TokenType::Assignment],
                             &[
@@ -209,13 +214,7 @@ impl<'a> Parser<'a> {
                             ],
                             &mut recovery_token,
                         )?;
-
-                        if token.is_some() || recovery_token.is_some() {
-                            // Proceed normally
-                            expr_recovery(parser)?;
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        expr_closure(parser)?;
                     } else {
                         let my_id = parser.tree.add_child(my_id);
                         parser.tree.update_data(
@@ -230,7 +229,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for 'int', 'string' and 'bool' tokens
-                let type_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let type_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     let mut recovery_token = None;
                     let token = parser.process(
                         Parser::match_token,
@@ -260,13 +259,13 @@ impl<'a> Parser<'a> {
 
                     if token.is_some() {
                         // Proceed normally
-                        assignment_recovery(parser)?;
+                        assignment_closure(parser)?;
                     } else {
                         // Recover
                         if let Some(tt) = recovery_token {
                             match tt {
-                                TokenType::Assignment => assignment_recovery(parser)?,
-                                _ => expr_recovery(parser)?,
+                                TokenType::Assignment => assignment_closure(parser)?,
+                                _ => expr_closure(parser)?,
                             };
                         } else {
                             assert!(false, "Recovery token must be some token.");
@@ -277,7 +276,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for ':' token
-                let separator_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let separator_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     let mut recovery_token = None;
                     let result = parser.process(
                         Parser::match_token,
@@ -298,16 +297,16 @@ impl<'a> Parser<'a> {
 
                     if result.is_some() {
                         // Proceed normally
-                        type_recovery(parser)?;
+                        type_closure(parser)?;
                     } else {
                         // Recover
                         if let Some(tt) = recovery_token {
                             match tt {
                                 TokenType::TypeInt
                                 | TokenType::TypeString
-                                | TokenType::TypeBool => type_recovery(parser)?,
-                                TokenType::Assignment => assignment_recovery(parser)?,
-                                _ => expr_recovery(parser)?,
+                                | TokenType::TypeBool => type_closure(parser)?,
+                                TokenType::Assignment => assignment_closure(parser)?,
+                                _ => expr_closure(parser)?,
                             };
                         } else {
                             assert!(false, "Recovery token must be some token.");
@@ -345,17 +344,17 @@ impl<'a> Parser<'a> {
 
                 if token.is_some() {
                     // Proceed normally
-                    separator_recovery(self)?;
+                    separator_closure(self)?;
                 } else {
                     // Recover
                     if let Some(tt) = recovery_token {
                         match tt {
-                            TokenType::TypeSeparator => separator_recovery(self)?,
+                            TokenType::TypeSeparator => separator_closure(self)?,
                             TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
-                                type_recovery(self)?
+                                type_closure(self)?
                             }
-                            TokenType::Assignment => assignment_recovery(self)?,
-                            _ => expr_recovery(self)?,
+                            TokenType::Assignment => assignment_closure(self)?,
+                            _ => expr_closure(self)?,
                         };
                     } else {
                         assert!(false, "Recovery token must be some token.");
@@ -374,37 +373,178 @@ impl<'a> Parser<'a> {
                     },
                 );
 
+                // Recovery point for the last 'for' token
+                let for_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    parser.match_token(&[TokenType::KeywordFor])?;
+                    Ok(())
+                };
+
+                // Recovery point for the 'end' token
+                let end_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    let mut recovery_token = None;
+                    parser.process(
+                        Parser::match_token,
+                        &[TokenType::KeywordEnd],
+                        &[TokenType::KeywordFor],
+                        &mut recovery_token,
+                    )?;
+
+                    for_closure(parser)
+                };
+
+                // Recovery point for the 'do' token
+                let do_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    parser.match_token(&[TokenType::KeywordDo])?;
+
+                    let mut recovery_token = None;
+                    parser.process(
+                        Parser::statement_list,
+                        my_id,
+                        &[TokenType::KeywordEnd],
+                        &mut recovery_token,
+                    )?;
+                    end_closure(parser)
+                };
+
+                // Recovery point for the second expression
+                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    let mut recovery_token = None;
+                    parser.process(
+                        Parser::expression,
+                        my_id,
+                        &[TokenType::KeywordDo],
+                        &mut recovery_token,
+                    )?;
+                    do_closure(parser)
+                };
+
+                // Recovery point for the '..' token
+                let range_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    let mut recovery_token = None;
+                    if parser
+                        .process(
+                            Parser::match_token,
+                            &[TokenType::Range],
+                            &[
+                                TokenType::KeywordDo,
+                                TokenType::OperatorNot,
+                                TokenType::LParen,
+                                TokenType::LiteralInt,
+                                TokenType::LiteralString,
+                                TokenType::Identifier,
+                            ],
+                            &mut recovery_token,
+                        )?
+                        .is_some()
+                    {
+                        expr_closure(parser)
+                    } else {
+                        // Error with parsing '..'
+                        if let Some(tt) = recovery_token {
+                            match tt {
+                                TokenType::KeywordDo => do_closure(parser)?,
+                                _ => expr_closure(parser)?,
+                            };
+                        } else {
+                            assert!(false, "Recovery token must be some token.");
+                        }
+                        Ok(())
+                    }
+                };
+
+                // Recovery point for the first expression
+                let first_expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    let mut recovery_token = None;
+                    if parser
+                        .process(
+                            Parser::expression,
+                            my_id,
+                            &[
+                                TokenType::KeywordDo,
+                                TokenType::Range,
+                                TokenType::OperatorNot,
+                                TokenType::LParen,
+                                TokenType::LiteralInt,
+                                TokenType::LiteralString,
+                                TokenType::Identifier,
+                            ],
+                            &mut recovery_token,
+                        )?
+                        .is_some()
+                    {
+                        range_closure(parser)
+                    } else {
+                        if let Some(tt) = recovery_token {
+                            match tt {
+                                TokenType::KeywordDo => do_closure(parser)?,
+                                TokenType::Range => range_closure(parser)?,
+                                _ => expr_closure(parser)?,
+                            };
+                        } else {
+                            assert!(false, "Recovery token must be some token.");
+                        }
+                        Ok(())
+                    }
+                };
+
+                // Recovery point for the 'in' token
+                let in_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                    let mut recovery_token = None;
+                    if parser
+                        .process(
+                            Parser::match_token,
+                            &[TokenType::KeywordIn],
+                            &[TokenType::Range, TokenType::KeywordDo],
+                            &mut recovery_token,
+                        )?
+                        .is_some()
+                    {
+                        first_expr_closure(parser)
+                    } else {
+                        if let Some(tt) = recovery_token {
+                            match tt {
+                                TokenType::Range => range_closure(parser)?,
+                                _ => do_closure(parser)?,
+                            };
+                        } else {
+                            assert!(false, "Recovery token must be some token.");
+                        }
+                        Ok(())
+                    }
+                };
+
+                // Start by processing the identifier
+                let mut recovery_token = None;
+                let token = self.process(
+                    Parser::match_token,
+                    &[TokenType::Identifier],
+                    &[TokenType::KeywordIn, TokenType::Range, TokenType::KeywordDo],
+                    &mut recovery_token,
+                )?;
                 let id = self.tree.add_child(my_id);
-                let token = self.match_token(&[TokenType::Identifier])?;
                 self.tree.update_data(
                     id,
                     NodeData {
                         node_type: Some(NodeType::Operand),
-                        token: Some(token),
+                        token: token,
                     },
                 );
 
-                self.match_token(&[TokenType::KeywordIn])?;
-
-                // The range token '..' is the parent of the two expressions
-                let range_id = self.tree.add_child(my_id);
-                let mut recovery_token = None;
-                self.process(Parser::expression, range_id, &[], &mut recovery_token)?;
-                let token = self.match_token(&[TokenType::Range])?;
-                self.tree.update_data(
-                    range_id,
-                    NodeData {
-                        node_type: Some(NodeType::Range),
-                        token: Some(token),
-                    },
-                );
-                self.process(Parser::expression, range_id, &[], &mut recovery_token)?;
-
-                self.match_token(&[TokenType::KeywordDo])?;
-                // Process however many statements there are inside the for block
-                self.process(Parser::statement_list, my_id, &[], &mut recovery_token)?;
-                self.match_token(&[TokenType::KeywordEnd])?;
-                self.match_token(&[TokenType::KeywordFor])?;
+                if token.is_some() {
+                    // Identifier was successfully matched
+                    in_closure(self)?
+                } else {
+                    // Identifier was not matched, recover at one of these points
+                    if let Some(tt) = recovery_token {
+                        match tt {
+                            TokenType::KeywordIn => in_closure(self)?,
+                            TokenType::KeywordDo => do_closure(self)?,
+                            _ => range_closure(self)?,
+                        };
+                    } else {
+                        assert!(false, "Recovery token must be some token.");
+                    }
+                }
             }
             TokenType::KeywordRead => {
                 // Read statement
@@ -455,12 +595,12 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                let paren_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let paren_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     parser.match_token(&[TokenType::RParen])?;
                     Ok(())
                 };
 
-                let expr_recovery = |parser: &mut Self| -> Result<(), ErrorType> {
+                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
                     let mut recovery_token = None;
                     parser.process(
                         Parser::expression,
@@ -469,7 +609,7 @@ impl<'a> Parser<'a> {
                         &mut recovery_token,
                     )?;
 
-                    paren_recovery(parser)
+                    paren_closure(parser)
                 };
 
                 let mut recovery_token = None;
@@ -491,13 +631,13 @@ impl<'a> Parser<'a> {
 
                 if result.is_some() {
                     // Proceed normally
-                    expr_recovery(self)?;
+                    expr_closure(self)?;
                 } else {
                     // Recovery
                     if let Some(tt) = recovery_token {
                         match tt {
-                            TokenType::RParen => paren_recovery(self)?,
-                            _ => expr_recovery(self)?,
+                            TokenType::RParen => paren_closure(self)?,
+                            _ => expr_closure(self)?,
                         };
                     } else {
                         assert!(false, "Recovery token must be some token.");
@@ -694,8 +834,10 @@ impl<'a> Parser<'a> {
             } else {
                 if TokenType::EndOfStatement == token.token_type {
                     println!("\nEmpty statements are not legal, encountered an end of statement.");
-                } else {
+                } else if TokenType::Undefined == token.token_type {
                     println!("\n\"{}\" is not a legal token.", token.value);
+                } else {
+                    println!("\nUnexpected token \"{}\".", token.value);
                 }
             }
             self.scanner
@@ -722,7 +864,6 @@ enum NodeType {
     Declaration,
     Assignment,
     For,
-    Range,
     Read,
     Print,
     Assert,
