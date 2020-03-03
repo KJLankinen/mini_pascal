@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
+use std::fmt;
 
 // ---------------------------------------------------------------------
 // Type definition for the scanner that goes through the source string
@@ -396,6 +397,43 @@ pub enum TokenType {
     RParen,
     EndOfProgram,
     Undefined,
+}
+
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenType::Identifier => write!(f, "an identifier"),
+            TokenType::KeywordVar => write!(f, "var"),
+            TokenType::KeywordFor => write!(f, "for"),
+            TokenType::KeywordEnd => write!(f, "end"),
+            TokenType::KeywordIn => write!(f, "in"),
+            TokenType::KeywordDo => write!(f, "do"),
+            TokenType::KeywordRead => write!(f, "read"),
+            TokenType::KeywordPrint => write!(f, "print"),
+            TokenType::KeywordAssert => write!(f, "assert"),
+            TokenType::TypeInt => write!(f, "int"),
+            TokenType::TypeString => write!(f, "string"),
+            TokenType::TypeBool => write!(f, "bool"),
+            TokenType::LiteralInt => write!(f, "a literal integer"),
+            TokenType::LiteralString => write!(f, "a literal string"),
+            TokenType::OperatorPlus => write!(f, "+"),
+            TokenType::OperatorMinus => write!(f, "-"),
+            TokenType::OperatorMultiply => write!(f, "*"),
+            TokenType::OperatorDivide => write!(f, "/"),
+            TokenType::OperatorLessThan => write!(f, "<"),
+            TokenType::OperatorEqual => write!(f, "="),
+            TokenType::OperatorAnd => write!(f, "&"),
+            TokenType::OperatorNot => write!(f, "!"),
+            TokenType::Range => write!(f, ".."),
+            TokenType::EndOfStatement => write!(f, ";"),
+            TokenType::TypeSeparator => write!(f, ":"),
+            TokenType::Assignment => write!(f, ":="),
+            TokenType::LParen => write!(f, "("),
+            TokenType::RParen => write!(f, ")"),
+            TokenType::EndOfProgram => write!(f, "\0"),
+            TokenType::Undefined => write!(f, "an undefined token"),
+        }
+    }
 }
 
 #[derive(Serialize, Debug, Clone, Copy)]
