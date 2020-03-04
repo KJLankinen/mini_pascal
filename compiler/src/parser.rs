@@ -18,7 +18,12 @@ pub struct Parser<'a> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a> Parser<'a> {
+    // ---------------------------------------------------------------------
+    // match_token() and process() are part of the error handling of the parser.
+    // Pretty much all the code inside each function is for handling different kind of errors.
+    // ---------------------------------------------------------------------
     fn match_token(&mut self, token_types: &[TokenType]) -> Result<TokenData<'a>, ErrorType> {
+        // If the next token matches any of the given expected tokens, return it
         let token_type = self.scanner.peek().token_type;
         for tt in token_types {
             if token_type == *tt {
@@ -26,13 +31,20 @@ impl<'a> Parser<'a> {
             }
         }
 
+        // Token was not any of the expected tokens. Store the token for later syntax error
+        // messages and find the point of recovery.
         self.unexpected_tokens
             .push((*self.scanner.peek(), token_types.to_vec()));
-        // Token was not any of the expected tokens, find the point of recovery
         loop {
+            // Match a token to a recovery token at the earliest possible chance. I.e. take the
+            // first token that matches any of the recovery tokens on any recursion level.
+            // Then, if that token has been set as a recovery token for multiple levels,
+            // find the deepest level.
             let tt = self.scanner.peek().token_type;
             if let Some(set) = self.recovery_tokens.get(&tt) {
-                if false == set.is_empty() {
+                if 0 < set.len() {
+                    // Find the deepest level of recursion where the given recovery token was
+                    // found. I.e. find the maximum value in the set.
                     let mut max_depth = 0;
                     for depth in set.iter() {
                         if depth > &max_depth {
@@ -47,6 +59,8 @@ impl<'a> Parser<'a> {
             }
             self.scanner.next();
 
+            // There should always be at least one recovery token, and that is the EndOfProgram.
+            // If there is not, a wild bug has appeared.
             assert!(
                 TokenType::EndOfProgram != tt,
                 "EndOfProgram should be a recovery token. {:#?}",
@@ -62,27 +76,42 @@ impl<'a> Parser<'a> {
         recovery_tokens: &[TokenType],
         recovery_token: &mut Option<TokenType>,
     ) -> Result<Option<R>, ErrorType> {
-        // This function handles the errors
-
-        // Add recovery tokens
+        // Add recovery tokens to the library.
+        // Recovery tokens are tokens specified around the recursive functions.
+        // If an error in parsing is encountered (due to an unexpected token),
+        // a recovery token is searched for. Then the recursive parsing stack is unwound
+        // until the specified depth is reached, at which point the function that supplied
+        // the hit recovery token takes care of the error and continues parsing from that
+        // recovery point.
         self.recursion_depth += 1;
         for tt in recovery_tokens {
             match self.recovery_tokens.get_mut(tt) {
                 Some(set) => {
+                    // This token has been specified earlier, add a new depth
                     set.insert(self.recursion_depth);
                 }
                 None => {
+                    // This token has not been specified yet, add a new set containing the current depth.
                     self.recovery_tokens
                         .insert(*tt, [self.recursion_depth].iter().cloned().collect());
                 }
             };
         }
 
+        // Call the given function pointer. If everything is Ok, everything is Ok.
+        // If the function returns an error, we should handle it, if the recovery token that was
+        // found corresponds to our depth, i.e. it is one of the tokens that were added to the
+        // library above. If the recovery token was set at an earlier point, propagate the error forward.
         let result = match func(self, arg1) {
             Ok(o) => Ok(Some(o)),
             Err(e) => {
                 if e.depth == self.recursion_depth {
                     *recovery_token = Some(e.token_type);
+                    // Note that we return Ok instead of an error, because the caller of this
+                    // function uses the "self.process(...)?" syntax. The '?' token means that
+                    // when the function returns, if the returned value was Ok, proceed normally,
+                    // otherwise immediately return the Error to our caller. I.e. it automatically
+                    // propagates the error upwards if it should be handled above.
                     Ok(None)
                 } else {
                     // Handle at a higher level, i.e. smaller recursion depth
@@ -95,7 +124,7 @@ impl<'a> Parser<'a> {
             }
         };
 
-        // Remove the recovery tokens
+        // Remove the recovery tokens of this level.
         for tt in recovery_tokens {
             match self.recovery_tokens.get_mut(tt) {
                 Some(set) => {
@@ -112,7 +141,6 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
     // Recursive processing functions
     // ---------------------------------------------------------------------
-
     fn program(&mut self, _parent: Option<usize>) -> Result<(), ErrorType> {
         let my_id = self.tree.add_child(None);
         self.tree.update_data(
@@ -150,6 +178,8 @@ impl<'a> Parser<'a> {
         match self.scanner.peek().token_type {
             TokenType::EndOfProgram | TokenType::KeywordEnd => {}
             _ => {
+                // If the statement encounters an error it can't handle at any earlier level, the
+                // parsing can at least continue from the start of the next statement.
                 let mut recovery_token = None;
                 self.process(
                     Parser::statement,
@@ -170,6 +200,7 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+        // Statement errors can be recovered at least at ';' if such is found.
         let mut recovery_token = None;
         match self.process(
             Parser::statement_prefix,
@@ -178,9 +209,15 @@ impl<'a> Parser<'a> {
             &mut recovery_token,
         ) {
             Ok(_) => {
+                // Either the statement was parsed successfully or we hit ';' as a recovery point.
+                // Regardless, parse ';'.
                 self.match_token(&[TokenType::EndOfStatement])?;
             }
             Err(_) => {
+                // There was an error during the statement and also ';' is missing. Since the next
+                // possible recovery point is at the start of a statement and everything between
+                // the error and the next recovery point is ignored, the missing ';' is never
+                // recorded by the match_token() function, as it usually is. Thus, record it here.
                 self.unexpected_tokens
                     .push((*self.scanner.peek(), vec![TokenType::EndOfStatement]));
             }
@@ -189,6 +226,12 @@ impl<'a> Parser<'a> {
     }
 
     fn statement_prefix(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+        // First match at each of the arms is always a certainty due to the peek.
+        // All the possible closures inside the statement arms are written in the reverse order.
+        // E.g. "do", "expr" ".." "expr" "in" "identifier" "for". This is because the closures can
+        // call later closures, and for that to be possible, the later closures have to be defined
+        // earlier. In other words, "in" closure can set "do" closure as a possible recovery point,
+        // and for that to be possible, "do" closure has to be defined first.
         match self.scanner.peek().token_type {
             TokenType::KeywordVar => {
                 // Declaration with an optional assignment
@@ -565,6 +608,7 @@ impl<'a> Parser<'a> {
                     },
                 );
 
+                // No point in trying to recover from
                 let token = self.match_token(&[TokenType::Identifier])?;
                 let id = self.tree.add_child(my_id);
                 self.tree.update_data(
@@ -587,8 +631,9 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                let mut recovery_token = None;
-                self.process(Parser::expression, my_id, &[], &mut recovery_token)?;
+                // No point in recovery tokens, since the expression is the last part of this
+                // statement.
+                self.expression(my_id)?;
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
@@ -621,7 +666,8 @@ impl<'a> Parser<'a> {
                     paren_closure(parser)
                 };
 
-                // Start by processing the '(' token
+                // Start by processing the '(' token. Recover at a start of an expression or at the
+                // matching ')' token.
                 let mut recovery_token = None;
                 let recovery_tokens = [
                     TokenType::OperatorNot,
@@ -690,9 +736,11 @@ impl<'a> Parser<'a> {
                     },
                 );
 
-                self.process(Parser::expression, my_id, &[], &mut recovery_token)?;
+                self.expression(my_id)?;
             }
             _ => {
+                // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
+                // statements and lexical errors lead to here.
                 self.match_token(&[])?;
             }
         }
@@ -701,10 +749,10 @@ impl<'a> Parser<'a> {
 
     fn expression(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
         let my_id = self.tree.add_child(parent);
-        let mut recovery_token = None;
 
         // First case: Unary operator and operand
         if TokenType::OperatorNot == self.scanner.peek().token_type {
+            // We just peeked this token, so the match is a certainty.
             let token = self.match_token(&[TokenType::OperatorNot])?;
             self.tree.update_data(
                 my_id,
@@ -713,12 +761,18 @@ impl<'a> Parser<'a> {
                     token: Some(token),
                 },
             );
-            self.process(Parser::operand, my_id, &[], &mut recovery_token)?;
-
+            // There's nothing left of this expression after the operand,
+            // so there's no point in having any recovery tokens at this level.
+            self.operand(my_id)?;
             return Ok(());
         }
 
-        // Second and third case start with an operand
+        // Second and third case start with an operand. If we hit an operator, we might be able to
+        // recover. It is also possible in some cases, that the recovery is a false positive, i.e.
+        // that the expression meant by the user doesn't contain any operators, but a later
+        // expression does. But if a recovery token is hit, the given source code contains
+        // some syntax errors in any case, so we don't care about the possible false positive here.
+        let mut recovery_token = None;
         self.process(
             Parser::operand,
             my_id,
@@ -742,9 +796,13 @@ impl<'a> Parser<'a> {
             | token_type @ TokenType::OperatorLessThan
             | token_type @ TokenType::OperatorEqual
             | token_type @ TokenType::OperatorAnd => {
-                // Second case: operand, binary operator, operand
+                // Second case: operand, binary operator, operand. Again the match is a certainty,
+                // because we just peeked at the next token and got here. There's again no point
+                // in adding any recovery tokens for this level, because the operand is the
+                // last part of the expression, so there's no possible recovery at this level, if
+                // it goes wrong.
                 let token = self.match_token(&[token_type])?;
-                self.process(Parser::operand, my_id, &[], &mut recovery_token)?;
+                self.operand(my_id)?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
@@ -771,6 +829,7 @@ impl<'a> Parser<'a> {
     fn operand(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
         let mut recovery_token = None;
         if TokenType::LParen == self.scanner.peek().token_type {
+            // The match is a certainty due to the peek, and we can recover at the matching ')'.
             self.match_token(&[TokenType::LParen])?;
             self.process(
                 Parser::expression,
@@ -800,7 +859,6 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
     // Public utility functions
     // ---------------------------------------------------------------------
-
     pub fn new(source_str: &'a str) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
@@ -812,6 +870,8 @@ impl<'a> Parser<'a> {
     }
 
     pub fn parse(&mut self) -> bool {
+        // Start the parsing and print out syntax errors and never ending
+        // multiline comments if there were any.
         let mut recovery_token = None;
         match self.process(Parser::program, None, &[], &mut recovery_token) {
             Ok(_) => {}
