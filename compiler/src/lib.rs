@@ -45,7 +45,10 @@ pub fn run() {
                             _ => None,
                         };
                         let mut parser = Parser::new(&source_str);
-                        let success = parser.parse();
+                        let success = match parser.parse() {
+                            Ok(o) => o,
+                            Err(_) => false,
+                        };
 
                         // Parsing is completed, serialize the AST if so specified
                         if let Some(filename) = out_file {

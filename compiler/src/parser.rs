@@ -239,11 +239,8 @@ impl<'a> Parser<'a> {
                 self.match_token(&[TokenType::KeywordVar])?;
 
                 // Revovery point for expression
-                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
-                    let mut recovery_token = None;
-                    parser.process(Parser::expression, my_id, &[], &mut recovery_token)?;
-                    Ok(())
-                };
+                let expr_closure =
+                    |parser: &mut Self| -> Result<(), ErrorType> { parser.expression(my_id) };
 
                 // Recovery point for ':=' token
                 let assignment_closure = |parser: &mut Self| -> Result<(), ErrorType> {
@@ -274,6 +271,7 @@ impl<'a> Parser<'a> {
                             },
                         );
                     }
+
                     Ok(())
                 };
 
@@ -306,19 +304,13 @@ impl<'a> Parser<'a> {
                         },
                     );
 
-                    if token.is_some() {
-                        // Proceed normally
+                    if token.is_some()
+                        || TokenType::Assignment
+                            == recovery_token.expect("Recovery token must be some token.")
+                    {
                         assignment_closure(parser)?;
                     } else {
-                        // Recover
-                        if let Some(tt) = recovery_token {
-                            match tt {
-                                TokenType::Assignment => assignment_closure(parser)?,
-                                _ => expr_closure(parser)?,
-                            };
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        expr_closure(parser)?;
                     }
 
                     Ok(())
@@ -345,22 +337,17 @@ impl<'a> Parser<'a> {
                     )?;
 
                     if result.is_some() {
-                        // Proceed normally
                         type_closure(parser)?;
                     } else {
-                        // Recover
-                        if let Some(tt) = recovery_token {
-                            match tt {
-                                TokenType::TypeInt
-                                | TokenType::TypeString
-                                | TokenType::TypeBool => type_closure(parser)?,
-                                TokenType::Assignment => assignment_closure(parser)?,
-                                _ => expr_closure(parser)?,
-                            };
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        match recovery_token.expect("Recovery token must be some token.") {
+                            TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
+                                type_closure(parser)?
+                            }
+                            TokenType::Assignment => assignment_closure(parser)?,
+                            _ => expr_closure(parser)?,
+                        };
                     }
+
                     Ok(())
                 };
 
@@ -393,22 +380,16 @@ impl<'a> Parser<'a> {
                 );
 
                 if token.is_some() {
-                    // Proceed normally
                     separator_closure(self)?;
                 } else {
-                    // Recover
-                    if let Some(tt) = recovery_token {
-                        match tt {
-                            TokenType::TypeSeparator => separator_closure(self)?,
-                            TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
-                                type_closure(self)?
-                            }
-                            TokenType::Assignment => assignment_closure(self)?,
-                            _ => expr_closure(self)?,
-                        };
-                    } else {
-                        assert!(false, "Recovery token must be some token.");
-                    }
+                    match recovery_token.expect("Recovery token must be some token.") {
+                        TokenType::TypeSeparator => separator_closure(self)?,
+                        TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
+                            type_closure(self)?
+                        }
+                        TokenType::Assignment => assignment_closure(self)?,
+                        _ => expr_closure(self)?,
+                    };
                 }
             }
             TokenType::KeywordFor => {
@@ -489,15 +470,11 @@ impl<'a> Parser<'a> {
                     {
                         expr_closure(parser)
                     } else {
-                        // Error with parsing '..'
-                        if let Some(tt) = recovery_token {
-                            match tt {
-                                TokenType::KeywordDo => do_closure(parser)?,
-                                _ => expr_closure(parser)?,
-                            };
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        match recovery_token.expect("Recovery token must be some token.") {
+                            TokenType::KeywordDo => do_closure(parser)?,
+                            _ => expr_closure(parser)?,
+                        };
+
                         Ok(())
                     }
                 };
@@ -524,15 +501,12 @@ impl<'a> Parser<'a> {
                     {
                         range_closure(parser)
                     } else {
-                        if let Some(tt) = recovery_token {
-                            match tt {
-                                TokenType::KeywordDo => do_closure(parser)?,
-                                TokenType::Range => range_closure(parser)?,
-                                _ => expr_closure(parser)?,
-                            };
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        match recovery_token.expect("Recovery token must be some token.") {
+                            TokenType::KeywordDo => do_closure(parser)?,
+                            TokenType::Range => range_closure(parser)?,
+                            _ => expr_closure(parser)?,
+                        };
+
                         Ok(())
                     }
                 };
@@ -551,14 +525,11 @@ impl<'a> Parser<'a> {
                     {
                         first_expr_closure(parser)
                     } else {
-                        if let Some(tt) = recovery_token {
-                            match tt {
-                                TokenType::Range => range_closure(parser)?,
-                                _ => do_closure(parser)?,
-                            };
-                        } else {
-                            assert!(false, "Recovery token must be some token.");
-                        }
+                        match recovery_token.expect("Recovery token must be some token.") {
+                            TokenType::Range => range_closure(parser)?,
+                            _ => do_closure(parser)?,
+                        };
+
                         Ok(())
                     }
                 };
@@ -581,19 +552,13 @@ impl<'a> Parser<'a> {
                 );
 
                 if token.is_some() {
-                    // Identifier was successfully matched
                     in_closure(self)?
                 } else {
-                    // Identifier was not matched, recover at a later point
-                    if let Some(tt) = recovery_token {
-                        match tt {
-                            TokenType::KeywordIn => in_closure(self)?,
-                            TokenType::KeywordDo => do_closure(self)?,
-                            _ => range_closure(self)?,
-                        };
-                    } else {
-                        assert!(false, "Recovery token must be some token.");
-                    }
+                    match recovery_token.expect("Recovery token must be some token.") {
+                        TokenType::KeywordIn => in_closure(self)?,
+                        TokenType::KeywordDo => do_closure(self)?,
+                        _ => range_closure(self)?,
+                    };
                 }
             }
             TokenType::KeywordRead => {
@@ -678,26 +643,21 @@ impl<'a> Parser<'a> {
                     TokenType::RParen,
                 ];
 
-                let result = self.process(
-                    Parser::match_token,
-                    &[TokenType::LParen],
-                    &recovery_tokens,
-                    &mut recovery_token,
-                )?;
-
-                if result.is_some() {
-                    // Proceed normally
+                if self
+                    .process(
+                        Parser::match_token,
+                        &[TokenType::LParen],
+                        &recovery_tokens,
+                        &mut recovery_token,
+                    )?
+                    .is_some()
+                {
                     expr_closure(self)?;
                 } else {
-                    // Recovery
-                    if let Some(tt) = recovery_token {
-                        match tt {
-                            TokenType::RParen => paren_closure(self)?,
-                            _ => expr_closure(self)?,
-                        };
-                    } else {
-                        assert!(false, "Recovery token must be some token.");
-                    }
+                    match recovery_token.expect("Recovery token must be some token.") {
+                        TokenType::RParen => paren_closure(self)?,
+                        _ => expr_closure(self)?,
+                    };
                 }
             }
             TokenType::Identifier => {
@@ -869,18 +829,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> bool {
+    pub fn parse(&mut self) -> Result<bool, ErrorType> {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
-        let mut recovery_token = None;
-        match self.process(Parser::program, None, &[], &mut recovery_token) {
-            Ok(_) => {}
-            Err(e) => assert!(
-                false,
-                "Unhandled error for {:#?}, recovery tokens: {:#?}",
-                e, self.recovery_tokens
-            ),
-        }
+        self.program(None)?;
 
         for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
             println!("Runaway multi line comment:");
@@ -915,8 +867,8 @@ impl<'a> Parser<'a> {
                 .print_line(token.line as usize, token.column as usize);
         }
 
-        return self.scanner.unmatched_multiline_comment_prefixes.is_empty()
-            && self.unexpected_tokens.is_empty();
+        return Ok(self.scanner.unmatched_multiline_comment_prefixes.is_empty()
+            && self.unexpected_tokens.is_empty());
     }
 
     pub fn serialize(&mut self) -> Option<serde_json::Value> {
@@ -969,7 +921,7 @@ impl<'a> Update for NodeData<'a> {
 }
 
 #[derive(Debug)]
-struct ErrorType {
+pub struct ErrorType {
     depth: usize,
     token_type: TokenType,
 }
