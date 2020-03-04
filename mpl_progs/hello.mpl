@@ -1,24 +1,6 @@
-var ntimes : int := 0;;
+var ntimes : int := 0;
 nTimes := nTimes + 1;
-/* */
 var x : string := "asd";
-// Testing a comment, wow
-/* how bout
-
-this here
-
-dunno
-
-how it wouuld
-
- print ! // ;+,..,-
-
- work
- */
-
-// /*
-                /* */
-        /* */
 print "How many times?" /**/;
 var true_var : bool := true;
 var false_ : bool := false;
@@ -30,4 +12,8 @@ for x in 0..ntimes - 1 do
 end for;
 assert(x = nTimes);
 
-var X ; string : "false";
+var X : string := "false";
+for a in 5.. asd do
+    asd := 5;
+    print asd;
+end for;

@@ -107,12 +107,7 @@ impl<'a> Parser<'a> {
             Err(e) => {
                 if e.depth == self.recursion_depth {
                     *recovery_token = Some(e.token_type);
-                    // Note that we return Ok instead of an error, because the caller of this
-                    // function uses the "self.process(...)?" syntax. The '?' token means that
-                    // when the function returns, if the returned value was Ok, proceed normally,
-                    // otherwise immediately return the Error to our caller. I.e. it automatically
-                    // propagates the error upwards if it should be handled above.
-                    Ok(None)
+                    Ok(None) // Return Ok, since the error should be handled at caller, not propagated by '?' syntax.
                 } else {
                     // Handle at a higher level, i.e. smaller recursion depth
                     assert!(
@@ -833,25 +828,28 @@ impl<'a> Parser<'a> {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
         self.program(None)?;
+        self.print_errors();
 
+        return Ok(self.scanner.unmatched_multiline_comment_prefixes.is_empty()
+            && self.unexpected_tokens.is_empty());
+    }
+
+    fn print_errors(&self) {
         for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
             println!("Runaway multi line comment:");
             self.scanner.print_line(*line as usize, *col as usize);
         }
 
-        if 0 < self.unexpected_tokens.len() {
-            println!("Unexpected token(s)!");
-        }
         for (token, expected_types) in &self.unexpected_tokens {
             if 1 < expected_types.len() {
                 print!("\nExpected one of ");
                 for tt in expected_types {
                     print!("\"{}\", ", tt);
                 }
-                println!("but got \"{}\" instead.", token.token_type);
+                println!("found \"{}\".", token.token_type);
             } else if 1 == expected_types.len() {
                 println!(
-                    "\nExpected \"{}\" but got \"{}\" instead.",
+                    "\nExpected \"{}\", found \"{}\".",
                     expected_types[0], token.value
                 );
             } else {
@@ -866,9 +864,6 @@ impl<'a> Parser<'a> {
             self.scanner
                 .print_line(token.line as usize, token.column as usize);
         }
-
-        return Ok(self.scanner.unmatched_multiline_comment_prefixes.is_empty()
-            && self.unexpected_tokens.is_empty());
     }
 
     pub fn serialize(&mut self) -> Option<serde_json::Value> {

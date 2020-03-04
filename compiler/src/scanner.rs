@@ -311,54 +311,17 @@ impl<'a> Scanner<'a> {
         let line = line - 1;
         assert!(line < self.lines.len(), "Line number is too large.");
 
-        let mut max_chars = 0;
-
-        // If not the first line, print the line before as context
-        let mut print_before = false;
-        if line > 0 {
-            print_before = true;
-            let line_len = self.lines[line - 1].len();
-            if line_len > max_chars {
-                max_chars = line_len;
-            }
-        }
-
-        // If not the last line, print the line after as context
-        let mut print_after = false;
-        if line < self.lines.len() - 1 {
-            print_after = true;
-            let line_len = self.lines[line + 1].len();
-            if line_len > max_chars {
-                max_chars = line_len;
-            }
-        }
-
-        let line_len = self.lines[line].len();
-        if line_len > max_chars {
-            max_chars = line_len;
-        }
-
         let expl_string = format!(
-            "{}^--- this at line {}, column {}",
-            vec!['-'; column - 1].into_iter().collect::<String>(),
-            line + 1,
-            column
+            "{}^------",
+            vec![' '; column - 1].into_iter().collect::<String>(),
         );
-        if expl_string.len() > max_chars {
-            max_chars = expl_string.len();
-        }
-        let separator: String = vec!['-'; max_chars].into_iter().collect();
 
-        println!("{}", separator);
-        if print_before {
-            println!("{}", self.lines[line - 1]);
+        println!("error @ {}:{}", line + 1, column);
+        if 0 < line {
+            println!("  {}\t|\t{}", line, self.lines[line - 1]);
         }
-        println!("{}", self.lines[line]);
-        println!("{}", expl_string);
-        if print_after {
-            println!("{}", self.lines[line + 1]);
-        }
-        println!("{}", separator);
+        println!("  {}\t|\t{}", line + 1, self.lines[line]);
+        println!("\t|\t{}", expl_string);
     }
 }
 
