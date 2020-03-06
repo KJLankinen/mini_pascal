@@ -60,8 +60,8 @@ impl<'a> Analyzer<'a> {
             NodeType::Declaration => self.handle_declaration(idx),
             NodeType::Assignment => self.handle_assignment(idx),
             NodeType::For => self.handle_for(idx),
-            NodeType::Read => self.handle_read(idx),
-            NodeType::Print => self.handle_print(idx),
+            NodeType::Read => (),
+            NodeType::Print => (),
             NodeType::Assert => self.handle_assert(idx),
             _ => {
                 assert!(false, "Unhandled node type.");
@@ -112,21 +112,21 @@ impl<'a> Analyzer<'a> {
                 .expect("Expression is missing a token.")
                 .token_type
             {
-                tt @ TokenType::OperatorNot => {
+                _tt @ TokenType::OperatorNot => {
                     if SymbolType::Bool == expr_type {
                         SymbolType::Bool
                     } else {
-                        self.errors.push(SemanticError::MismatchedTypes);
+                        self.errors.push(SemanticError::IllegalOperation);
                         SymbolType::Undefined
                     }
                 }
-                tt @ TokenType::OperatorAnd
-                | tt @ TokenType::OperatorPlus
-                | tt @ TokenType::OperatorMinus
-                | tt @ TokenType::OperatorMultiply
-                | tt @ TokenType::OperatorDivide
-                | tt @ TokenType::OperatorLessThan
-                | tt @ TokenType::OperatorEqual => {
+                _tt @ TokenType::OperatorAnd
+                | _tt @ TokenType::OperatorPlus
+                | _tt @ TokenType::OperatorMinus
+                | _tt @ TokenType::OperatorMultiply
+                | _tt @ TokenType::OperatorDivide
+                | _tt @ TokenType::OperatorLessThan
+                | _tt @ TokenType::OperatorEqual => {
                     let second_expr_type = self.get_expression_type(
                         self.tree[lc]
                             .right_sibling
@@ -134,44 +134,44 @@ impl<'a> Analyzer<'a> {
                     );
 
                     if expr_type == second_expr_type {
-                        match tt {
-                            tt @ TokenType::OperatorAnd => {
+                        match _tt {
+                            TokenType::OperatorAnd => {
                                 if SymbolType::Bool == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::MismatchedTypes);
+                                    self.errors.push(SemanticError::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
-                            tt @ TokenType::OperatorPlus => {
+                            TokenType::OperatorPlus => {
                                 if SymbolType::String == expr_type || SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::MismatchedTypes);
+                                    self.errors.push(SemanticError::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
-                            tt @ TokenType::OperatorMinus => {
+                            TokenType::OperatorMinus => {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::MismatchedTypes);
+                                    self.errors.push(SemanticError::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
-                            tt @ TokenType::OperatorMultiply => {
+                            TokenType::OperatorMultiply => {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::MismatchedTypes);
+                                    self.errors.push(SemanticError::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
-                            tt @ TokenType::OperatorDivide => {
+                            TokenType::OperatorDivide => {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::MismatchedTypes);
+                                    self.errors.push(SemanticError::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -224,14 +224,6 @@ impl<'a> Analyzer<'a> {
 
     fn handle_for(&mut self, idx: usize) {
         println!("For {:#?}", self.tree[idx].data);
-    }
-
-    fn handle_read(&mut self, idx: usize) {
-        println!("Read {:#?}", self.tree[idx].data);
-    }
-
-    fn handle_print(&mut self, idx: usize) {
-        println!("Print {:#?}", self.tree[idx].data);
     }
 
     fn handle_assert(&mut self, idx: usize) {
