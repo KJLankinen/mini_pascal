@@ -1,8 +1,8 @@
 use super::lcrs_tree::LcRsTree;
 use super::parser::{NodeData, NodeType};
 use super::scanner::TokenType;
+use super::SymbolType;
 use std::collections::HashMap;
-use std::fmt;
 
 #[derive(Copy, Clone, Debug)]
 enum SemanticError {
@@ -236,24 +236,5 @@ impl<'a> Analyzer<'a> {
 
     fn handle_assert(&mut self, idx: usize) {
         println!("Assertion {:#?}", self.tree[idx].data);
-    }
-}
-
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum SymbolType {
-    Int,
-    String,
-    Bool,
-    Undefined,
-}
-
-impl fmt::Display for SymbolType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            SymbolType::Int => write!(f, "int"),
-            SymbolType::String => write!(f, "string"),
-            SymbolType::Bool => write!(f, "bool"),
-            SymbolType::Undefined => write!(f, "undefined"),
-        }
     }
 }

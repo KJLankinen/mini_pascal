@@ -1,3 +1,4 @@
+use super::SymbolType;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt;
@@ -277,9 +278,9 @@ impl<'a> Scanner<'a> {
                 ("read", TokenType::KeywordRead),
                 ("print", TokenType::KeywordPrint),
                 ("assert", TokenType::KeywordAssert),
-                ("int", TokenType::TypeInt),
-                ("string", TokenType::TypeString),
-                ("bool", TokenType::TypeBool),
+                ("int", TokenType::Type(SymbolType::Int)),
+                ("string", TokenType::Type(SymbolType::String)),
+                ("bool", TokenType::Type(SymbolType::Bool)),
                 ("(", TokenType::LParen),
                 (")", TokenType::RParen),
                 (";", TokenType::EndOfStatement),
@@ -339,9 +340,7 @@ pub enum TokenType {
     KeywordRead,
     KeywordPrint,
     KeywordAssert,
-    TypeInt,
-    TypeString,
-    TypeBool,
+    Type(SymbolType),
     LiteralInt,
     LiteralString,
     OperatorPlus,
@@ -374,9 +373,7 @@ impl fmt::Display for TokenType {
             TokenType::KeywordRead => write!(f, "read"),
             TokenType::KeywordPrint => write!(f, "print"),
             TokenType::KeywordAssert => write!(f, "assert"),
-            TokenType::TypeInt => write!(f, "int"),
-            TokenType::TypeString => write!(f, "string"),
-            TokenType::TypeBool => write!(f, "bool"),
+            TokenType::Type(s) => s.fmt(f),
             TokenType::LiteralInt => write!(f, "a literal integer"),
             TokenType::LiteralString => write!(f, "a literal string"),
             TokenType::OperatorPlus => write!(f, "+"),

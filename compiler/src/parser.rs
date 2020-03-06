@@ -1,5 +1,6 @@
 use super::lcrs_tree::{LcRsTree, Update};
 use super::scanner::{Scanner, TokenData, TokenType};
+use super::SymbolType;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 
@@ -276,9 +277,9 @@ impl<'a> Parser<'a> {
                     let token = parser.process(
                         Parser::match_token,
                         &[
-                            TokenType::TypeInt,
-                            TokenType::TypeString,
-                            TokenType::TypeBool,
+                            TokenType::Type(SymbolType::Int),
+                            TokenType::Type(SymbolType::String),
+                            TokenType::Type(SymbolType::Bool),
                         ],
                         &[
                             TokenType::Assignment,
@@ -318,9 +319,9 @@ impl<'a> Parser<'a> {
                         Parser::match_token,
                         &[TokenType::TypeSeparator],
                         &[
-                            TokenType::TypeInt,
-                            TokenType::TypeString,
-                            TokenType::TypeBool,
+                            TokenType::Type(SymbolType::Int),
+                            TokenType::Type(SymbolType::String),
+                            TokenType::Type(SymbolType::Bool),
                             TokenType::Assignment,
                             TokenType::OperatorNot,
                             TokenType::LParen,
@@ -335,9 +336,7 @@ impl<'a> Parser<'a> {
                         type_closure(parser)?;
                     } else {
                         match recovery_token.expect("Recovery token must be some token.") {
-                            TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
-                                type_closure(parser)?
-                            }
+                            TokenType::Type(_) => type_closure(parser)?,
                             TokenType::Assignment => assignment_closure(parser)?,
                             _ => expr_closure(parser)?,
                         };
@@ -353,9 +352,9 @@ impl<'a> Parser<'a> {
                     &[TokenType::Identifier],
                     &[
                         TokenType::TypeSeparator,
-                        TokenType::TypeInt,
-                        TokenType::TypeString,
-                        TokenType::TypeBool,
+                        TokenType::Type(SymbolType::Int),
+                        TokenType::Type(SymbolType::String),
+                        TokenType::Type(SymbolType::Bool),
                         TokenType::Assignment,
                         TokenType::OperatorNot,
                         TokenType::LParen,
@@ -379,9 +378,7 @@ impl<'a> Parser<'a> {
                 } else {
                     match recovery_token.expect("Recovery token must be some token.") {
                         TokenType::TypeSeparator => separator_closure(self)?,
-                        TokenType::TypeInt | TokenType::TypeString | TokenType::TypeBool => {
-                            type_closure(self)?
-                        }
+                        TokenType::Type(_) => type_closure(self)?,
                         TokenType::Assignment => assignment_closure(self)?,
                         _ => expr_closure(self)?,
                     };

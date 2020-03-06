@@ -5,7 +5,28 @@ mod scanner;
 pub mod semantic_analyzer;
 
 use parser::Parser;
+use serde::Serialize;
+use std::fmt;
 use std::{env, fs, io::BufWriter, process};
+
+#[derive(Debug, PartialEq, Clone, Copy, Hash, Serialize, Eq)]
+pub enum SymbolType {
+    Int,
+    String,
+    Bool,
+    Undefined,
+}
+
+impl fmt::Display for SymbolType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            SymbolType::Int => write!(f, "int"),
+            SymbolType::String => write!(f, "string"),
+            SymbolType::Bool => write!(f, "bool"),
+            SymbolType::Undefined => write!(f, "undefined"),
+        }
+    }
+}
 
 // Called from main to kick off the interpretation
 pub fn run() {
