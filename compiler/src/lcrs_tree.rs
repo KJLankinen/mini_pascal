@@ -1,5 +1,6 @@
 use serde::Serialize;
 use serde_json::json;
+use std::ops::{Index, IndexMut};
 
 // ---------------------------------------------------------------------
 // Left child, right sibling tree. In other words, a tree where each
@@ -181,6 +182,10 @@ where
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
     pub fn serialize<'a>(&'a mut self) -> Option<serde_json::Value> {
         // This function can be used for debugging. The AST is serialized to a json, which can be
         // viewed with a json tree viewer.
@@ -230,6 +235,30 @@ where
     }
 }
 
+impl<T> Index<usize> for LcRsTree<T>
+where
+    T: Default,
+    T: Update,
+    T: Serialize,
+{
+    type Output = Node<T>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.nodes[index]
+    }
+}
+
+impl<T> IndexMut<usize> for LcRsTree<T>
+where
+    T: Default,
+    T: Update,
+    T: Serialize,
+{
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.nodes[index]
+    }
+}
+
 // ---------------------------------------------------------------------
 // Define the trait Update, which the data must implement. It is used
 // by the update_data() function to update the data without knowing
@@ -241,16 +270,16 @@ pub trait Update {
 }
 
 #[derive(Debug, Clone)]
-struct Node<T>
+pub struct Node<T>
 where
     T: Default,
     T: Update,
     T: Serialize,
 {
-    parent: Option<usize>,
-    left_child: Option<usize>,
-    right_sibling: Option<usize>,
-    data: T,
+    pub parent: Option<usize>,
+    pub left_child: Option<usize>,
+    pub right_sibling: Option<usize>,
+    pub data: T,
 }
 
 impl<T> Default for Node<T>

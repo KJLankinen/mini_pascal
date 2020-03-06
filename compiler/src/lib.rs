@@ -2,6 +2,7 @@
 mod lcrs_tree;
 pub mod parser;
 mod scanner;
+pub mod semantic_analyzer;
 
 use parser::Parser;
 use std::{env, fs, io::BufWriter, process};
@@ -76,7 +77,11 @@ pub fn run() {
 
                         // Place holder print
                         if success {
-                            println!("Parsing is complete, moving on to semantic analysis.");
+                            let mut analyzer = semantic_analyzer::Analyzer::new(parser.tree);
+                            let success = analyzer.analyze();
+                            if success {
+                                println!("Semantic analysis done.");
+                            }
                         } else {
                             println!("Syntax errors encountered during parse.");
                         }

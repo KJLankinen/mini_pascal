@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 // ---------------------------------------------------------------------
 pub struct Parser<'a> {
     scanner: Scanner<'a>,
-    tree: LcRsTree<NodeData<'a>>,
+    pub tree: LcRsTree<NodeData<'a>>,
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
     unexpected_tokens: Vec<(TokenData<'a>, Vec<TokenType>)>,
@@ -874,8 +874,8 @@ impl<'a> Parser<'a> {
 // ---------------------------------------------------------------------
 // Type definitions and methods for the nodes of the AST
 // ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy)]
-enum NodeType {
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+pub enum NodeType {
     Program,
     Operand,
     Expression,
@@ -887,11 +887,11 @@ enum NodeType {
     Assert,
 }
 
-#[derive(Serialize, Copy, Clone)]
-struct NodeData<'a> {
-    node_type: Option<NodeType>,
+#[derive(Serialize, Copy, Clone, Debug)]
+pub struct NodeData<'a> {
+    pub node_type: Option<NodeType>,
     #[serde(flatten)]
-    token: Option<TokenData<'a>>,
+    pub token: Option<TokenData<'a>>,
 }
 
 impl<'a> Default for NodeData<'a> {
