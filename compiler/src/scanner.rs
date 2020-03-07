@@ -1,7 +1,5 @@
-use super::SymbolType;
-use serde::Serialize;
+use super::data_types::{SymbolType, TokenData, TokenType};
 use std::collections::HashMap;
-use std::fmt;
 
 // ---------------------------------------------------------------------
 // Type definition for the scanner that goes through the source string
@@ -323,94 +321,5 @@ impl<'a> Scanner<'a> {
         }
         println!("  {}\t|\t{}", line + 1, self.lines[line]);
         println!("\t|\t{}", expl_string);
-    }
-}
-
-// ---------------------------------------------------------------------
-// Type definitions for the token types and data
-// ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TokenType {
-    Identifier,
-    KeywordVar,
-    KeywordFor,
-    KeywordEnd,
-    KeywordIn,
-    KeywordDo,
-    KeywordRead,
-    KeywordPrint,
-    KeywordAssert,
-    Type(SymbolType),
-    LiteralInt,
-    LiteralString,
-    OperatorPlus,
-    OperatorMinus,
-    OperatorMultiply,
-    OperatorDivide,
-    OperatorLessThan,
-    OperatorEqual,
-    OperatorAnd,
-    OperatorNot,
-    Range,
-    EndOfStatement,
-    TypeSeparator,
-    Assignment,
-    LParen,
-    RParen,
-    EndOfProgram,
-    Undefined,
-}
-
-impl fmt::Display for TokenType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TokenType::Identifier => write!(f, "an identifier"),
-            TokenType::KeywordVar => write!(f, "var"),
-            TokenType::KeywordFor => write!(f, "for"),
-            TokenType::KeywordEnd => write!(f, "end"),
-            TokenType::KeywordIn => write!(f, "in"),
-            TokenType::KeywordDo => write!(f, "do"),
-            TokenType::KeywordRead => write!(f, "read"),
-            TokenType::KeywordPrint => write!(f, "print"),
-            TokenType::KeywordAssert => write!(f, "assert"),
-            TokenType::Type(s) => s.fmt(f),
-            TokenType::LiteralInt => write!(f, "a literal integer"),
-            TokenType::LiteralString => write!(f, "a literal string"),
-            TokenType::OperatorPlus => write!(f, "+"),
-            TokenType::OperatorMinus => write!(f, "-"),
-            TokenType::OperatorMultiply => write!(f, "*"),
-            TokenType::OperatorDivide => write!(f, "/"),
-            TokenType::OperatorLessThan => write!(f, "<"),
-            TokenType::OperatorEqual => write!(f, "="),
-            TokenType::OperatorAnd => write!(f, "&"),
-            TokenType::OperatorNot => write!(f, "!"),
-            TokenType::Range => write!(f, ".."),
-            TokenType::EndOfStatement => write!(f, ";"),
-            TokenType::TypeSeparator => write!(f, ":"),
-            TokenType::Assignment => write!(f, ":="),
-            TokenType::LParen => write!(f, "("),
-            TokenType::RParen => write!(f, ")"),
-            TokenType::EndOfProgram => write!(f, "\0"),
-            TokenType::Undefined => write!(f, "an undefined token"),
-        }
-    }
-}
-
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct TokenData<'a> {
-    pub column: u32,
-    pub line: u32,
-    pub token_type: TokenType,
-    pub value: &'a str,
-}
-
-impl<'a> Default for TokenData<'a> {
-    fn default() -> TokenData<'a> {
-        TokenData {
-            column: 0,
-            line: 0,
-            token_type: TokenType::Undefined,
-            value: "",
-        }
     }
 }

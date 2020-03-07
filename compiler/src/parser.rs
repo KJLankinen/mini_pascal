@@ -1,8 +1,14 @@
-use super::lcrs_tree::{LcRsTree, Update};
-use super::scanner::{Scanner, TokenData, TokenType};
-use super::SymbolType;
-use serde::Serialize;
+use super::data_types::{NodeData, NodeType, SymbolType, TokenData, TokenType};
+use super::lcrs_tree::LcRsTree;
+use super::scanner::Scanner;
 use std::collections::{HashMap, HashSet};
+
+type ParseResult<T> = Result<T, ParseError>;
+#[derive(Debug)]
+pub struct ParseError {
+    depth: usize,
+    token_type: TokenType,
+}
 
 // ---------------------------------------------------------------------
 // Type definition for the recursive descent parser
@@ -23,7 +29,7 @@ impl<'a> Parser<'a> {
     // match_token() and process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
     // ---------------------------------------------------------------------
-    fn match_token(&mut self, token_types: &[TokenType]) -> Result<TokenData<'a>, ErrorType> {
+    fn match_token(&mut self, token_types: &[TokenType]) -> ParseResult<TokenData<'a>> {
         // If the next token matches any of the given expected tokens, return it
         let token_type = self.scanner.peek().token_type;
         for tt in token_types {
@@ -52,7 +58,7 @@ impl<'a> Parser<'a> {
                             max_depth = *depth;
                         }
                     }
-                    return Err(ErrorType {
+                    return Err(ParseError {
                         depth: max_depth,
                         token_type: tt,
                     });
@@ -72,11 +78,11 @@ impl<'a> Parser<'a> {
 
     fn process<T, R>(
         &mut self,
-        func: fn(&mut Self, T) -> Result<R, ErrorType>,
+        func: fn(&mut Self, T) -> ParseResult<R>,
         arg1: T,
         recovery_tokens: &[TokenType],
         recovery_token: &mut Option<TokenType>,
-    ) -> Result<Option<R>, ErrorType> {
+    ) -> ParseResult<Option<R>> {
         // Add recovery tokens to the library.
         // Recovery tokens are tokens specified around the recursive functions.
         // If an error in parsing is encountered (due to an unexpected token),
@@ -137,7 +143,7 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
     // Recursive processing functions
     // ---------------------------------------------------------------------
-    fn program(&mut self, _parent: Option<usize>) -> Result<(), ErrorType> {
+    fn program(&mut self, _parent: Option<usize>) -> ParseResult<()> {
         let my_id = self.tree.add_child(None);
         self.tree.update_data(
             my_id,
@@ -163,12 +169,12 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn end_of_program(&mut self, _parent: Option<usize>) -> Result<(), ErrorType> {
+    fn end_of_program(&mut self, _parent: Option<usize>) -> ParseResult<()> {
         self.match_token(&[TokenType::EndOfProgram])?;
         Ok(())
     }
 
-    fn statement_list(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+    fn statement_list(&mut self, parent: Option<usize>) -> ParseResult<()> {
         // Stop recursion if the next token is end of program
         // or 'end' keyword that ends the for loop.
         match self.scanner.peek().token_type {
@@ -195,7 +201,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn statement(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+    fn statement(&mut self, parent: Option<usize>) -> ParseResult<()> {
         // Statement errors can be recovered at least at ';' if such is found.
         let mut recovery_token = None;
         match self.process(
@@ -221,7 +227,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn statement_prefix(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+    fn statement_prefix(&mut self, parent: Option<usize>) -> ParseResult<()> {
         // First match at each of the arms is always a certainty due to the peek.
         // All the possible closures inside the statement arms are written in the reverse order.
         // E.g. "do", "expr" ".." "expr" "in" "identifier" "for". This is because the closures can
@@ -236,10 +242,10 @@ impl<'a> Parser<'a> {
 
                 // Revovery point for expression
                 let expr_closure =
-                    |parser: &mut Self| -> Result<(), ErrorType> { parser.expression(my_id) };
+                    |parser: &mut Self| -> ParseResult<()> { parser.expression(my_id) };
 
                 // Recovery point for ':=' token
-                let assignment_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let assignment_closure = |parser: &mut Self| -> ParseResult<()> {
                     // The statement can contain an assignment. If it does, use the value the user
                     // provided as the right sibling. Otherwise use some default.
                     if TokenType::Assignment == parser.scanner.peek().token_type {
@@ -272,7 +278,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for 'int', 'string' and 'bool' tokens
-                let type_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let type_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     let token = parser.process(
                         Parser::match_token,
@@ -313,7 +319,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for ':' token
-                let separator_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let separator_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     let result = parser.process(
                         Parser::match_token,
@@ -397,13 +403,13 @@ impl<'a> Parser<'a> {
                 );
 
                 // Recovery point for the last 'for' token
-                let for_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let for_closure = |parser: &mut Self| -> ParseResult<()> {
                     parser.match_token(&[TokenType::KeywordFor])?;
                     Ok(())
                 };
 
                 // Recovery point for the 'end' token
-                let end_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let end_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     parser.process(
                         Parser::match_token,
@@ -416,7 +422,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for the 'do' token
-                let do_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let do_closure = |parser: &mut Self| -> ParseResult<()> {
                     parser.match_token(&[TokenType::KeywordDo])?;
 
                     let mut recovery_token = None;
@@ -430,7 +436,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for the second expression
-                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let expr_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     parser.process(
                         Parser::expression,
@@ -442,7 +448,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for the '..' token
-                let range_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let range_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     if parser
                         .process(
@@ -472,7 +478,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for the first expression
-                let first_expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let first_expr_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     if parser
                         .process(
@@ -504,7 +510,7 @@ impl<'a> Parser<'a> {
                 };
 
                 // Recovery point for the 'in' token
-                let in_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let in_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     if parser
                         .process(
@@ -605,13 +611,13 @@ impl<'a> Parser<'a> {
                 );
 
                 // Recovery point for the ')' token
-                let paren_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let paren_closure = |parser: &mut Self| -> ParseResult<()> {
                     parser.match_token(&[TokenType::RParen])?;
                     Ok(())
                 };
 
                 // Recovery point for the expression
-                let expr_closure = |parser: &mut Self| -> Result<(), ErrorType> {
+                let expr_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     parser.process(
                         Parser::expression,
@@ -699,7 +705,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn expression(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+    fn expression(&mut self, parent: Option<usize>) -> ParseResult<()> {
         let my_id = self.tree.add_child(parent);
 
         // First case: Unary operator and operand
@@ -778,7 +784,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn operand(&mut self, parent: Option<usize>) -> Result<(), ErrorType> {
+    fn operand(&mut self, parent: Option<usize>) -> ParseResult<()> {
         let mut recovery_token = None;
         if TokenType::LParen == self.scanner.peek().token_type {
             // The match is a certainty due to the peek, and we can recover at the matching ')'.
@@ -821,7 +827,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<bool, ErrorType> {
+    pub fn parse(&mut self) -> ParseResult<bool> {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
         self.program(None)?;
@@ -866,54 +872,4 @@ impl<'a> Parser<'a> {
     pub fn serialize(&mut self) -> Option<serde_json::Value> {
         self.tree.serialize()
     }
-}
-
-// ---------------------------------------------------------------------
-// Type definitions and methods for the nodes of the AST
-// ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
-pub enum NodeType {
-    Program,
-    Operand,
-    Expression,
-    Declaration,
-    Assignment,
-    For,
-    Read,
-    Print,
-    Assert,
-}
-
-#[derive(Serialize, Copy, Clone, Debug)]
-pub struct NodeData<'a> {
-    pub node_type: Option<NodeType>,
-    #[serde(flatten)]
-    pub token: Option<TokenData<'a>>,
-}
-
-impl<'a> Default for NodeData<'a> {
-    fn default() -> Self {
-        NodeData {
-            node_type: None,
-            token: None,
-        }
-    }
-}
-
-impl<'a> Update for NodeData<'a> {
-    fn update(&mut self, data: Self) {
-        if data.node_type.is_some() {
-            self.node_type = data.node_type;
-        }
-
-        if data.token.is_some() {
-            self.token = data.token;
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ErrorType {
-    depth: usize,
-    token_type: TokenType,
 }

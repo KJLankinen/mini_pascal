@@ -1,21 +1,11 @@
+use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
-use super::parser::{NodeData, NodeType};
-use super::scanner::TokenType;
-use super::SymbolType;
 use std::collections::HashMap;
-
-#[derive(Copy, Clone, Debug)]
-enum SemanticError {
-    MismatchedTypes,
-    UndeclaredIdentifier,
-    IllegalOperation,
-    Undefined,
-}
 
 pub struct Analyzer<'a> {
     tree: LcRsTree<NodeData<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
-    errors: Vec<SemanticError>,
+    errors: Vec<ErrorType>,
 }
 
 impl<'a> Analyzer<'a> {
@@ -42,10 +32,11 @@ impl<'a> Analyzer<'a> {
     fn print_errors(&self) -> bool {
         for err in self.errors.iter() {
             match err {
-                SemanticError::MismatchedTypes => println!("Mismatched types."),
-                SemanticError::UndeclaredIdentifier => println!("Undeclared identifier."),
-                SemanticError::IllegalOperation => println!("Illegal operation."),
-                SemanticError::Undefined => println!("Undefined semantic error."),
+                ErrorType::MismatchedTypes => println!("Mismatched types."),
+                ErrorType::UndeclaredIdentifier => println!("Undeclared identifier."),
+                ErrorType::IllegalOperation => println!("Illegal operation."),
+                ErrorType::Undefined => println!("Undefined semantic error."),
+                _ => assert!(false, "Unhandled case."),
             }
         }
         self.errors.is_empty()
@@ -82,7 +73,7 @@ impl<'a> Analyzer<'a> {
                 if let Some(symbol) = self.symbols.get(token.value) {
                     *symbol
                 } else {
-                    self.errors.push(SemanticError::UndeclaredIdentifier);
+                    self.errors.push(ErrorType::UndeclaredIdentifier);
                     SymbolType::Undefined
                 }
             }
@@ -116,7 +107,7 @@ impl<'a> Analyzer<'a> {
                     if SymbolType::Bool == expr_type {
                         SymbolType::Bool
                     } else {
-                        self.errors.push(SemanticError::IllegalOperation);
+                        self.errors.push(ErrorType::IllegalOperation);
                         SymbolType::Undefined
                     }
                 }
@@ -139,7 +130,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Bool == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::IllegalOperation);
+                                    self.errors.push(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -147,7 +138,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::String == expr_type || SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::IllegalOperation);
+                                    self.errors.push(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -155,7 +146,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::IllegalOperation);
+                                    self.errors.push(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -163,7 +154,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::IllegalOperation);
+                                    self.errors.push(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -171,7 +162,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(SemanticError::IllegalOperation);
+                                    self.errors.push(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -183,7 +174,7 @@ impl<'a> Analyzer<'a> {
                             }
                         }
                     } else {
-                        self.errors.push(SemanticError::MismatchedTypes);
+                        self.errors.push(ErrorType::MismatchedTypes);
                         SymbolType::Undefined
                     }
                 }
@@ -215,10 +206,10 @@ impl<'a> Analyzer<'a> {
                 .expect("Assignment should contain an expression.");
             let et = self.get_expression_type(rs);
             if et != symbol {
-                self.errors.push(SemanticError::MismatchedTypes);
+                self.errors.push(ErrorType::MismatchedTypes);
             }
         } else {
-            self.errors.push(SemanticError::UndeclaredIdentifier);
+            self.errors.push(ErrorType::UndeclaredIdentifier);
         }
     }
 
