@@ -3,6 +3,7 @@ use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use super::scanner::Scanner;
 use std::collections::{HashMap, HashSet};
+use std::{fs, io::BufWriter};
 
 type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug)]
@@ -14,19 +15,19 @@ pub struct ParseError {
 // ---------------------------------------------------------------------
 // Type definition for the recursive descent parser
 // ---------------------------------------------------------------------
-pub struct Parser<'a> {
+pub struct Parser<'a, 'b> {
     scanner: Scanner<'a>,
-    pub tree: LcRsTree<NodeData<'a>>,
+    tree: &'b mut LcRsTree<NodeData<'a>>,
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
     unexpected_tokens: Vec<(TokenData<'a>, Vec<TokenType>)>,
-    logger: &'a Logger,
+    logger: &'b mut Logger,
 }
 
 // ---------------------------------------------------------------------
 // Method implementations for the parser
 // ---------------------------------------------------------------------
-impl<'a> Parser<'a> {
+impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     // match_token() and process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
@@ -819,10 +820,14 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
     // Public utility functions
     // ---------------------------------------------------------------------
-    pub fn new(source_str: &'a str, logger: &'a mut Logger) -> Self {
+    pub fn new(
+        source_str: &'a str,
+        logger: &'b mut Logger,
+        tree: &'b mut LcRsTree<NodeData<'a>>,
+    ) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
-            tree: LcRsTree::new(),
+            tree: tree,
             recursion_depth: 0,
             recovery_tokens: HashMap::new(),
             unexpected_tokens: vec![],
@@ -830,11 +835,29 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> ParseResult<bool> {
+    pub fn parse(&mut self, out_file: Option<&'a str>) -> ParseResult<bool> {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
         self.program(None)?;
         self.print_errors();
+
+        if let Some(filename) = out_file {
+            if let Some(json) = self.serialize() {
+                let file = fs::File::create(&filename).expect(
+                    format!("Could not create a new file with the name {}", &filename).as_str(),
+                );
+
+                println!("Writing the AST to the file \"{}\"", &filename);
+
+                let mut writer = BufWriter::new(&file);
+                match serde_json::to_writer_pretty(&mut writer, &json) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        eprintln!("Error writing to file: {}", err);
+                    }
+                }
+            }
+        }
 
         return Ok(self.scanner.unmatched_multiline_comment_prefixes.is_empty()
             && self.unexpected_tokens.is_empty());

@@ -6,10 +6,11 @@ mod parser;
 mod scanner;
 mod semantic_analyzer;
 
+use lcrs_tree::LcRsTree;
 use logger::Logger;
 use parser::Parser;
 use semantic_analyzer::Analyzer;
-use std::{env, fs, io::BufWriter, process};
+use std::{env, fs, process};
 
 // Called from main to kick off the interpretation
 pub fn run() {
@@ -49,41 +50,21 @@ pub fn run() {
                             }
                             _ => None,
                         };
+
                         let mut logger = Logger::new();
-                        let mut parser = Parser::new(&source_str, &mut logger);
-                        let success = match parser.parse() {
-                            Ok(o) => o,
-                            Err(_) => false,
-                        };
-
-                        // Parsing is completed, serialize the AST if so specified
-                        if let Some(filename) = out_file {
-                            if let Some(json) = parser.serialize() {
-                                let file = fs::File::create(&filename).expect(
-                                    format!(
-                                        "Could not create a new file with the name {}",
-                                        &filename
-                                    )
-                                    .as_str(),
-                                );
-
-                                println!("Writing the AST to the file \"{}\"", &filename);
-
-                                let mut writer = BufWriter::new(&file);
-                                match serde_json::to_writer_pretty(&mut writer, &json) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        eprintln!("Error writing to file: {}", err);
-                                        process::exit(1);
-                                    }
-                                }
+                        let mut tree = LcRsTree::new();
+                        let success = {
+                            match Parser::new(&source_str, &mut logger, &mut tree)
+                                .parse(out_file.as_ref().map(|s| &**s))
+                            {
+                                Ok(o) => o,
+                                Err(_) => false,
                             }
-                        }
+                        };
 
                         // Place holder print
                         if success {
-                            let mut analyzer = Analyzer::new(parser.tree, &mut logger);
-                            let success = analyzer.analyze();
+                            let success = Analyzer::new(&tree, &mut logger).analyze();
                             if success {
                                 println!("Semantic analysis done.");
                             }
