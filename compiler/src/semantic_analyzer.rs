@@ -1,19 +1,22 @@
 use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
+use super::logger::Logger;
 use std::collections::HashMap;
 
 pub struct Analyzer<'a> {
     tree: LcRsTree<NodeData<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
     errors: Vec<ErrorType>,
+    logger: &'a Logger,
 }
 
 impl<'a> Analyzer<'a> {
-    pub fn new(tree: LcRsTree<NodeData<'a>>) -> Self {
+    pub fn new(tree: LcRsTree<NodeData<'a>>, logger: &'a mut Logger) -> Self {
         Analyzer {
             tree: tree,
             symbols: HashMap::new(),
             errors: vec![],
+            logger: logger,
         }
     }
 

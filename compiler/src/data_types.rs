@@ -33,12 +33,25 @@ impl fmt::Display for SymbolType {
 // ---------------------------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ErrorType {
-    ScannerError,
-    ParseError,
+    LexicalError,
+    SyntaxError,
     MismatchedTypes,
     UndeclaredIdentifier,
     IllegalOperation,
     Undefined,
+}
+
+impl fmt::Display for ErrorType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ErrorType::LexicalError => write!(f, "lexical error"),
+            ErrorType::SyntaxError => write!(f, "syntax error"),
+            ErrorType::MismatchedTypes => write!(f, "mismatched types"),
+            ErrorType::UndeclaredIdentifier => write!(f, "undeclared identifier"),
+            ErrorType::IllegalOperation => write!(f, "illegal operation"),
+            ErrorType::Undefined => write!(f, "undefined"),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------

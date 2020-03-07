@@ -1,11 +1,14 @@
 // Specify here the implemented and used crates
 mod data_types;
 mod lcrs_tree;
+mod logger;
 mod parser;
 mod scanner;
 mod semantic_analyzer;
 
+use logger::Logger;
 use parser::Parser;
+use semantic_analyzer::Analyzer;
 use std::{env, fs, io::BufWriter, process};
 
 // Called from main to kick off the interpretation
@@ -46,7 +49,8 @@ pub fn run() {
                             }
                             _ => None,
                         };
-                        let mut parser = Parser::new(&source_str);
+                        let mut logger = Logger::new();
+                        let mut parser = Parser::new(&source_str, &mut logger);
                         let success = match parser.parse() {
                             Ok(o) => o,
                             Err(_) => false,
@@ -78,7 +82,7 @@ pub fn run() {
 
                         // Place holder print
                         if success {
-                            let mut analyzer = semantic_analyzer::Analyzer::new(parser.tree);
+                            let mut analyzer = Analyzer::new(parser.tree, &mut logger);
                             let success = analyzer.analyze();
                             if success {
                                 println!("Semantic analysis done.");

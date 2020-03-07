@@ -1,5 +1,6 @@
 use super::data_types::{NodeData, NodeType, SymbolType, TokenData, TokenType};
 use super::lcrs_tree::LcRsTree;
+use super::logger::Logger;
 use super::scanner::Scanner;
 use std::collections::{HashMap, HashSet};
 
@@ -19,6 +20,7 @@ pub struct Parser<'a> {
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
     unexpected_tokens: Vec<(TokenData<'a>, Vec<TokenType>)>,
+    logger: &'a Logger,
 }
 
 // ---------------------------------------------------------------------
@@ -817,13 +819,14 @@ impl<'a> Parser<'a> {
     // ---------------------------------------------------------------------
     // Public utility functions
     // ---------------------------------------------------------------------
-    pub fn new(source_str: &'a str) -> Self {
+    pub fn new(source_str: &'a str, logger: &'a mut Logger) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
             tree: LcRsTree::new(),
             recursion_depth: 0,
             recovery_tokens: HashMap::new(),
             unexpected_tokens: vec![],
+            logger: logger,
         }
     }
 
