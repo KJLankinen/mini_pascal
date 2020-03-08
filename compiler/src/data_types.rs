@@ -34,9 +34,9 @@ impl fmt::Display for SymbolType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorType<'a> {
     SyntaxError(TokenData<'a>, Vec<TokenType>),
-    MismatchedTypes,
-    UndeclaredIdentifier,
-    IllegalOperation,
+    MismatchedTypes(TokenData<'a>, SymbolType, Option<SymbolType>),
+    UndeclaredIdentifier(TokenData<'a>),
+    IllegalOperation(TokenData<'a>, SymbolType),
     UnmatchedComment(u32, u32),
     Undefined,
 }
@@ -45,9 +45,9 @@ impl<'a> fmt::Display for ErrorType<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ErrorType::SyntaxError(_, _) => write!(f, "syntax error"),
-            ErrorType::MismatchedTypes => write!(f, "mismatched types"),
-            ErrorType::UndeclaredIdentifier => write!(f, "undeclared identifier"),
-            ErrorType::IllegalOperation => write!(f, "illegal operation"),
+            ErrorType::MismatchedTypes(_, _, _) => write!(f, "mismatched types"),
+            ErrorType::UndeclaredIdentifier(_) => write!(f, "undeclared identifier"),
+            ErrorType::IllegalOperation(_, _) => write!(f, "illegal operation"),
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
             ErrorType::Undefined => write!(f, "undefined"),
         }

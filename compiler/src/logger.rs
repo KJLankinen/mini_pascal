@@ -37,35 +37,51 @@ impl<'a> Logger<'a> {
                         eprint!("Unexpectedly ");
                     }
                     eprintln!("found \"{}\".", token.value);
-                    line = token.line as usize;
-                    column = token.column as usize;
+                    line = token.line;
+                    column = token.column;
                 }
-                ErrorType::MismatchedTypes => {
-                    line = 0;
-                    column = 0
+                ErrorType::MismatchedTypes(token, type1, type2) => {
+                    if type2.is_some() {
+                        eprint!("Types used with token \"{}\" don't match.", token.value);
+                        eprintln!(
+                            "Left side is of type \"{}\", right side of type \"{}\".",
+                            type1,
+                            type2.unwrap()
+                        );
+                    } else {
+                        eprint!("Assertion can only be used with boolean values. ");
+                        eprintln!("Expression inside assertion is of type \"{}\".", type1);
+                    }
+                    line = token.line;
+                    column = token.column;
                 }
-                ErrorType::UndeclaredIdentifier => {
-                    line = 0;
-                    column = 0
+                ErrorType::UndeclaredIdentifier(token) => {
+                    eprintln!("Identifier \"{}\" is used before declaration.", token.value);
+                    line = token.line;
+                    column = token.column;
                 }
-                ErrorType::IllegalOperation => {
-                    line = 0;
-                    column = 0
+                ErrorType::IllegalOperation(token, symbol) => {
+                    eprintln!(
+                        "Operator \"{}\" can't be used in an expression with type \"{}\".",
+                        token.value, symbol
+                    );
+                    line = token.line;
+                    column = token.column;
                 }
                 ErrorType::UnmatchedComment(l, c) => {
                     eprintln!(
                         "Multi-line comment starts at {}:{} but is never terminated.",
                         l, c
                     );
-                    line = *l as usize;
-                    column = *c as usize;
+                    line = *l;
+                    column = *c;
                 }
                 ErrorType::Undefined => {
                     line = 0;
                     column = 0
                 }
             }
-            self.print_line(line, column);
+            self.print_line(line as usize, column as usize);
         }
     }
 

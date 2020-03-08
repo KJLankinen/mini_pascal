@@ -567,23 +567,14 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
             TokenType::KeywordRead => {
                 // Read statement
+                self.match_token(&[TokenType::KeywordRead])?;
+
+                let token = self.match_token(&[TokenType::Identifier])?;
                 let my_id = self.tree.add_child(parent);
-                let token = self.match_token(&[TokenType::KeywordRead])?;
                 self.tree.update_data(
                     my_id,
                     NodeData {
                         node_type: Some(NodeType::Read),
-                        token: Some(token),
-                    },
-                );
-
-                // No point in trying to recover from
-                let token = self.match_token(&[TokenType::Identifier])?;
-                let id = self.tree.add_child(my_id);
-                self.tree.update_data(
-                    id,
-                    NodeData {
-                        node_type: Some(NodeType::Operand),
                         token: Some(token),
                     },
                 );
