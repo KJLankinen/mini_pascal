@@ -22,6 +22,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         // Start walking down the tree
         assert!(self.tree.len() > 0);
         let mut node = self.tree[0].left_child;
+
         while let Some(idx) = node {
             self.handle(idx);
             node = self.tree[idx].right_sibling;
@@ -52,6 +53,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             .data
             .token
             .expect("Operand is missing a token.");
+
         match token.token_type {
             TokenType::LiteralInt => SymbolType::Int,
             TokenType::LiteralString => SymbolType::String,
@@ -88,6 +90,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .data
                 .token
                 .expect("Expression is missing a token.");
+
             match expr_token.token_type {
                 TokenType::OperatorNot => {
                     if SymbolType::Bool == expr_type {
@@ -168,8 +171,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                     SymbolType::Undefined
                                 }
                             }
-                            TokenType::OperatorLessThan => expr_type,
-                            TokenType::OperatorEqual => expr_type,
+                            TokenType::OperatorLessThan => SymbolType::Bool,
+                            TokenType::OperatorEqual => SymbolType::Bool,
                             _ => {
                                 assert!(false, "Expression token has an illegal type.");
                                 SymbolType::Undefined
@@ -193,7 +196,28 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_declaration(&mut self, idx: usize) {
-        println!("Declaration {:#?}", self.tree[idx].data);
+        let id_token = &self.tree[self.tree[idx]
+            .left_child
+            .expect("Declaration is missing an identifier.")]
+        .data
+        .token
+        .expect("Identifier is missing a token.");
+        let symbol = self.symbols.get(id_token.value);
+
+        if symbol.is_none() {
+            if let TokenType::Type(t) = &self.tree[idx]
+                .data
+                .token
+                .expect("Declaration is missing a token.")
+                .token_type
+            {
+                self.symbols.insert(id_token.value, *t);
+            } else {
+                assert!(false, "Identifier's TokenType is something else than Type.");
+            }
+        } else {
+            self.logger.add_error(ErrorType::Redeclaration(*id_token));
+        }
     }
 
     fn handle_assignment(&mut self, idx: usize) {
@@ -209,22 +233,73 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         let rs = identifier
             .right_sibling
             .expect("Assignment should contain an expression.");
-        let et = self.get_expression_type(rs);
+        let expr_type = self.get_expression_type(rs);
         let symbol = self.symbols.get(id_token.value);
+
         if symbol.is_none() {
             self.logger
                 .add_error(ErrorType::UndeclaredIdentifier(id_token));
-        } else if et != *symbol.unwrap() {
+        } else if expr_type != *symbol.unwrap() {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 node.data.token.expect("Assignment is missing a token."),
-                et,
-                Some(*symbol.unwrap()),
+                *symbol.unwrap(),
+                Some(expr_type),
             ));
         }
     }
 
     fn handle_for(&mut self, idx: usize) {
-        println!("For {:#?}", self.tree[idx].data);
+        let node = &self.tree[idx];
+        let identifier = &self.tree[node
+            .left_child
+            .expect("Assignment is missing an identifier in AST.")];
+        let id_token = identifier
+            .data
+            .token
+            .expect("Identifier is missing a token.");
+
+        if self.symbols.contains_key(id_token.value) {
+            let rs = identifier
+                .right_sibling
+                .expect("For loop should contain an expression.");
+            let expr_type = self.get_expression_type(rs);
+
+            if SymbolType::Int == expr_type {
+                let rs = self.tree[rs]
+                    .right_sibling
+                    .expect("For loop should contain an expression.");
+                let expr_type = self.get_expression_type(rs);
+
+                if SymbolType::Int == expr_type {
+                    let mut next_statement = self.tree[rs].right_sibling;
+                    while let Some(rs) = next_statement {
+                        self.handle(rs);
+                        next_statement = self.tree[rs].right_sibling;
+                    }
+                } else {
+                    self.logger.add_error(ErrorType::MismatchedTypes(
+                        self.tree[idx]
+                            .data
+                            .token
+                            .expect("For loop is missing a token."),
+                        expr_type,
+                        None,
+                    ));
+                }
+            } else {
+                self.logger.add_error(ErrorType::MismatchedTypes(
+                    self.tree[idx]
+                        .data
+                        .token
+                        .expect("For loop is missing a token."),
+                    expr_type,
+                    None,
+                ));
+            }
+        } else {
+            self.logger
+                .add_error(ErrorType::UndeclaredIdentifier(id_token));
+        }
     }
 
     fn handle_read(&mut self, idx: usize) {
@@ -232,6 +307,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             .data
             .token
             .expect("Read statement has no token.");
+
         if self.symbols.contains_key(token.value) {
         } else {
             self.logger
@@ -253,6 +329,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .left_child
                 .expect("Assert is missing a child expression."),
         );
+
         if SymbolType::Bool != expr_type {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 self.tree[idx]

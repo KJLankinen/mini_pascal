@@ -38,6 +38,7 @@ pub enum ErrorType<'a> {
     UndeclaredIdentifier(TokenData<'a>),
     IllegalOperation(TokenData<'a>, SymbolType),
     UnmatchedComment(u32, u32),
+    Redeclaration(TokenData<'a>),
     Undefined,
 }
 
@@ -49,6 +50,7 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::UndeclaredIdentifier(_) => write!(f, "undeclared identifier"),
             ErrorType::IllegalOperation(_, _) => write!(f, "illegal operation"),
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
+            ErrorType::Redeclaration(_) => write!(f, "redeclaration"),
             ErrorType::Undefined => write!(f, "undefined"),
         }
     }

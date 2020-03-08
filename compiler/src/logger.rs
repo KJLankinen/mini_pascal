@@ -42,15 +42,17 @@ impl<'a> Logger<'a> {
                 }
                 ErrorType::MismatchedTypes(token, type1, type2) => {
                     if type2.is_some() {
-                        eprint!("Types used with token \"{}\" don't match.", token.value);
+                        eprint!("Types used with token \"{}\" don't match. ", token.value);
                         eprintln!(
                             "Left side is of type \"{}\", right side of type \"{}\".",
                             type1,
                             type2.unwrap()
                         );
                     } else {
-                        eprint!("Assertion can only be used with boolean values. ");
-                        eprintln!("Expression inside assertion is of type \"{}\".", type1);
+                        eprintln!(
+                            "Expression of type \"{}\" is illegal in this context.",
+                            type1
+                        );
                     }
                     line = token.line;
                     column = token.column;
@@ -75,6 +77,14 @@ impl<'a> Logger<'a> {
                     );
                     line = *l;
                     column = *c;
+                }
+                ErrorType::Redeclaration(token) => {
+                    eprintln!(
+                        "A redeclaration of an already declared variable \"{}\".",
+                        token.value
+                    );
+                    line = token.line;
+                    column = token.column;
                 }
                 ErrorType::Undefined => {
                     line = 0;
