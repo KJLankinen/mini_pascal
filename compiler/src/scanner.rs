@@ -5,15 +5,12 @@ use std::collections::HashMap;
 // Type definition for the scanner that goes through the source string
 // to identify and categorize tokens.
 // ---------------------------------------------------------------------
-#[derive(Debug)]
 pub struct Scanner<'a> {
     column: u32,
     line: u32,
     skip_until_newline: bool,
-    previous_newline: usize,
     pub unmatched_multiline_comment_prefixes: Vec<(u32, u32)>,
     chars: std::iter::Peekable<std::str::CharIndices<'a>>,
-    lines: Vec<&'a str>,
     token_map: HashMap<&'static str, TokenType>,
     source_str: &'a str,
     next_token: TokenData<'a>,
@@ -52,9 +49,6 @@ impl<'a> Scanner<'a> {
                     self.line += 1;
                     self.column = 0;
                     self.skip_until_newline = false;
-                    self.lines
-                        .push(&self.source_str[self.previous_newline..*pos]);
-                    self.previous_newline = *pos + 1;
                 }
                 self.chars.next()
             }
@@ -261,10 +255,8 @@ impl<'a> Scanner<'a> {
             column: 0,
             line: 1,
             skip_until_newline: false,
-            previous_newline: 0,
             unmatched_multiline_comment_prefixes: vec![],
             chars: source_str.char_indices().peekable(),
-            lines: vec![],
             source_str: source_str,
             next_token: TokenData::default(),
             token_map: [
@@ -301,25 +293,5 @@ impl<'a> Scanner<'a> {
         // Initialize next_token
         scanner.next_token = scanner.get_token();
         return scanner;
-    }
-
-    pub fn print_line(&self, line: usize, column: usize) {
-        // A debug functions for printing a specific line of source code.
-        assert!(line > 0);
-        // Lines start from '1' in editors but vector indexing starts from '0'
-        let line = line - 1;
-        assert!(line < self.lines.len(), "Line number is too large.");
-
-        let expl_string = format!(
-            "{}^------",
-            vec![' '; column - 1].into_iter().collect::<String>(),
-        );
-
-        println!("error @ {}:{}", line + 1, column);
-        if 0 < line {
-            println!("  {}\t|\t{}", line, self.lines[line - 1]);
-        }
-        println!("  {}\t|\t{}", line + 1, self.lines[line]);
-        println!("\t|\t{}", expl_string);
     }
 }

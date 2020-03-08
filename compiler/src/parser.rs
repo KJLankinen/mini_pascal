@@ -1,4 +1,4 @@
-use super::data_types::{NodeData, NodeType, SymbolType, TokenData, TokenType};
+use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenData, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use super::scanner::Scanner;
@@ -20,8 +20,7 @@ pub struct Parser<'a, 'b> {
     tree: &'b mut LcRsTree<NodeData<'a>>,
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
-    unexpected_tokens: Vec<(TokenData<'a>, Vec<TokenType>)>,
-    logger: &'b mut Logger,
+    logger: &'b mut Logger<'a>,
 }
 
 // ---------------------------------------------------------------------
@@ -43,8 +42,10 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         // Token was not any of the expected tokens. Store the token for later syntax error
         // messages and find the point of recovery.
-        self.unexpected_tokens
-            .push((*self.scanner.peek(), token_types.to_vec()));
+        self.logger.add_error(ErrorType::SyntaxError(
+            *self.scanner.peek(),
+            token_types.to_vec(),
+        ));
         loop {
             // Match a token to a recovery token at the earliest possible chance. I.e. take the
             // first token that matches any of the recovery tokens on any recursion level.
@@ -223,8 +224,10 @@ impl<'a, 'b> Parser<'a, 'b> {
                 // possible recovery point is at the start of a statement and everything between
                 // the error and the next recovery point is ignored, the missing ';' is never
                 // recorded by the match_token() function, as it usually is. Thus, record it here.
-                self.unexpected_tokens
-                    .push((*self.scanner.peek(), vec![TokenType::EndOfStatement]));
+                self.logger.add_error(ErrorType::SyntaxError(
+                    *self.scanner.peek(),
+                    vec![TokenType::EndOfStatement],
+                ));
             }
         }
         Ok(())
@@ -822,7 +825,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     pub fn new(
         source_str: &'a str,
-        logger: &'b mut Logger,
+        logger: &'b mut Logger<'a>,
         tree: &'b mut LcRsTree<NodeData<'a>>,
     ) -> Self {
         Parser {
@@ -830,16 +833,25 @@ impl<'a, 'b> Parser<'a, 'b> {
             tree: tree,
             recursion_depth: 0,
             recovery_tokens: HashMap::new(),
-            unexpected_tokens: vec![],
             logger: logger,
         }
     }
 
-    pub fn parse(&mut self, out_file: Option<&'a str>) -> ParseResult<bool> {
+    pub fn parse(&mut self, out_file: Option<&'a str>) {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
-        self.program(None)?;
-        self.print_errors();
+        match self.program(None) {
+            Ok(_) => (),
+            Err(_) => {
+                assert!(false, "Unhandled error at parse.");
+                ()
+            }
+        }
+
+        for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
+            self.logger
+                .add_error(ErrorType::UnmatchedComment(*line, *col));
+        }
 
         if let Some(filename) = out_file {
             if let Some(json) = self.serialize() {
@@ -857,41 +869,6 @@ impl<'a, 'b> Parser<'a, 'b> {
                     }
                 }
             }
-        }
-
-        return Ok(self.scanner.unmatched_multiline_comment_prefixes.is_empty()
-            && self.unexpected_tokens.is_empty());
-    }
-
-    fn print_errors(&self) {
-        for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
-            println!("Runaway multi line comment:");
-            self.scanner.print_line(*line as usize, *col as usize);
-        }
-
-        for (token, expected_types) in &self.unexpected_tokens {
-            if 1 < expected_types.len() {
-                print!("\nExpected one of ");
-                for tt in expected_types {
-                    print!("\"{}\", ", tt);
-                }
-                println!("found \"{}\".", token.token_type);
-            } else if 1 == expected_types.len() {
-                println!(
-                    "\nExpected \"{}\", found \"{}\".",
-                    expected_types[0], token.value
-                );
-            } else {
-                if TokenType::EndOfStatement == token.token_type {
-                    println!("\nEmpty statements are not legal, encountered an end of statement.");
-                } else if TokenType::Undefined == token.token_type {
-                    println!("\n\"{}\" is not a legal token.", token.value);
-                } else {
-                    println!("\nUnexpected token \"{}\".", token.value);
-                }
-            }
-            self.scanner
-                .print_line(token.line as usize, token.column as usize);
         }
     }
 

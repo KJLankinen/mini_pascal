@@ -51,25 +51,25 @@ pub fn run() {
                             _ => None,
                         };
 
-                        let mut logger = Logger::new();
+                        let mut logger = Logger::new(&source_str);
                         let mut tree = LcRsTree::new();
-                        let success = {
-                            match Parser::new(&source_str, &mut logger, &mut tree)
-                                .parse(out_file.as_ref().map(|s| &**s))
-                            {
-                                Ok(o) => o,
-                                Err(_) => false,
-                            }
-                        };
+                        {
+                            Parser::new(&source_str, &mut logger, &mut tree)
+                                .parse(out_file.as_ref().map(|s| &**s));
+                        }
 
-                        // Place holder print
-                        if success {
-                            let success = Analyzer::new(&tree, &mut logger).analyze();
-                            if success {
-                                println!("Semantic analysis done.");
-                            }
+                        if logger.errors_encountered() {
+                            logger.print_errors();
+                            process::exit(1);
                         } else {
-                            println!("Syntax errors encountered during parse.");
+                            Analyzer::new(&tree, &mut logger).analyze();
+                        }
+
+                        if logger.errors_encountered() {
+                            logger.print_errors();
+                            process::exit(1);
+                        } else {
+                            // Interpret
                         }
                     }
                     Err(err) => {

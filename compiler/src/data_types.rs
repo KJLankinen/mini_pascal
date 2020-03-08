@@ -31,24 +31,24 @@ impl fmt::Display for SymbolType {
 // ---------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ErrorType {
-    LexicalError,
-    SyntaxError,
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorType<'a> {
+    SyntaxError(TokenData<'a>, Vec<TokenType>),
     MismatchedTypes,
     UndeclaredIdentifier,
     IllegalOperation,
+    UnmatchedComment(u32, u32),
     Undefined,
 }
 
-impl fmt::Display for ErrorType {
+impl<'a> fmt::Display for ErrorType<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ErrorType::LexicalError => write!(f, "lexical error"),
-            ErrorType::SyntaxError => write!(f, "syntax error"),
+            ErrorType::SyntaxError(_, _) => write!(f, "syntax error"),
             ErrorType::MismatchedTypes => write!(f, "mismatched types"),
             ErrorType::UndeclaredIdentifier => write!(f, "undeclared identifier"),
             ErrorType::IllegalOperation => write!(f, "illegal operation"),
+            ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
             ErrorType::Undefined => write!(f, "undefined"),
         }
     }
@@ -124,7 +124,7 @@ impl fmt::Display for TokenType {
     }
 }
 
-#[derive(Serialize, Debug, Clone, Copy)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
 pub struct TokenData<'a> {
     pub column: u32,
     pub line: u32,

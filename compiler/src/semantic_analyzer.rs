@@ -3,24 +3,22 @@ use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use std::collections::HashMap;
 
-pub struct Analyzer<'a> {
-    tree: &'a LcRsTree<NodeData<'a>>,
+pub struct Analyzer<'a, 'b> {
+    tree: &'b LcRsTree<NodeData<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
-    errors: Vec<ErrorType>,
-    logger: &'a mut Logger,
+    logger: &'b mut Logger<'a>,
 }
 
-impl<'a> Analyzer<'a> {
-    pub fn new(tree: &'a LcRsTree<NodeData<'a>>, logger: &'a mut Logger) -> Self {
+impl<'a, 'b> Analyzer<'a, 'b> {
+    pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Analyzer {
             tree: tree,
             symbols: HashMap::new(),
-            errors: vec![],
             logger: logger,
         }
     }
 
-    pub fn analyze(&mut self) -> bool {
+    pub fn analyze(&mut self) {
         // Start walking down the tree
         assert!(self.tree.len() > 0);
         let mut node = self.tree[0].left_child;
@@ -28,21 +26,6 @@ impl<'a> Analyzer<'a> {
             self.handle(idx);
             node = self.tree[idx].right_sibling;
         }
-
-        self.print_errors()
-    }
-
-    fn print_errors(&self) -> bool {
-        for err in self.errors.iter() {
-            match err {
-                ErrorType::MismatchedTypes => println!("Mismatched types."),
-                ErrorType::UndeclaredIdentifier => println!("Undeclared identifier."),
-                ErrorType::IllegalOperation => println!("Illegal operation."),
-                ErrorType::Undefined => println!("Undefined semantic error."),
-                _ => assert!(false, "Unhandled case."),
-            }
-        }
-        self.errors.is_empty()
     }
 
     fn handle(&mut self, idx: usize) {
@@ -76,7 +59,7 @@ impl<'a> Analyzer<'a> {
                 if let Some(symbol) = self.symbols.get(token.value) {
                     *symbol
                 } else {
-                    self.errors.push(ErrorType::UndeclaredIdentifier);
+                    self.logger.add_error(ErrorType::UndeclaredIdentifier);
                     SymbolType::Undefined
                 }
             }
@@ -110,7 +93,7 @@ impl<'a> Analyzer<'a> {
                     if SymbolType::Bool == expr_type {
                         SymbolType::Bool
                     } else {
-                        self.errors.push(ErrorType::IllegalOperation);
+                        self.logger.add_error(ErrorType::IllegalOperation);
                         SymbolType::Undefined
                     }
                 }
@@ -133,7 +116,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Bool == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(ErrorType::IllegalOperation);
+                                    self.logger.add_error(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -141,7 +124,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::String == expr_type || SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(ErrorType::IllegalOperation);
+                                    self.logger.add_error(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -149,7 +132,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(ErrorType::IllegalOperation);
+                                    self.logger.add_error(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -157,7 +140,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(ErrorType::IllegalOperation);
+                                    self.logger.add_error(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -165,7 +148,7 @@ impl<'a> Analyzer<'a> {
                                 if SymbolType::Int == expr_type {
                                     expr_type
                                 } else {
-                                    self.errors.push(ErrorType::IllegalOperation);
+                                    self.logger.add_error(ErrorType::IllegalOperation);
                                     SymbolType::Undefined
                                 }
                             }
@@ -177,7 +160,7 @@ impl<'a> Analyzer<'a> {
                             }
                         }
                     } else {
-                        self.errors.push(ErrorType::MismatchedTypes);
+                        self.logger.add_error(ErrorType::MismatchedTypes);
                         SymbolType::Undefined
                     }
                 }
@@ -209,10 +192,10 @@ impl<'a> Analyzer<'a> {
                 .expect("Assignment should contain an expression.");
             let et = self.get_expression_type(rs);
             if et != symbol {
-                self.errors.push(ErrorType::MismatchedTypes);
+                self.logger.add_error(ErrorType::MismatchedTypes);
             }
         } else {
-            self.errors.push(ErrorType::UndeclaredIdentifier);
+            self.logger.add_error(ErrorType::UndeclaredIdentifier);
         }
     }
 
