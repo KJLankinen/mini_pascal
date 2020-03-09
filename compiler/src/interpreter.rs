@@ -2,11 +2,13 @@ use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use std::collections::HashMap;
+use std::io;
 use std::process;
 
 pub struct Interpreter<'a, 'b> {
     logger: &'b mut Logger<'a>,
     tree: &'b LcRsTree<NodeData<'a>>,
+    symbols: HashMap<&'a str, SymbolType>,
     integers: HashMap<&'a str, i32>,
     strings: HashMap<&'a str, String>,
     booleans: HashMap<&'a str, bool>,
@@ -238,7 +240,47 @@ impl<'a, 'b> Interpreter<'a, 'b> {
 
     fn interpret_for(&mut self, idx: usize) {}
 
-    fn interpret_read(&mut self, idx: usize) {}
+    fn interpret_read(&mut self, idx: usize) {
+        let mut input = String::new();
+        match io::stdin().read_line(&mut input) {
+            Ok(n) => {
+                let input = match input.split(char::is_whitespace).next() {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("Empty input is not accepted");
+                        process::exit(1);
+                        ""
+                    }
+                };
+                let id = self.tree[idx].data.token.unwrap().value;
+
+                match self.symbols.get(id).unwrap() {
+                    SymbolType::Int => match input.parse::<i32>() {
+                        Ok(v) => {
+                            self.integers.insert(id, v);
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "\"{}\" is not a valid integer. Error in parse: {}",
+                                input, e
+                            );
+                            process::exit(1);
+                        }
+                    },
+                    SymbolType::String => {
+                        self.strings.insert(id, input.to_owned());
+                    }
+                    _ => {
+                        assert!(false, "Can't read values to booleans.");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Bad input: {}", e);
+                process::exit(1);
+            }
+        }
+    }
 
     fn interpret_print(&mut self, idx: usize) {
         match self.tree[idx].data.node_type.unwrap() {
@@ -272,6 +314,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
             integers: HashMap::new(),
             strings: HashMap::new(),
             booleans: HashMap::new(),
+            symbols: HashMap::new(),
         }
     }
 }
