@@ -229,13 +229,54 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                             .unwrap(),
                     )
             } else {
+                println!("{:#?}", self.tree[idx].data.token.unwrap());
                 assert!(false, "Illegal operation for strings.");
                 "".to_owned()
             }
         }
     }
 
-    fn interpret_declaration(&mut self, idx: usize) {}
+    fn interpret_declaration(&mut self, idx: usize) {
+        let identifier_type;
+        if let TokenType::Type(t) = self.tree[idx].data.token.unwrap().token_type {
+            identifier_type = t;
+        } else {
+            identifier_type = SymbolType::Undefined;
+        }
+
+        let lc = self.tree[idx].left_child.unwrap();
+        let rs = self.tree[lc].right_sibling.unwrap();
+        let identifier_name = self.tree[lc].data.token.unwrap().value;
+
+        match identifier_type {
+            SymbolType::Int => {
+                let assigned_value = match self.tree[rs].data.token {
+                    Some(_) => self.evaluate_int(rs),
+                    None => 0,
+                };
+                self.integers.insert(identifier_name, assigned_value);
+            }
+            SymbolType::String => {
+                let assigned_value = match self.tree[rs].data.token {
+                    Some(_) => self.evaluate_string(rs),
+                    None => "".to_owned(),
+                };
+                self.strings.insert(identifier_name, assigned_value);
+            }
+            SymbolType::Bool => {
+                let assigned_value = match self.tree[rs].data.token {
+                    Some(_) => self.evaluate_boolean(rs),
+                    None => true,
+                };
+                self.booleans.insert(identifier_name, assigned_value);
+            }
+            _ => {
+                assert!(false, "Illegal type in declaration.");
+            }
+        }
+
+        self.symbols.insert(identifier_name, identifier_type);
+    }
 
     fn interpret_assignment(&mut self, idx: usize) {
         let value = self.tree[self.tree[idx].left_child.unwrap()]
@@ -264,7 +305,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     fn interpret_read(&mut self, idx: usize) {
         let mut input = String::new();
         match io::stdin().read_line(&mut input) {
-            Ok(n) => {
+            Ok(_) => {
                 let input = match input.split(char::is_whitespace).next() {
                     Some(v) => v,
                     None => {
@@ -303,7 +344,11 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn interpret_print(&mut self, idx: usize) {
-        match self.tree[idx].data.node_type.unwrap() {
+        match self.tree[self.tree[idx].left_child.unwrap()]
+            .data
+            .node_type
+            .unwrap()
+        {
             NodeType::Expression(t) | NodeType::Operand(t) => {
                 let idx = self.tree[idx].left_child.unwrap();
                 match t {
@@ -312,7 +357,10 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     _ => assert!(false, "Illegal symbol type for print."),
                 }
             }
-            _ => assert!(false, "Illegal expression type at print."),
+            _ => {
+                println!("{:#?}", self.tree[idx].data.node_type);
+                assert!(false, "Illegal expression type at print.");
+            }
         }
     }
 

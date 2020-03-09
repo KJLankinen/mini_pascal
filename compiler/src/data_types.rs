@@ -1,7 +1,6 @@
 use super::lcrs_tree::Update;
 use serde::Serialize;
 use std::fmt;
-use std::num::ParseIntError;
 
 // ---------------------------------------------------------------------
 // Type definitions for enums and auxiliary data types

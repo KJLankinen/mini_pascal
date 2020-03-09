@@ -205,12 +205,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_declaration(&mut self, idx: usize) {
-        let id_token = &self.tree[self.tree[idx]
+        let lc = self.tree[idx]
             .left_child
-            .expect("Declaration is missing an identifier.")]
-        .data
-        .token
-        .expect("Identifier is missing a token.");
+            .expect("Declaration is missing an identifier.");
+        let id_token = &self.tree[lc]
+            .data
+            .token
+            .expect("Identifier is missing a token.");
         let symbol = self.symbols.get(id_token.value);
 
         if symbol.is_none() {
@@ -221,6 +222,39 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .token_type
             {
                 self.symbols.insert(id_token.value, *t);
+                let rs = self.tree[lc]
+                    .right_sibling
+                    .expect("Declaration is missing a child expression.");
+
+                if self.tree[rs].data.token.is_some() {
+                    let et = self.get_expression_type(rs);
+                    if et != *t {
+                        self.logger.add_error(ErrorType::MismatchedTypes(
+                            self.tree[idx]
+                                .data
+                                .token
+                                .expect("Declaration is missing a token."),
+                            *t,
+                            Some(et),
+                        ));
+                    }
+                    match self.tree[rs]
+                        .data
+                        .node_type
+                        .expect("Declaration's child expression has no node type.")
+                    {
+                        NodeType::Expression(_) => {
+                            self.tree[rs].data.node_type = Some(NodeType::Expression(*t))
+                        }
+                        NodeType::Operand(_) => {
+                            self.tree[rs].data.node_type = Some(NodeType::Operand(*t))
+                        }
+                        _ => assert!(
+                            false,
+                            "Declaration's child expression has a wrong node type."
+                        ),
+                    }
+                }
             } else {
                 assert!(false, "Identifier's TokenType is something else than Type.");
             }
@@ -260,6 +294,23 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     *symbol.unwrap(),
                     Some(et),
                 ));
+            } else {
+                match self.tree[rs]
+                    .data
+                    .node_type
+                    .expect("Declaration's child expression has no node type.")
+                {
+                    NodeType::Expression(_) => {
+                        self.tree[rs].data.node_type = Some(NodeType::Expression(et))
+                    }
+                    NodeType::Operand(_) => {
+                        self.tree[rs].data.node_type = Some(NodeType::Operand(et))
+                    }
+                    _ => assert!(
+                        false,
+                        "Declaration's child expression has a wrong node type."
+                    ),
+                }
             }
         }
     }
@@ -328,7 +379,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
         if let Some(symbol) = self.symbols.get(token.value) {
             let symbol = *symbol;
-            if SymbolType::Int != symbol && SymbolType::String != symbol {
+            if SymbolType::Int == symbol || SymbolType::String == symbol {
+                self.tree[idx].data.node_type = Some(NodeType::Operand(symbol));
+            } else {
                 self.logger
                     .add_error(ErrorType::MismatchedTypes(*token, symbol, None));
             }
@@ -344,7 +397,23 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .left_child
                 .expect("Print is missing a child expression."),
         );
-        if SymbolType::Int != et && SymbolType::String != et {
+        if SymbolType::Int == et || SymbolType::String == et {
+            let lc = self.tree[idx]
+                .left_child
+                .expect("Print is missing a child expression.");
+
+            match self.tree[lc]
+                .data
+                .node_type
+                .expect("Print's child expression has no node type.")
+            {
+                NodeType::Expression(_) => {
+                    self.tree[lc].data.node_type = Some(NodeType::Expression(et))
+                }
+                NodeType::Operand(_) => self.tree[lc].data.node_type = Some(NodeType::Operand(et)),
+                _ => assert!(false, "Print's child expression has a wrong node type."),
+            }
+        } else {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 self.tree[idx]
                     .data
@@ -363,7 +432,23 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .expect("Assert is missing a child expression."),
         );
 
-        if SymbolType::Bool != et {
+        if SymbolType::Bool == et {
+            let lc = self.tree[idx]
+                .left_child
+                .expect("Assert is missing a child expression.");
+
+            match self.tree[lc]
+                .data
+                .node_type
+                .expect("Assert's child expression has no node type.")
+            {
+                NodeType::Expression(_) => {
+                    self.tree[lc].data.node_type = Some(NodeType::Expression(et))
+                }
+                NodeType::Operand(_) => self.tree[lc].data.node_type = Some(NodeType::Operand(et)),
+                _ => assert!(false, "Assert's child expression has a wrong node type."),
+            }
+        } else {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 self.tree[idx]
                     .data
