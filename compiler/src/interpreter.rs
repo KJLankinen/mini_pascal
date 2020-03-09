@@ -229,7 +229,6 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                             .unwrap(),
                     )
             } else {
-                println!("{:#?}", self.tree[idx].data.token.unwrap());
                 assert!(false, "Illegal operation for strings.");
                 "".to_owned()
             }
