@@ -204,8 +204,29 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         }
     }
 
-    fn evaluate_string(&mut self, idx: usize) -> &'a str {
-        ""
+    fn evaluate_string(&mut self, idx: usize) -> String {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
+            match self.tree[idx].data.token.unwrap().token_type {
+                TokenType::LiteralString => self.tree[idx].data.token.unwrap().value.to_owned(),
+                TokenType::Identifier => self.strings.get(self.tree[idx].data.token.unwrap().value).unwrap().to_owned()
+                _ => {
+                    assert!(false, "Illegal token type for string operand.");
+                    "".to_owned()
+                }
+            }
+        } else {
+            if TokenType::OperatorPlus == self.tree[idx].data.token.unwrap().token_type {
+                self.evaluate_string(self.tree[idx].left_child.unwrap())
+                    + self.evaluate_string(
+                        self.tree[self.tree[idx].left_child.unwrap()]
+                            .right_sibling
+                            .unwrap(),
+                    )
+            } else {
+                assert!(false, "Illegal operation for strings.");
+                "".to_owned()
+            }
+        }
     }
 
     fn interpret_declaration(&mut self, idx: usize) {}
