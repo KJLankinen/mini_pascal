@@ -1,6 +1,7 @@
 use super::lcrs_tree::Update;
 use serde::Serialize;
 use std::fmt;
+use std::num::ParseIntError;
 
 // ---------------------------------------------------------------------
 // Type definitions for enums and auxiliary data types
@@ -40,6 +41,7 @@ pub enum ErrorType<'a> {
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
     AssignmentToBlockedVariable(TokenData<'a>),
+    IntParseError(ParseIntError, TokenData<'a>),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -54,6 +56,7 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::AssignmentToBlockedVariable(_) => {
                 write!(f, "assignment to a blocked variable")
             }
+            ErrorType::IntParseError(_, _) => write!(f, "integer parse error"),
         }
     }
 }
@@ -150,7 +153,7 @@ impl<'a> Default for TokenData<'a> {
 // ---------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum NodeType {
     Program,
     Operand(SymbolType),

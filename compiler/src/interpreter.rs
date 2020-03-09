@@ -1,12 +1,15 @@
-use super::data_types::{ErrorType, NodeData, NodeType, SymbolType};
+use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use std::collections::HashMap;
+use std::process;
 
 pub struct Interpreter<'a, 'b> {
     logger: &'b mut Logger<'a>,
     tree: &'b LcRsTree<NodeData<'a>>,
-    symbols: HashMap<&'a str, (SymbolType, &'a str)>,
+    integers: HashMap<&'a str, i32>,
+    strings: HashMap<&'a str, &'a str>,
+    booleans: HashMap<&'a str, bool>,
 }
 
 impl<'a, 'b> Interpreter<'a, 'b> {
@@ -45,11 +48,164 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         };
     }
 
-    fn evaluate_expression<T>(&mut self, idx: usize) -> T
-    where
-        T: Default,
-    {
-        T::default()
+    fn evaluate_boolean(&mut self, idx: usize) -> bool {
+        if let NodeType::Operand(ot) = self.tree[idx].data.node_type.unwrap() {
+            assert!(
+                false,
+                "There are no bool literals, so this should never happen."
+            );
+            false
+        } else {
+            match self.tree[idx].data.token.unwrap().token_type {
+                TokenType::OperatorNot => {
+                    !self.evaluate_boolean(self.tree[idx].left_child.unwrap())
+                }
+                TokenType::OperatorAnd => {
+                    self.evaluate_boolean(self.tree[idx].left_child.unwrap())
+                        && self.evaluate_boolean(
+                            self.tree[self.tree[idx].left_child.unwrap()]
+                                .right_sibling
+                                .unwrap(),
+                        )
+                }
+                TokenType::OperatorLessThan => {
+                    let et = self.tree[self.tree[idx].left_child.unwrap()]
+                        .data
+                        .node_type
+                        .unwrap();
+                    match et {
+                        NodeType::Operand(t) | NodeType::Expression(t) => match t {
+                            SymbolType::Int => {
+                                self.evaluate_int(self.tree[idx].left_child.unwrap())
+                                    < self.evaluate_int(
+                                        self.tree[self.tree[idx].left_child.unwrap()]
+                                            .right_sibling
+                                            .unwrap(),
+                                    )
+                            }
+                            SymbolType::String => {
+                                self.evaluate_string(self.tree[idx].left_child.unwrap())
+                                    .len()
+                                    < self
+                                        .evaluate_string(
+                                            self.tree[self.tree[idx].left_child.unwrap()]
+                                                .right_sibling
+                                                .unwrap(),
+                                        )
+                                        .len()
+                            }
+                            _ => {
+                                assert!(false, "Illegal expression.");
+                                false
+                            }
+                        },
+                        _ => {
+                            assert!(false, "Illegal expression.");
+                            false
+                        }
+                    }
+                }
+                TokenType::OperatorEqual => {
+                    let et = self.tree[self.tree[idx].left_child.unwrap()]
+                        .data
+                        .node_type
+                        .unwrap();
+                    match et {
+                        NodeType::Operand(t) | NodeType::Expression(t) => match t {
+                            SymbolType::Int => {
+                                self.evaluate_int(self.tree[idx].left_child.unwrap())
+                                    == self.evaluate_int(
+                                        self.tree[self.tree[idx].left_child.unwrap()]
+                                            .right_sibling
+                                            .unwrap(),
+                                    )
+                            }
+                            SymbolType::String => {
+                                self.evaluate_string(self.tree[idx].left_child.unwrap())
+                                    .len()
+                                    == self
+                                        .evaluate_string(
+                                            self.tree[self.tree[idx].left_child.unwrap()]
+                                                .right_sibling
+                                                .unwrap(),
+                                        )
+                                        .len()
+                            }
+                            SymbolType::Bool => {
+                                self.evaluate_boolean(self.tree[idx].left_child.unwrap())
+                                    == self.evaluate_boolean(
+                                        self.tree[self.tree[idx].left_child.unwrap()]
+                                            .right_sibling
+                                            .unwrap(),
+                                    )
+                            }
+                            _ => {
+                                assert!(false, "Illegal expression.");
+                                false
+                            }
+                        },
+                        _ => {
+                            assert!(false, "Illegal expression.");
+                            false
+                        }
+                    }
+                }
+                _ => {
+                    assert!(false, "Illegal token type at boolean expression.");
+                    false
+                }
+            }
+        }
+    }
+
+    fn evaluate_int(&mut self, idx: usize) -> i32 {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
+            match self.tree[idx].data.token.unwrap().token_type {
+                TokenType::LiteralInt => {
+                    match self.tree[idx].data.token.unwrap().value.parse::<i32>() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            self.logger.add_error(ErrorType::IntParseError(
+                                e,
+                                self.tree[idx].data.token.unwrap(),
+                            ));
+                            process::exit(1);
+                            0
+                        }
+                    }
+                }
+                TokenType::Identifier => *self
+                    .integers
+                    .get(self.tree[idx].data.token.unwrap().value)
+                    .unwrap(),
+                _ => {
+                    assert!(false, "Illegal token type for int operand.");
+                    0
+                }
+            }
+        } else {
+            let ev1 = self.evaluate_int(self.tree[idx].left_child.unwrap());
+            let ev2 = self.evaluate_int(
+                self.tree[self.tree[idx].left_child.unwrap()]
+                    .right_sibling
+                    .unwrap(),
+            );
+
+            match self.tree[idx].data.token.unwrap().token_type {
+                TokenType::OperatorPlus => ev1 + ev2,
+                TokenType::OperatorMinus => ev1 - ev2,
+                TokenType::OperatorMultiply => ev1 * ev2,
+                TokenType::OperatorDivide => ev1 / ev2,
+                _ => {
+                    assert!(false, "Illegal token type at int  expression.");
+                    0
+                }
+            }
+        }
+    }
+
+    fn evaluate_string(&mut self, idx: usize) -> &'a str {
+        ""
     }
 
     fn interpret_declaration(&mut self, idx: usize) {}
@@ -68,7 +224,9 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         Interpreter {
             logger: logger,
             tree: tree,
-            symbols: HashMap::new(),
+            integers: HashMap::new(),
+            strings: HashMap::new(),
+            booleans: HashMap::new(),
         }
     }
 }

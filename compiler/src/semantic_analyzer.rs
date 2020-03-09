@@ -4,7 +4,7 @@ use super::logger::Logger;
 use std::collections::{HashMap, HashSet};
 
 pub struct Analyzer<'a, 'b> {
-    tree: &'b LcRsTree<NodeData<'a>>,
+    tree: &'b mut LcRsTree<NodeData<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
     logger: &'b mut Logger<'a>,
     blocked_identifiers: HashSet<&'a str>,
@@ -54,10 +54,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             .expect("Operand is missing a token.");
 
         match token.token_type {
-            TokenType::LiteralInt => SymbolType::Int,
-            TokenType::LiteralString => SymbolType::String,
+            TokenType::LiteralInt => {
+                self.tree[idx].data.node_type = Some(NodeType::Operand(SymbolType::Int));
+                SymbolType::Int
+            }
+            TokenType::LiteralString => {
+                self.tree[idx].data.node_type = Some(NodeType::Operand(SymbolType::String));
+                SymbolType::String
+            }
             TokenType::Identifier => {
                 if let Some(symbol) = self.symbols.get(token.value) {
+                    self.tree[idx].data.node_type = Some(NodeType::Operand(*symbol));
                     *symbol
                 } else {
                     self.logger
@@ -83,7 +90,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let lc = self.tree[idx]
                 .left_child
                 .expect("Expression is missing a child node.");
-            let expr_type = self.get_expression_type(lc);
+            let et = self.get_expression_type(lc);
             let expr_token = &self.tree[idx]
                 .data
                 .token
@@ -91,11 +98,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
             match expr_token.token_type {
                 TokenType::OperatorNot => {
-                    if SymbolType::Bool == expr_type {
+                    if SymbolType::Bool == et {
+                        self.tree[idx].data.node_type = Some(NodeType::Expression(et));
                         SymbolType::Bool
                     } else {
                         self.logger
-                            .add_error(ErrorType::IllegalOperation(*expr_token, expr_type));
+                            .add_error(ErrorType::IllegalOperation(*expr_token, et));
                         SymbolType::Undefined
                     }
                 }
@@ -106,71 +114,74 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 | tt @ TokenType::OperatorDivide
                 | tt @ TokenType::OperatorLessThan
                 | tt @ TokenType::OperatorEqual => {
-                    let second_expr_type = self.get_expression_type(
+                    let et2 = self.get_expression_type(
                         self.tree[lc]
                             .right_sibling
                             .expect("Expression is missing its second child."),
                     );
 
-                    if expr_type == second_expr_type {
+                    if et == et2 {
                         match tt {
                             TokenType::OperatorAnd => {
-                                if SymbolType::Bool == expr_type {
-                                    expr_type
+                                if SymbolType::Bool == et {
+                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    et
                                 } else {
-                                    self.logger.add_error(ErrorType::IllegalOperation(
-                                        *expr_token,
-                                        expr_type,
-                                    ));
+                                    self.logger
+                                        .add_error(ErrorType::IllegalOperation(*expr_token, et));
                                     SymbolType::Undefined
                                 }
                             }
                             TokenType::OperatorPlus => {
-                                if SymbolType::String == expr_type || SymbolType::Int == expr_type {
-                                    expr_type
+                                if SymbolType::String == et || SymbolType::Int == et {
+                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    et
                                 } else {
-                                    self.logger.add_error(ErrorType::IllegalOperation(
-                                        *expr_token,
-                                        expr_type,
-                                    ));
+                                    self.logger
+                                        .add_error(ErrorType::IllegalOperation(*expr_token, et));
                                     SymbolType::Undefined
                                 }
                             }
                             TokenType::OperatorMinus => {
-                                if SymbolType::Int == expr_type {
-                                    expr_type
+                                if SymbolType::Int == et {
+                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    et
                                 } else {
-                                    self.logger.add_error(ErrorType::IllegalOperation(
-                                        *expr_token,
-                                        expr_type,
-                                    ));
+                                    self.logger
+                                        .add_error(ErrorType::IllegalOperation(*expr_token, et));
                                     SymbolType::Undefined
                                 }
                             }
                             TokenType::OperatorMultiply => {
-                                if SymbolType::Int == expr_type {
-                                    expr_type
+                                if SymbolType::Int == et {
+                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    et
                                 } else {
-                                    self.logger.add_error(ErrorType::IllegalOperation(
-                                        *expr_token,
-                                        expr_type,
-                                    ));
+                                    self.logger
+                                        .add_error(ErrorType::IllegalOperation(*expr_token, et));
                                     SymbolType::Undefined
                                 }
                             }
                             TokenType::OperatorDivide => {
-                                if SymbolType::Int == expr_type {
-                                    expr_type
+                                if SymbolType::Int == et {
+                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    et
                                 } else {
-                                    self.logger.add_error(ErrorType::IllegalOperation(
-                                        *expr_token,
-                                        expr_type,
-                                    ));
+                                    self.logger
+                                        .add_error(ErrorType::IllegalOperation(*expr_token, et));
                                     SymbolType::Undefined
                                 }
                             }
-                            TokenType::OperatorLessThan => SymbolType::Bool,
-                            TokenType::OperatorEqual => SymbolType::Bool,
+                            TokenType::OperatorLessThan => {
+                                self.tree[idx].data.node_type =
+                                    Some(NodeType::Expression(SymbolType::Bool));
+                                SymbolType::Bool
+                            }
+                            TokenType::OperatorEqual => {
+                                self.tree[idx].data.node_type =
+                                    Some(NodeType::Expression(SymbolType::Bool));
+                                SymbolType::Bool
+                            }
                             _ => {
                                 assert!(false, "Expression token has an illegal type.");
                                 SymbolType::Undefined
@@ -179,8 +190,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     } else {
                         self.logger.add_error(ErrorType::MismatchedTypes(
                             *expr_token,
-                            expr_type,
-                            Some(second_expr_type),
+                            et,
+                            Some(et2),
                         ));
                         SymbolType::Undefined
                     }
@@ -219,8 +230,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_assignment(&mut self, idx: usize) {
-        let node = &self.tree[idx];
-        let identifier = &self.tree[node
+        let identifier = &self.tree[self.tree[idx]
             .left_child
             .expect("Assignment is missing an identifier in AST.")];
         let id_token = &identifier
@@ -235,17 +245,20 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let rs = identifier
                 .right_sibling
                 .expect("Assignment should contain an expression.");
-            let expr_type = self.get_expression_type(rs);
+            let et = self.get_expression_type(rs);
             let symbol = self.symbols.get(id_token.value);
 
             if symbol.is_none() {
                 self.logger
                     .add_error(ErrorType::UndeclaredIdentifier(*id_token));
-            } else if expr_type != *symbol.unwrap() {
+            } else if et != *symbol.unwrap() {
                 self.logger.add_error(ErrorType::MismatchedTypes(
-                    node.data.token.expect("Assignment is missing a token."),
+                    self.tree[idx]
+                        .data
+                        .token
+                        .expect("Assignment is missing a token."),
                     *symbol.unwrap(),
-                    Some(expr_type),
+                    Some(et),
                 ));
             }
         }
@@ -265,15 +278,15 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let rs = identifier
                 .right_sibling
                 .expect("For loop should contain an expression.");
-            let expr_type = self.get_expression_type(rs);
+            let et = self.get_expression_type(rs);
 
-            if SymbolType::Int == expr_type {
+            if SymbolType::Int == et {
                 let rs = self.tree[rs]
                     .right_sibling
                     .expect("For loop should contain an expression.");
-                let expr_type = self.get_expression_type(rs);
+                let et = self.get_expression_type(rs);
 
-                if SymbolType::Int == expr_type {
+                if SymbolType::Int == et {
                     self.blocked_identifiers.insert(id_token.value);
                     let mut next_statement = self.tree[rs].right_sibling;
                     while let Some(rs) = next_statement {
@@ -287,7 +300,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             .data
                             .token
                             .expect("For loop is missing a token."),
-                        expr_type,
+                        et,
                         None,
                     ));
                 }
@@ -297,7 +310,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         .data
                         .token
                         .expect("For loop is missing a token."),
-                    expr_type,
+                    et,
                     None,
                 ));
             }
@@ -326,37 +339,37 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_print(&mut self, idx: usize) {
-        let expr_type = self.get_expression_type(
+        let et = self.get_expression_type(
             self.tree[idx]
                 .left_child
                 .expect("Print is missing a child expression."),
         );
-        if SymbolType::Int != expr_type && SymbolType::String != expr_type {
+        if SymbolType::Int != et && SymbolType::String != et {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 self.tree[idx]
                     .data
                     .token
                     .expect("Print is missing a token."),
-                expr_type,
+                et,
                 None,
             ));
         }
     }
 
     fn handle_assert(&mut self, idx: usize) {
-        let expr_type = self.get_expression_type(
+        let et = self.get_expression_type(
             self.tree[idx]
                 .left_child
                 .expect("Assert is missing a child expression."),
         );
 
-        if SymbolType::Bool != expr_type {
+        if SymbolType::Bool != et {
             self.logger.add_error(ErrorType::MismatchedTypes(
                 self.tree[idx]
                     .data
                     .token
                     .expect("Assertion is missing a token."),
-                expr_type,
+                et,
                 None,
             ));
         }
@@ -365,7 +378,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     // Auxiliary functions
     // ---------------------------------------------------------------------
-    pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
+    pub fn new(tree: &'b mut LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Analyzer {
             tree: tree,
             symbols: HashMap::new(),

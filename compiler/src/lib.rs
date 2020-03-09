@@ -59,7 +59,7 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            Analyzer::new(&tree, &mut logger).analyze();
+                            Analyzer::new(&mut tree, &mut logger).analyze();
                         }
 
                         if logger.errors_encountered() {

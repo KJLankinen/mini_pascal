@@ -1,4 +1,5 @@
 use super::data_types::ErrorType;
+use std::num::ParseIntError;
 
 pub struct Logger<'a> {
     errors: Vec<ErrorType<'a>>,
@@ -88,6 +89,14 @@ impl<'a> Logger<'a> {
                     eprintln!(
                         "Assignment to the variable \"{}\" is not allowed.",
                         token.value
+                    );
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::IntParseError(err, token) => {
+                    eprintln!(
+                        "Error parsing literal int value \"{}\": {}",
+                        token.value, err
                     );
                     line = token.line;
                     column = token.column;
