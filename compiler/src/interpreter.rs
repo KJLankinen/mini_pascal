@@ -1,4 +1,4 @@
-use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
+use super::data_types::{NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use std::collections::HashMap;
@@ -50,7 +50,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         };
     }
 
-    fn evaluate_boolean(&mut self, idx: usize) -> bool {
+    fn evaluate_boolean(&self, idx: usize) -> bool {
         if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
             assert!(
                 false,
@@ -160,17 +160,18 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         }
     }
 
-    fn evaluate_int(&mut self, idx: usize) -> i32 {
+    fn evaluate_int(&self, idx: usize) -> i32 {
         if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
             match self.tree[idx].data.token.unwrap().token_type {
                 TokenType::LiteralInt => {
                     match self.tree[idx].data.token.unwrap().value.parse::<i32>() {
                         Ok(v) => v,
                         Err(e) => {
-                            self.logger.add_error(ErrorType::IntParseError(
-                                e,
-                                self.tree[idx].data.token.unwrap(),
-                            ));
+                            eprintln!(
+                                "\"{}\" is not a valid integer. Error in parse: {}",
+                                self.tree[idx].data.token.unwrap().value,
+                                e
+                            );
                             process::exit(1);
                         }
                     }
@@ -205,7 +206,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         }
     }
 
-    fn evaluate_string(&mut self, idx: usize) -> String {
+    fn evaluate_string(&self, idx: usize) -> String {
         if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
             match self.tree[idx].data.token.unwrap().token_type {
                 TokenType::LiteralString => self.tree[idx].data.token.unwrap().value.to_owned(),
@@ -236,7 +237,27 @@ impl<'a, 'b> Interpreter<'a, 'b> {
 
     fn interpret_declaration(&mut self, idx: usize) {}
 
-    fn interpret_assignment(&mut self, idx: usize) {}
+    fn interpret_assignment(&mut self, idx: usize) {
+        let value = self.tree[self.tree[idx].left_child.unwrap()]
+            .data
+            .token
+            .unwrap()
+            .value;
+        let idx = self.tree[self.tree[idx].left_child.unwrap()]
+            .right_sibling
+            .unwrap();
+        match self.symbols.get(value).unwrap() {
+            SymbolType::Int => {
+                self.integers.insert(value, self.evaluate_int(idx));
+            }
+            SymbolType::String => {
+                self.strings.insert(value, self.evaluate_string(idx));
+            }
+            _ => {
+                assert!(false, "Literal booleans are not supported.");
+            }
+        }
+    }
 
     fn interpret_for(&mut self, idx: usize) {}
 
@@ -249,15 +270,14 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     None => {
                         eprintln!("Empty input is not accepted");
                         process::exit(1);
-                        ""
                     }
                 };
-                let id = self.tree[idx].data.token.unwrap().value;
+                let value = self.tree[idx].data.token.unwrap().value;
 
-                match self.symbols.get(id).unwrap() {
+                match self.symbols.get(value).unwrap() {
                     SymbolType::Int => match input.parse::<i32>() {
                         Ok(v) => {
-                            self.integers.insert(id, v);
+                            self.integers.insert(value, v);
                         }
                         Err(e) => {
                             eprintln!(
@@ -268,7 +288,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                         }
                     },
                     SymbolType::String => {
-                        self.strings.insert(id, input.to_owned());
+                        self.strings.insert(value, input.to_owned());
                     }
                     _ => {
                         assert!(false, "Can't read values to booleans.");

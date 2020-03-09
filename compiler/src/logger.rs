@@ -92,14 +92,6 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IntParseError(err, token) => {
-                    eprintln!(
-                        "Error parsing literal int value \"{}\": {}",
-                        token.value, err
-                    );
-                    line = token.line;
-                    column = token.column;
-                }
             }
             self.print_line(line as usize, column as usize);
         }

@@ -41,7 +41,6 @@ pub enum ErrorType<'a> {
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
     AssignmentToBlockedVariable(TokenData<'a>),
-    IntParseError(ParseIntError, TokenData<'a>),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -56,7 +55,6 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::AssignmentToBlockedVariable(_) => {
                 write!(f, "assignment to a blocked variable")
             }
-            ErrorType::IntParseError(_, _) => write!(f, "integer parse error"),
         }
     }
 }
