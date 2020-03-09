@@ -8,7 +8,7 @@ pub struct Interpreter<'a, 'b> {
     logger: &'b mut Logger<'a>,
     tree: &'b LcRsTree<NodeData<'a>>,
     integers: HashMap<&'a str, i32>,
-    strings: HashMap<&'a str, &'a str>,
+    strings: HashMap<&'a str, String>,
     booleans: HashMap<&'a str, bool>,
 }
 
@@ -49,7 +49,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_boolean(&mut self, idx: usize) -> bool {
-        if let NodeType::Operand(ot) = self.tree[idx].data.node_type.unwrap() {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
             assert!(
                 false,
                 "There are no bool literals, so this should never happen."
@@ -170,7 +170,6 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                                 self.tree[idx].data.token.unwrap(),
                             ));
                             process::exit(1);
-                            0
                         }
                     }
                 }
@@ -208,7 +207,11 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
             match self.tree[idx].data.token.unwrap().token_type {
                 TokenType::LiteralString => self.tree[idx].data.token.unwrap().value.to_owned(),
-                TokenType::Identifier => self.strings.get(self.tree[idx].data.token.unwrap().value).unwrap().to_owned()
+                TokenType::Identifier => self
+                    .strings
+                    .get(self.tree[idx].data.token.unwrap().value)
+                    .unwrap()
+                    .to_owned(),
                 _ => {
                     assert!(false, "Illegal token type for string operand.");
                     "".to_owned()
@@ -217,7 +220,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         } else {
             if TokenType::OperatorPlus == self.tree[idx].data.token.unwrap().token_type {
                 self.evaluate_string(self.tree[idx].left_child.unwrap())
-                    + self.evaluate_string(
+                    + &self.evaluate_string(
                         self.tree[self.tree[idx].left_child.unwrap()]
                             .right_sibling
                             .unwrap(),
@@ -237,9 +240,30 @@ impl<'a, 'b> Interpreter<'a, 'b> {
 
     fn interpret_read(&mut self, idx: usize) {}
 
-    fn interpret_print(&mut self, idx: usize) {}
+    fn interpret_print(&mut self, idx: usize) {
+        match self.tree[idx].data.node_type.unwrap() {
+            NodeType::Expression(t) | NodeType::Operand(t) => {
+                let idx = self.tree[idx].left_child.unwrap();
+                match t {
+                    SymbolType::Int => println!("{}", self.evaluate_int(idx)),
+                    SymbolType::String => println!("{}", self.evaluate_string(idx)),
+                    _ => assert!(false, "Illegal symbol type for print."),
+                }
+            }
+            _ => assert!(false, "Illegal expression type at print."),
+        }
+    }
 
-    fn interpret_assert(&mut self, idx: usize) {}
+    fn interpret_assert(&mut self, idx: usize) {
+        if false == self.evaluate_boolean(self.tree[idx].left_child.unwrap()) {
+            eprintln!(
+                "Assertion failed: {}",
+                self.logger
+                    .get_line(self.tree[idx].data.token.unwrap().line as usize)
+            );
+            process::exit(1);
+        }
+    }
 
     pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Interpreter {

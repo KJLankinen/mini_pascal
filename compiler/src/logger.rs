@@ -1,5 +1,4 @@
 use super::data_types::ErrorType;
-use std::num::ParseIntError;
 
 pub struct Logger<'a> {
     errors: Vec<ErrorType<'a>>,
@@ -124,6 +123,11 @@ impl<'a> Logger<'a> {
         }
         println!("  {}\t|\t{}", line + 1, self.lines[line]);
         println!("\t|\t{}", expl_string);
+    }
+
+    pub fn get_line(&self, line: usize) -> &'a str {
+        assert!(line <= self.lines.len());
+        self.lines[line - 1]
     }
 
     pub fn errors_encountered(&self) -> bool {
