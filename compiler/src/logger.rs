@@ -3,7 +3,6 @@ use super::data_types::ErrorType;
 pub struct Logger<'a> {
     errors: Vec<ErrorType<'a>>,
     lines: Vec<&'a str>,
-    source_str: &'a str,
 }
 
 impl<'a> Logger<'a> {
@@ -11,7 +10,6 @@ impl<'a> Logger<'a> {
         Logger {
             errors: vec![],
             lines: source_str.lines().collect(),
-            source_str: source_str,
         }
     }
 
@@ -21,18 +19,18 @@ impl<'a> Logger<'a> {
 
     pub fn print_errors(&self) {
         for error in self.errors.iter() {
-            eprint!("{}: ", error);
+            eprintln!("error: {}", error);
             let column;
             let line;
             match error {
                 ErrorType::SyntaxError(token, expected) => {
                     if 1 < expected.len() {
-                        eprint!("expected one of ");
+                        eprint!("Expected one of ");
                         for e in expected.iter() {
                             eprint!("\"{}\", ", e);
                         }
                     } else if 0 < expected.len() {
-                        eprint!("expected \"{}\", ", expected[0]);
+                        eprint!("Expected \"{}\", ", expected[0]);
                     } else {
                         eprint!("Unexpectedly ");
                     }
@@ -86,9 +84,13 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::Undefined => {
-                    line = 0;
-                    column = 0
+                ErrorType::AssignmentToBlockedVariable(token) => {
+                    eprintln!(
+                        "Assignment to the variable \"{}\" is not allowed.",
+                        token.value
+                    );
+                    line = token.line;
+                    column = token.column;
                 }
             }
             self.print_line(line as usize, column as usize);

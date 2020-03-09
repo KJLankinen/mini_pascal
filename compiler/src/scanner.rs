@@ -43,7 +43,7 @@ impl<'a> Scanner<'a> {
         // possible internal state changes are also done, e.g. when a newline character is found.
         // Also each line is stored individually for error messaging purposes.
         match self.chars.peek() {
-            Some((pos, ch)) => {
+            Some((_, ch)) => {
                 self.column += 1;
                 if &'\n' == ch {
                     self.line += 1;

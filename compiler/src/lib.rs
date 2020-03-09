@@ -1,4 +1,3 @@
-// Specify here the implemented and used crates
 mod data_types;
 mod lcrs_tree;
 mod logger;
@@ -12,7 +11,6 @@ use parser::Parser;
 use semantic_analyzer::Analyzer;
 use std::{env, fs, process};
 
-// Called from main to kick off the interpretation
 pub fn run() {
     let args: Vec<String> = env::args().collect();
 
@@ -32,9 +30,6 @@ pub fn run() {
             if filename.ends_with(".mpl") {
                 match fs::read_to_string(&filename) {
                     Ok(source_str) => {
-                        // Reading the source string from the given .mpl file was successfull
-                        // Next see if cmd line arguments were passed and if the AST should be
-                        // serialized to a json file
                         let out_file = match args.len() {
                             3 => {
                                 if "--debug" == args[2] {

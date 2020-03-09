@@ -39,7 +39,7 @@ pub enum ErrorType<'a> {
     IllegalOperation(TokenData<'a>, SymbolType),
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
-    Undefined,
+    AssignmentToBlockedVariable(TokenData<'a>),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -51,7 +51,9 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::IllegalOperation(_, _) => write!(f, "illegal operation"),
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
             ErrorType::Redeclaration(_) => write!(f, "redeclaration"),
-            ErrorType::Undefined => write!(f, "undefined"),
+            ErrorType::AssignmentToBlockedVariable(_) => {
+                write!(f, "assignment to a blocked variable")
+            }
         }
     }
 }

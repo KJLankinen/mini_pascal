@@ -1,35 +1,34 @@
 use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct Analyzer<'a, 'b> {
     tree: &'b LcRsTree<NodeData<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
     logger: &'b mut Logger<'a>,
+    blocked_identifiers: HashSet<&'a str>,
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
-    pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
-        Analyzer {
-            tree: tree,
-            symbols: HashMap::new(),
-            logger: logger,
-        }
-    }
-
+    // ---------------------------------------------------------------------
+    // Called to start the semantic analysis
+    // ---------------------------------------------------------------------
     pub fn analyze(&mut self) {
         // Start walking down the tree
         assert!(self.tree.len() > 0);
         let mut node = self.tree[0].left_child;
 
         while let Some(idx) = node {
-            self.handle(idx);
+            self.handle_statement(idx);
             node = self.tree[idx].right_sibling;
         }
     }
 
-    fn handle(&mut self, idx: usize) {
+    // ---------------------------------------------------------------------
+    // Functions that handle the semantic constraints
+    // ---------------------------------------------------------------------
+    fn handle_statement(&mut self, idx: usize) {
         match self.tree[idx]
             .data
             .node_type
@@ -225,26 +224,31 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         let identifier = &self.tree[node
             .left_child
             .expect("Assignment is missing an identifier in AST.")];
-        let id_token = identifier
+        let id_token = &identifier
             .data
             .token
             .expect("Identifier is missing a token.");
 
-        let rs = identifier
-            .right_sibling
-            .expect("Assignment should contain an expression.");
-        let expr_type = self.get_expression_type(rs);
-        let symbol = self.symbols.get(id_token.value);
-
-        if symbol.is_none() {
+        if self.blocked_identifiers.contains(id_token.value) {
             self.logger
-                .add_error(ErrorType::UndeclaredIdentifier(id_token));
-        } else if expr_type != *symbol.unwrap() {
-            self.logger.add_error(ErrorType::MismatchedTypes(
-                node.data.token.expect("Assignment is missing a token."),
-                *symbol.unwrap(),
-                Some(expr_type),
-            ));
+                .add_error(ErrorType::AssignmentToBlockedVariable(*id_token));
+        } else {
+            let rs = identifier
+                .right_sibling
+                .expect("Assignment should contain an expression.");
+            let expr_type = self.get_expression_type(rs);
+            let symbol = self.symbols.get(id_token.value);
+
+            if symbol.is_none() {
+                self.logger
+                    .add_error(ErrorType::UndeclaredIdentifier(*id_token));
+            } else if expr_type != *symbol.unwrap() {
+                self.logger.add_error(ErrorType::MismatchedTypes(
+                    node.data.token.expect("Assignment is missing a token."),
+                    *symbol.unwrap(),
+                    Some(expr_type),
+                ));
+            }
         }
     }
 
@@ -271,11 +275,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 let expr_type = self.get_expression_type(rs);
 
                 if SymbolType::Int == expr_type {
+                    self.blocked_identifiers.insert(id_token.value);
                     let mut next_statement = self.tree[rs].right_sibling;
                     while let Some(rs) = next_statement {
-                        self.handle(rs);
+                        self.handle_statement(rs);
                         next_statement = self.tree[rs].right_sibling;
                     }
+                    self.blocked_identifiers.remove(id_token.value);
                 } else {
                     self.logger.add_error(ErrorType::MismatchedTypes(
                         self.tree[idx]
@@ -308,7 +314,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             .token
             .expect("Read statement has no token.");
 
-        if self.symbols.contains_key(token.value) {
+        if let Some(symbol) = self.symbols.get(token.value) {
+            let symbol = *symbol;
+            if SymbolType::Int != symbol && SymbolType::String != symbol {
+                self.logger
+                    .add_error(ErrorType::MismatchedTypes(*token, symbol, None));
+            }
         } else {
             self.logger
                 .add_error(ErrorType::UndeclaredIdentifier(*token));
@@ -316,11 +327,21 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_print(&mut self, idx: usize) {
-        self.get_expression_type(
+        let expr_type = self.get_expression_type(
             self.tree[idx]
                 .left_child
                 .expect("Print is missing a child expression."),
         );
+        if SymbolType::Int != expr_type && SymbolType::String != expr_type {
+            self.logger.add_error(ErrorType::MismatchedTypes(
+                self.tree[idx]
+                    .data
+                    .token
+                    .expect("Print is missing a token."),
+                expr_type,
+                None,
+            ));
+        }
     }
 
     fn handle_assert(&mut self, idx: usize) {
@@ -339,6 +360,18 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 expr_type,
                 None,
             ));
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Auxiliary functions
+    // ---------------------------------------------------------------------
+    pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
+        Analyzer {
+            tree: tree,
+            symbols: HashMap::new(),
+            logger: logger,
+            blocked_identifiers: HashSet::new(),
         }
     }
 }
