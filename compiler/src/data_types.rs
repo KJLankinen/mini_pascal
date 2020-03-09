@@ -150,11 +150,11 @@ impl<'a> Default for TokenData<'a> {
 // ---------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeType {
     Program,
-    Operand,
-    Expression,
+    Operand(SymbolType),
+    Expression(SymbolType),
     Declaration,
     Assignment,
     For,

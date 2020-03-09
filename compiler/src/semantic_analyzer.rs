@@ -73,11 +73,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn get_expression_type(&mut self, idx: usize) -> SymbolType {
-        if NodeType::Operand
-            == self.tree[idx]
-                .data
-                .node_type
-                .expect("No node type on expression.")
+        if let NodeType::Operand(_) = self.tree[idx]
+            .data
+            .node_type
+            .expect("No node type on expression.")
         {
             self.get_operand_type(idx)
         } else {

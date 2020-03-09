@@ -274,7 +274,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         parser.tree.update_data(
                             my_id,
                             NodeData {
-                                node_type: Some(NodeType::Operand),
+                                node_type: Some(NodeType::Operand(SymbolType::Undefined)),
                                 token: None,
                             },
                         );
@@ -380,7 +380,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: Some(NodeType::Operand),
+                        node_type: Some(NodeType::Operand(SymbolType::Undefined)),
                         token: token,
                     },
                 );
@@ -550,7 +550,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: Some(NodeType::Operand),
+                        node_type: Some(NodeType::Operand(SymbolType::Undefined)),
                         token: token,
                     },
                 );
@@ -664,7 +664,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: Some(NodeType::Operand),
+                        node_type: Some(NodeType::Operand(SymbolType::Undefined)),
                         token: Some(token),
                     },
                 );
@@ -712,7 +712,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.update_data(
                 my_id,
                 NodeData {
-                    node_type: Some(NodeType::Expression),
+                    node_type: Some(NodeType::Expression(SymbolType::Undefined)),
                     token: Some(token),
                 },
             );
@@ -761,7 +761,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     my_id,
                     NodeData {
-                        node_type: Some(NodeType::Expression),
+                        node_type: Some(NodeType::Expression(SymbolType::Undefined)),
                         token: Some(token),
                     },
                 );
@@ -803,7 +803,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.update_data(
                 my_id,
                 NodeData {
-                    node_type: Some(NodeType::Operand),
+                    node_type: Some(NodeType::Operand(SymbolType::Undefined)),
                     token: Some(token),
                 },
             );
