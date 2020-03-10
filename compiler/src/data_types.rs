@@ -39,6 +39,15 @@ pub enum ErrorType<'a> {
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
     AssignmentToBlockedVariable(TokenData<'a>),
+    ForMismatchedType(
+        TokenData<'a>,
+        Option<SymbolType>,
+        Option<SymbolType>,
+        Option<SymbolType>,
+    ),
+    AssignMismatchedType(TokenData<'a>, SymbolType, SymbolType),
+    IOMismatchedType(TokenData<'a>, SymbolType),
+    AssertMismatchedType(TokenData<'a>, SymbolType),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -53,6 +62,10 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::AssignmentToBlockedVariable(_) => {
                 write!(f, "assignment to a blocked variable")
             }
+            ErrorType::ForMismatchedType(_, _, _, _) => write!(f, "mismatched type"),
+            ErrorType::AssignMismatchedType(_, _, _) => write!(f, "mismatched type"),
+            ErrorType::IOMismatchedType(_, _) => write!(f, "mismatched type"),
+            ErrorType::AssertMismatchedType(_, _) => write!(f, "mismatched type"),
         }
     }
 }
@@ -179,9 +192,11 @@ pub enum NodeType<'a> {
         identifier: Option<TokenData<'a>>,
     },
     Print {
+        token: Option<TokenData<'a>>,
         expression: usize,
     },
     Assert {
+        token: Option<TokenData<'a>>,
         expression: usize,
     },
     Undefined,

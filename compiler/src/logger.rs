@@ -1,4 +1,4 @@
-use super::data_types::ErrorType;
+use super::data_types::{ErrorType, SymbolType};
 
 pub struct Logger<'a> {
     errors: Vec<ErrorType<'a>>,
@@ -81,6 +81,57 @@ impl<'a> Logger<'a> {
                         "Assignment to the variable \"{}\" is not allowed.",
                         token.value
                     );
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::ForMismatchedType(token, identifier_type, expr1, expr2) => {
+                    eprint!("The ");
+                    let st;
+                    if identifier_type.is_some() {
+                        st = identifier_type.unwrap();
+                        eprint!("identifier");
+                    } else if expr1.is_some() {
+                        st = expr1.unwrap();
+                        eprint!("first expression");
+                    } else if expr2.is_some() {
+                        st = expr2.unwrap();
+                        eprint!("second expression");
+                    } else {
+                        st = SymbolType::Undefined;
+                    }
+                    eprintln!(
+                        " of for loop is wrong type. Expected \"{}\", found \"{}\",",
+                        SymbolType::Int,
+                        st
+                    );
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::AssignMismatchedType(token, identifier_type, expression_type) => {
+                    eprint!("Mismatched types in assignment. Identifier is of type ");
+                    eprintln!(
+                        "\"{}\', expression of type \"{}\".",
+                        identifier_type, expression_type
+                    );
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::IOMismatchedType(token, expression_type) => {
+                    eprint!(
+                        "Read and print can only be used with types \"{}\" and \"{}\", ",
+                        SymbolType::Int,
+                        SymbolType::String
+                    );
+                    eprintln!("not with the given type of \"{}\".", expression_type);
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::AssertMismatchedType(token, expression_type) => {
+                    eprint!(
+                        "Assert can only be used with type \"{}\", ",
+                        SymbolType::Bool
+                    );
+                    eprintln!("given expression was of type \"{}\".", expression_type);
                     line = token.line;
                     column = token.column;
                 }

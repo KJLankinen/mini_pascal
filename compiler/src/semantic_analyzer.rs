@@ -65,11 +65,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 let ref identifier = identifier.expect("Read is missing an identifier token.");
                 self.handle_read(identifier);
             }
-            NodeType::Print { expression } => {
-                self.handle_print(expression);
+            NodeType::Print { token, expression } => {
+                let ref token = token.expect("Print is missing a token.");
+                self.handle_print(token, expression);
             }
-            NodeType::Assert { expression } => {
-                self.handle_assert(expression);
+            NodeType::Assert { token, expression } => {
+                let ref token = token.expect("Assert is missing a token.");
+                self.handle_assert(token, expression);
             }
             _ => {
                 assert!(false, "Unhandled node type.");
@@ -230,7 +232,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 if let Some(idx) = expr {
                     let expr_type = self.check_expression(idx);
                     if expr_type != symbol_type {
-                        // TODO: Add new error type
+                        self.logger.add_error(ErrorType::AssignMismatchedType(
+                            *identifier,
+                            symbol_type,
+                            expr_type,
+                        ));
                     }
                 }
             }
@@ -247,7 +253,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     let st = *st;
                     let expr_type = self.check_expression(expression);
                     if expr_type != st {
-                        // TODO add new error type
+                        self.logger.add_error(ErrorType::AssignMismatchedType(
+                            *identifier,
+                            st,
+                            expr_type,
+                        ));
                     }
                 }
                 None => {
@@ -280,13 +290,28 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             self.blocked_identifiers.remove(identifier.value);
                         } else {
-                            // TODO add new error type
+                            self.logger.add_error(ErrorType::ForMismatchedType(
+                                *identifier,
+                                None,
+                                None,
+                                Some(expr_type),
+                            ));
                         }
                     } else {
-                        // TODO add new error type
+                        self.logger.add_error(ErrorType::ForMismatchedType(
+                            *identifier,
+                            None,
+                            Some(expr_type),
+                            None,
+                        ));
                     }
                 } else {
-                    // TODO add new error type
+                    self.logger.add_error(ErrorType::ForMismatchedType(
+                        *identifier,
+                        Some(*st),
+                        None,
+                        None,
+                    ));
                 }
             }
             None => {
@@ -300,8 +325,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         match self.symbols.get(identifier.value) {
             Some(st) => match st {
                 SymbolType::Int | SymbolType::String => (),
-                // TODO add new error type
-                _ => (),
+                _ => {
+                    self.logger
+                        .add_error(ErrorType::IOMismatchedType(*identifier, *st));
+                }
             },
             None => {
                 self.logger
@@ -310,17 +337,19 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn handle_print(&mut self, expression: usize) {
+    fn handle_print(&mut self, token: &TokenData<'a>, expression: usize) {
         let expr_type = self.check_expression(expression);
         if SymbolType::Int != expr_type && SymbolType::String != expr_type {
-            // TODO add new error type
+            self.logger
+                .add_error(ErrorType::IOMismatchedType(*token, expr_type));
         }
     }
 
-    fn handle_assert(&mut self, expression: usize) {
+    fn handle_assert(&mut self, token: &TokenData<'a>, expression: usize) {
         let expr_type = self.check_expression(expression);
         if SymbolType::Bool != expr_type {
-            // TODO add new error type
+            self.logger
+                .add_error(ErrorType::AssertMismatchedType(*token, expr_type));
         }
     }
 

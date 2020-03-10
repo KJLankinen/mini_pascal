@@ -568,7 +568,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             TokenType::KeywordPrint => {
                 // Print statement
                 let my_id = self.tree.add_child(Some(parent));
-                self.match_token(&[TokenType::KeywordPrint])?;
+                let token = self.match_token(&[TokenType::KeywordPrint])?;
 
                 // No point in recovery tokens, since the expression is the last part of this
                 // statement.
@@ -576,13 +576,14 @@ impl<'a, 'b> Parser<'a, 'b> {
 
                 let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
                 self.tree[my_id].data = NodeType::Print {
+                    token: Some(token),
                     expression: expression,
                 };
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
                 let my_id = self.tree.add_child(Some(parent));
-                self.match_token(&[TokenType::KeywordAssert])?;
+                let token = self.match_token(&[TokenType::KeywordAssert])?;
 
                 // Recovery point for the ')' token
                 let paren_closure = |parser: &mut Self| -> ParseResult<()> {
@@ -634,6 +635,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
                 let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
                 self.tree[my_id].data = NodeType::Assert {
+                    token: Some(token),
                     expression: expression,
                 };
             }
