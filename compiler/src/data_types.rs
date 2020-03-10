@@ -72,7 +72,7 @@ pub enum TokenType {
     KeywordRead,
     KeywordPrint,
     KeywordAssert,
-    Type(SymbolType),
+    Type,
     LiteralInt,
     LiteralString,
     OperatorPlus,
@@ -105,7 +105,7 @@ impl fmt::Display for TokenType {
             TokenType::KeywordRead => write!(f, "read"),
             TokenType::KeywordPrint => write!(f, "print"),
             TokenType::KeywordAssert => write!(f, "assert"),
-            TokenType::Type(s) => s.fmt(f),
+            TokenType::Type => write!(f, "int, string or bool"),
             TokenType::LiteralInt => write!(f, "a literal integer"),
             TokenType::LiteralString => write!(f, "a literal string"),
             TokenType::OperatorPlus => write!(f, "+"),
@@ -153,8 +153,8 @@ impl<'a> Default for TokenData<'a> {
 #[derive(Serialize, Debug, Clone, Copy, PartialEq)]
 pub enum NodeType {
     Program,
-    Operand(SymbolType),
-    Expression(SymbolType),
+    Operand,
+    Expression,
     Declaration,
     Assignment,
     For,

@@ -274,7 +274,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         parser.tree.update_data(
                             my_id,
                             NodeData {
-                                node_type: NodeType::Operand(SymbolType::Undefined),
+                                node_type: NodeType::Operand,
                                 token: None,
                             },
                         );
@@ -288,11 +288,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                     let mut recovery_token = None;
                     let token = parser.process(
                         Parser::match_token,
-                        &[
-                            TokenType::Type(SymbolType::Int),
-                            TokenType::Type(SymbolType::String),
-                            TokenType::Type(SymbolType::Bool),
-                        ],
+                        &[TokenType::Type],
                         &[
                             TokenType::Assignment,
                             TokenType::OperatorNot,
@@ -331,9 +327,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         Parser::match_token,
                         &[TokenType::TypeSeparator],
                         &[
-                            TokenType::Type(SymbolType::Int),
-                            TokenType::Type(SymbolType::String),
-                            TokenType::Type(SymbolType::Bool),
+                            TokenType::Type,
                             TokenType::Assignment,
                             TokenType::OperatorNot,
                             TokenType::LParen,
@@ -348,7 +342,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         type_closure(parser)?;
                     } else {
                         match recovery_token.expect("Recovery token must be some token.") {
-                            TokenType::Type(_) => type_closure(parser)?,
+                            TokenType::Type => type_closure(parser)?,
                             TokenType::Assignment => assignment_closure(parser)?,
                             _ => expr_closure(parser)?,
                         };
@@ -364,9 +358,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                     &[TokenType::Identifier],
                     &[
                         TokenType::TypeSeparator,
-                        TokenType::Type(SymbolType::Int),
-                        TokenType::Type(SymbolType::String),
-                        TokenType::Type(SymbolType::Bool),
+                        TokenType::Type,
                         TokenType::Assignment,
                         TokenType::OperatorNot,
                         TokenType::LParen,
@@ -380,7 +372,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: NodeType::Operand(SymbolType::Undefined),
+                        node_type: NodeType::Operand,
                         token: token,
                     },
                 );
@@ -390,7 +382,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 } else {
                     match recovery_token.expect("Recovery token must be some token.") {
                         TokenType::TypeSeparator => separator_closure(self)?,
-                        TokenType::Type(_) => type_closure(self)?,
+                        TokenType::Type => type_closure(self)?,
                         TokenType::Assignment => assignment_closure(self)?,
                         _ => expr_closure(self)?,
                     };
@@ -550,7 +542,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: NodeType::Operand(SymbolType::Undefined),
+                        node_type: NodeType::Operand,
                         token: token,
                     },
                 );
@@ -664,7 +656,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     id,
                     NodeData {
-                        node_type: NodeType::Operand(SymbolType::Undefined),
+                        node_type: NodeType::Operand,
                         token: Some(token),
                     },
                 );
@@ -712,7 +704,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.update_data(
                 my_id,
                 NodeData {
-                    node_type: NodeType::Expression(SymbolType::Undefined),
+                    node_type: NodeType::Expression,
                     token: Some(token),
                 },
             );
@@ -761,7 +753,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.tree.update_data(
                     my_id,
                     NodeData {
-                        node_type: NodeType::Expression(SymbolType::Undefined),
+                        node_type: NodeType::Expression,
                         token: Some(token),
                     },
                 );
@@ -803,7 +795,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.update_data(
                 my_id,
                 NodeData {
-                    node_type: NodeType::Operand(SymbolType::Undefined),
+                    node_type: NodeType::Operand,
                     token: Some(token),
                 },
             );
