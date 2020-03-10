@@ -344,12 +344,14 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         let range_end = self.evaluate_int(end_expr);
         if range_start < range_end {
             if let Some(idx) = first_statement {
-                for i in range_start..range_end {
-                    let id = idx;
+                let mut next;
+                for i in range_start..=range_end {
                     self.integers.insert(identifier.value, i);
-                    self.handle_statement(id);
-                    while let Some(id) = self.tree[id].right_sibling {
+                    next = idx;
+                    self.handle_statement(next);
+                    while let Some(id) = self.tree[next].right_sibling {
                         self.handle_statement(id);
+                        next = id;
                     }
                 }
             }
