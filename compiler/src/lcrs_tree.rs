@@ -12,7 +12,6 @@ use std::ops::{Index, IndexMut};
 pub struct LcRsTree<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
     nodes: Vec<Node<T>>,
@@ -22,12 +21,9 @@ where
 impl<T> LcRsTree<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
-    // Functions for adding new nodes, updating the data of a node, counting the children of a node
-    // and removing nodes while promoting the children of the removed node to its place.
-    pub fn add_child(&mut self, parent: Option<usize>) -> Option<usize> {
+    pub fn add_child(&mut self, parent: Option<usize>) -> usize {
         let my_id = self.new_node();
         self.nodes[my_id].parent = parent;
 
@@ -56,7 +52,7 @@ where
             }
         }
 
-        Some(my_id)
+        my_id
     }
 
     fn new_node(&mut self) -> usize {
@@ -72,26 +68,16 @@ where
         }
     }
 
-    pub fn update_data(&mut self, id: Option<usize>, data: T) {
-        if let Some(id) = id {
-            if id < self.nodes.len() {
-                self.nodes[id].data.update(data);
-            }
-        }
-    }
-
-    pub fn count_children(&self, id: Option<usize>) -> usize {
+    pub fn count_children(&self, id: usize) -> usize {
         let mut num_children = 0;
-        if let Some(id) = id {
-            if id < self.nodes.len() {
-                if let Some(id) = self.nodes[id].left_child {
-                    num_children += 1;
+        if id < self.nodes.len() {
+            if let Some(id) = self.nodes[id].left_child {
+                num_children += 1;
 
-                    let mut next = id;
-                    while let Some(id) = self.nodes[next].right_sibling {
-                        num_children += 1;
-                        next = id;
-                    }
+                let mut next = id;
+                while let Some(id) = self.nodes[next].right_sibling {
+                    num_children += 1;
+                    next = id;
                 }
             }
         }
@@ -99,7 +85,7 @@ where
         return num_children;
     }
 
-    pub fn remove_node(&mut self, id: Option<usize>) {
+    pub fn remove_node(&mut self, id: usize) {
         // This functions removes the given node from the tree. The possible children of the node
         // take its place in the tree s.t. younger siblings of the removed node will become the
         // younger siblings of the youngest child of the removed node. If the removed node has older
@@ -123,49 +109,47 @@ where
             tree.nodes[next].right_sibling = tree.nodes[my_id].right_sibling;
         };
 
-        if let Some(id) = id {
-            if id < self.nodes.len() {
-                // Trying to remove the root is not handled (the parent of root is None)
-                if let Some(parent) = self.nodes[id].parent {
-                    if let Some(next_child) = self.nodes[parent].left_child {
-                        if next_child == id {
-                            // I am first child
-                            if self.nodes[id].left_child.is_some() {
-                                // I have children, set my parent's first child to be my first
-                                // child and promote my children to my place.
-                                self.nodes[parent].left_child = self.nodes[id].left_child;
-                                promote_children(id, self);
-                            } else {
-                                // I have no children, so make my next sibling be first child
-                                self.nodes[parent].left_child = self.nodes[id].right_sibling;
-                            }
+        if id < self.nodes.len() {
+            // Trying to remove the root is not handled (the parent of root is None)
+            if let Some(parent) = self.nodes[id].parent {
+                if let Some(next_child) = self.nodes[parent].left_child {
+                    if next_child == id {
+                        // I am first child
+                        if self.nodes[id].left_child.is_some() {
+                            // I have children, set my parent's first child to be my first
+                            // child and promote my children to my place.
+                            self.nodes[parent].left_child = self.nodes[id].left_child;
+                            promote_children(id, self);
                         } else {
-                            // I am not first child
-                            let mut prev = next_child;
-                            while let Some(next_child) = self.nodes[prev].right_sibling {
-                                // If I am the next sibling of prev, stop.
-                                if id == next_child {
-                                    break;
-                                }
-                                prev = next_child;
+                            // I have no children, so make my next sibling be first child
+                            self.nodes[parent].left_child = self.nodes[id].right_sibling;
+                        }
+                    } else {
+                        // I am not first child
+                        let mut prev = next_child;
+                        while let Some(next_child) = self.nodes[prev].right_sibling {
+                            // If I am the next sibling of prev, stop.
+                            if id == next_child {
+                                break;
                             }
-
-                            if self.nodes[id].left_child.is_some() {
-                                // I have children, make my first child be the next sibling of my
-                                // youngest older sibling and promote my children.
-                                self.nodes[prev].right_sibling = self.nodes[id].left_child;
-                                promote_children(id, self);
-                            } else {
-                                // I have no children, so make my older sibling point to my younger
-                                // sibling
-                                self.nodes[prev].right_sibling = self.nodes[id].right_sibling;
-                            }
+                            prev = next_child;
                         }
 
-                        // I am done, goodbye cruel world
-                        self.nodes[id] = Node::default();
-                        self.unused_ids.push(id);
+                        if self.nodes[id].left_child.is_some() {
+                            // I have children, make my first child be the next sibling of my
+                            // youngest older sibling and promote my children.
+                            self.nodes[prev].right_sibling = self.nodes[id].left_child;
+                            promote_children(id, self);
+                        } else {
+                            // I have no children, so make my older sibling point to my younger
+                            // sibling
+                            self.nodes[prev].right_sibling = self.nodes[id].right_sibling;
+                        }
                     }
+
+                    // I am done, goodbye cruel world
+                    self.nodes[id] = Node::default();
+                    self.unused_ids.push(id);
                 }
             }
         }
@@ -174,7 +158,6 @@ where
     // ---------------------------------------------------------------------
     // Public utility functions
     // ---------------------------------------------------------------------
-
     pub fn new() -> Self {
         LcRsTree {
             nodes: vec![],
@@ -211,7 +194,7 @@ where
                 }
             }
 
-            let mut obj = json!(&self.nodes[my_id].data);
+            let mut obj = json!(&self.nodes[my_id]);
             match my_children.len() {
                 0 => {}
                 1 => {
@@ -238,7 +221,6 @@ where
 impl<T> Index<usize> for LcRsTree<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
     type Output = Node<T>;
@@ -251,7 +233,6 @@ where
 impl<T> IndexMut<usize> for LcRsTree<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
@@ -259,21 +240,10 @@ where
     }
 }
 
-// ---------------------------------------------------------------------
-// Define the trait Update, which the data must implement. It is used
-// by the update_data() function to update the data without knowing
-// anything about the actual implementation that is data dependent.
-// The nodes of the tree are defined here as well.
-// ---------------------------------------------------------------------
-pub trait Update {
-    fn update(&mut self, data: Self);
-}
-
-#[derive(Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct Node<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
     pub parent: Option<usize>,
@@ -285,7 +255,6 @@ where
 impl<T> Default for Node<T>
 where
     T: Default,
-    T: Update,
     T: Serialize,
 {
     fn default() -> Self {

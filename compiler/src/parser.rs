@@ -1,4 +1,4 @@
-use super::data_types::{ErrorType, NodeData, NodeType, SymbolType, TokenData, TokenType};
+use super::data_types::{ErrorType, NodeType, SymbolType, TokenData, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use super::scanner::Scanner;
@@ -17,7 +17,7 @@ pub struct ParseError {
 // ---------------------------------------------------------------------
 pub struct Parser<'a, 'b> {
     scanner: Scanner<'a>,
-    tree: &'b mut LcRsTree<NodeData<'a>>,
+    tree: &'b mut LcRsTree<NodeType<'a>>,
     recursion_depth: usize,
     recovery_tokens: HashMap<TokenType, HashSet<usize>>,
     logger: &'b mut Logger<'a>,
@@ -147,15 +147,10 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     // Recursive processing functions
     // ---------------------------------------------------------------------
-    fn program(&mut self, _parent: Option<usize>) -> ParseResult<()> {
+    fn program(&mut self) -> ParseResult<()> {
         let my_id = self.tree.add_child(None);
-        self.tree.update_data(
-            my_id,
-            NodeData {
-                node_type: NodeType::Program,
-                token: None,
-            },
-        );
+        self.tree[my_id].data = NodeType::Program;
+
         let mut recovery_token = None;
         self.process(
             Parser::statement_list,
@@ -165,7 +160,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         )?;
         self.process(
             Parser::end_of_program,
-            None,
+            0,
             &[TokenType::EndOfProgram],
             &mut recovery_token,
         )?;
@@ -173,12 +168,12 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn end_of_program(&mut self, _parent: Option<usize>) -> ParseResult<()> {
+    fn end_of_program(&mut self, _parent: usize) -> ParseResult<()> {
         self.match_token(&[TokenType::EndOfProgram])?;
         Ok(())
     }
 
-    fn statement_list(&mut self, parent: Option<usize>) -> ParseResult<()> {
+    fn statement_list(&mut self, parent: usize) -> ParseResult<()> {
         // Stop recursion if the next token is end of program
         // or 'end' keyword that ends the for loop.
         match self.scanner.peek().token_type {
@@ -205,7 +200,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn statement(&mut self, parent: Option<usize>) -> ParseResult<()> {
+    fn statement(&mut self, parent: usize) -> ParseResult<()> {
         // Statement errors can be recovered at least at ';' if such is found.
         let mut recovery_token = None;
         match self.process(
@@ -233,7 +228,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn statement_prefix(&mut self, parent: Option<usize>) -> ParseResult<()> {
+    fn statement_prefix(&mut self, parent: usize) -> ParseResult<()> {
         // First match at each of the arms is always a certainty due to the peek.
         // All the possible closures inside the statement arms are written in the reverse order.
         // E.g. "do", "expr" ".." "expr" "in" "identifier" "for". This is because the closures can
@@ -243,8 +238,9 @@ impl<'a, 'b> Parser<'a, 'b> {
         match self.scanner.peek().token_type {
             TokenType::KeywordVar => {
                 // Declaration with an optional assignment
-                let my_id = self.tree.add_child(parent);
+                let my_id = self.tree.add_child(Some(parent));
                 self.match_token(&[TokenType::KeywordVar])?;
+                let mut symbol_type = SymbolType::Undefined;
 
                 // Revovery point for expression
                 let expr_closure =
@@ -269,22 +265,13 @@ impl<'a, 'b> Parser<'a, 'b> {
                             &mut recovery_token,
                         )?;
                         expr_closure(parser)?;
-                    } else {
-                        let my_id = parser.tree.add_child(my_id);
-                        parser.tree.update_data(
-                            my_id,
-                            NodeData {
-                                node_type: NodeType::Operand,
-                                token: None,
-                            },
-                        );
                     }
 
                     Ok(())
                 };
 
                 // Recovery point for 'int', 'string' and 'bool' tokens
-                let type_closure = |parser: &mut Self| -> ParseResult<()> {
+                let mut type_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     let token = parser.process(
                         Parser::match_token,
@@ -300,18 +287,16 @@ impl<'a, 'b> Parser<'a, 'b> {
                         &mut recovery_token,
                     )?;
 
-                    parser.tree.update_data(
-                        my_id,
-                        NodeData {
-                            node_type: NodeType::Declaration,
-                            token: token,
-                        },
-                    );
-
                     if token.is_some()
                         || TokenType::Assignment
                             == recovery_token.expect("Recovery token must be some token.")
                     {
+                        symbol_type = match token.unwrap().value {
+                            "int" => SymbolType::Int,
+                            "string" => SymbolType::String,
+                            "bool" => SymbolType::Bool,
+                            _ => SymbolType::Undefined,
+                        };
                         assignment_closure(parser)?;
                     } else {
                         expr_closure(parser)?;
@@ -321,7 +306,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 };
 
                 // Recovery point for ':' token
-                let separator_closure = |parser: &mut Self| -> ParseResult<()> {
+                let mut separator_closure = |parser: &mut Self| -> ParseResult<()> {
                     let mut recovery_token = None;
                     let result = parser.process(
                         Parser::match_token,
@@ -368,14 +353,6 @@ impl<'a, 'b> Parser<'a, 'b> {
                     ],
                     &mut recovery_token,
                 )?;
-                let id = self.tree.add_child(my_id);
-                self.tree.update_data(
-                    id,
-                    NodeData {
-                        node_type: NodeType::Operand,
-                        token: token,
-                    },
-                );
 
                 if token.is_some() {
                     separator_closure(self)?;
@@ -387,18 +364,17 @@ impl<'a, 'b> Parser<'a, 'b> {
                         _ => expr_closure(self)?,
                     };
                 }
+
+                self.tree[my_id].data = NodeType::Declaration {
+                    identifier: token,
+                    symbol_type: symbol_type,
+                    expression: self.tree[my_id].left_child,
+                };
             }
             TokenType::KeywordFor => {
                 // For loop
-                let my_id = self.tree.add_child(parent);
-                let token = self.match_token(&[TokenType::KeywordFor])?;
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::For,
-                        token: Some(token),
-                    },
-                );
+                let my_id = self.tree.add_child(Some(parent));
+                self.match_token(&[TokenType::KeywordFor])?;
 
                 // Recovery point for the last 'for' token
                 let for_closure = |parser: &mut Self| -> ParseResult<()> {
@@ -538,14 +514,6 @@ impl<'a, 'b> Parser<'a, 'b> {
                     &[TokenType::KeywordIn, TokenType::Range, TokenType::KeywordDo],
                     &mut recovery_token,
                 )?;
-                let id = self.tree.add_child(my_id);
-                self.tree.update_data(
-                    id,
-                    NodeData {
-                        node_type: NodeType::Operand,
-                        token: token,
-                    },
-                );
 
                 if token.is_some() {
                     in_closure(self)?
@@ -556,48 +524,65 @@ impl<'a, 'b> Parser<'a, 'b> {
                         _ => range_closure(self)?,
                     };
                 }
+
+                let second_expr;
+                let first_statement;
+                let first_expr = match self.tree[my_id].left_child {
+                    Some(v) => {
+                        second_expr = match self.tree[v].right_sibling {
+                            Some(v) => {
+                                first_statement = self.tree[v].right_sibling;
+                                v
+                            }
+                            None => {
+                                first_statement = None;
+                                !0
+                            }
+                        };
+                        v
+                    }
+                    None => {
+                        second_expr = !0;
+                        first_statement = None;
+                        !0
+                    }
+                };
+
+                self.tree[my_id].data = NodeType::For {
+                    identifier: token,
+                    start_expression: first_expr,
+                    end_expression: second_expr,
+                    first_statement: first_statement,
+                };
             }
             TokenType::KeywordRead => {
                 // Read statement
                 self.match_token(&[TokenType::KeywordRead])?;
 
                 let token = self.match_token(&[TokenType::Identifier])?;
-                let my_id = self.tree.add_child(parent);
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::Read,
-                        token: Some(token),
-                    },
-                );
+                let my_id = self.tree.add_child(Some(parent));
+                self.tree[my_id].data = NodeType::Read {
+                    identifier: Some(token),
+                };
             }
             TokenType::KeywordPrint => {
                 // Print statement
-                let my_id = self.tree.add_child(parent);
-                let token = self.match_token(&[TokenType::KeywordPrint])?;
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::Print,
-                        token: Some(token),
-                    },
-                );
+                let my_id = self.tree.add_child(Some(parent));
+                self.match_token(&[TokenType::KeywordPrint])?;
 
                 // No point in recovery tokens, since the expression is the last part of this
                 // statement.
                 self.expression(my_id)?;
+
+                let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
+                self.tree[my_id].data = NodeType::Print {
+                    expression: expression,
+                };
             }
             TokenType::KeywordAssert => {
                 // Assertion statement
-                let my_id = self.tree.add_child(parent);
-                let token = self.match_token(&[TokenType::KeywordAssert])?;
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::Assert,
-                        token: Some(token),
-                    },
-                );
+                let my_id = self.tree.add_child(Some(parent));
+                self.match_token(&[TokenType::KeywordAssert])?;
 
                 // Recovery point for the ')' token
                 let paren_closure = |parser: &mut Self| -> ParseResult<()> {
@@ -646,24 +631,20 @@ impl<'a, 'b> Parser<'a, 'b> {
                         _ => expr_closure(self)?,
                     };
                 }
+
+                let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
+                self.tree[my_id].data = NodeType::Assert {
+                    expression: expression,
+                };
             }
             TokenType::Identifier => {
                 // Assignment to a variable
                 let token = self.match_token(&[TokenType::Identifier])?;
-                let my_id = self.tree.add_child(parent);
-                let id = self.tree.add_child(my_id);
-
-                self.tree.update_data(
-                    id,
-                    NodeData {
-                        node_type: NodeType::Operand,
-                        token: Some(token),
-                    },
-                );
+                let my_id = self.tree.add_child(Some(parent));
 
                 // We can recover at the start of an expression, if ':=' is not found.
                 let mut recovery_token = None;
-                let token = self.process(
+                self.process(
                     Parser::match_token,
                     &[TokenType::Assignment],
                     &[
@@ -675,15 +656,14 @@ impl<'a, 'b> Parser<'a, 'b> {
                     ],
                     &mut recovery_token,
                 )?;
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::Assignment,
-                        token: token,
-                    },
-                );
 
                 self.expression(my_id)?;
+
+                let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
+                self.tree[my_id].data = NodeType::Assignment {
+                    identifier: Some(token),
+                    expression: expression,
+                };
             }
             _ => {
                 // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
@@ -694,20 +674,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn expression(&mut self, parent: Option<usize>) -> ParseResult<()> {
-        let my_id = self.tree.add_child(parent);
+    fn expression(&mut self, parent: usize) -> ParseResult<()> {
+        let my_id = self.tree.add_child(Some(parent));
 
         // First case: Unary operator and operand
         if TokenType::OperatorNot == self.scanner.peek().token_type {
             // We just peeked this token, so the match is a certainty.
             let token = self.match_token(&[TokenType::OperatorNot])?;
-            self.tree.update_data(
-                my_id,
-                NodeData {
-                    node_type: NodeType::Expression,
-                    token: Some(token),
-                },
-            );
+            self.tree[my_id].data = NodeType::Expression {
+                operator: Some(token),
+                symbol_type: SymbolType::Undefined,
+            };
             // There's nothing left of this expression after the operand,
             // so there's no point in having any recovery tokens at this level.
             self.operand(my_id)?;
@@ -750,13 +727,10 @@ impl<'a, 'b> Parser<'a, 'b> {
                 // it goes wrong.
                 let token = self.match_token(&[token_type])?;
                 self.operand(my_id)?;
-                self.tree.update_data(
-                    my_id,
-                    NodeData {
-                        node_type: NodeType::Expression,
-                        token: Some(token),
-                    },
-                );
+                self.tree[my_id].data = NodeType::Expression {
+                    operator: Some(token),
+                    symbol_type: SymbolType::Undefined,
+                };
 
                 return Ok(());
             }
@@ -773,7 +747,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn operand(&mut self, parent: Option<usize>) -> ParseResult<()> {
+    fn operand(&mut self, parent: usize) -> ParseResult<()> {
         let mut recovery_token = None;
         if TokenType::LParen == self.scanner.peek().token_type {
             // The match is a certainty due to the peek, and we can recover at the matching ')'.
@@ -791,14 +765,17 @@ impl<'a, 'b> Parser<'a, 'b> {
                 TokenType::LiteralString,
                 TokenType::Identifier,
             ])?;
-            let my_id = self.tree.add_child(parent);
-            self.tree.update_data(
-                my_id,
-                NodeData {
-                    node_type: NodeType::Operand,
-                    token: Some(token),
-                },
-            );
+            let my_id = self.tree.add_child(Some(parent));
+            let symbol_type = match token.token_type {
+                TokenType::LiteralInt => SymbolType::Int,
+                TokenType::LiteralString => SymbolType::String,
+                TokenType::Identifier => SymbolType::Undefined,
+                _ => SymbolType::Undefined,
+            };
+            self.tree[my_id].data = NodeType::Operand {
+                token: Some(token),
+                symbol_type: symbol_type,
+            };
         }
         Ok(())
     }
@@ -809,7 +786,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     pub fn new(
         source_str: &'a str,
         logger: &'b mut Logger<'a>,
-        tree: &'b mut LcRsTree<NodeData<'a>>,
+        tree: &'b mut LcRsTree<NodeType<'a>>,
     ) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
@@ -823,7 +800,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     pub fn parse(&mut self, out_file: Option<&'a str>) {
         // Start the parsing and print out syntax errors and never ending
         // multiline comments if there were any.
-        match self.program(None) {
+        match self.program() {
             Ok(_) => (),
             Err(_) => {
                 assert!(false, "Unhandled error at parse.");

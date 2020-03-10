@@ -4,13 +4,13 @@ mod lcrs_tree;
 mod logger;
 mod parser;
 mod scanner;
-//mod semantic_analyzer;
+mod semantic_analyzer;
 
 //use interpreter::Interpreter;
 use lcrs_tree::LcRsTree;
 use logger::Logger;
 use parser::Parser;
-//use semantic_analyzer::Analyzer;
+use semantic_analyzer::Analyzer;
 use std::{env, fs, process};
 
 pub fn run() {
@@ -59,7 +59,7 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            //Analyzer::new(&mut tree, &mut logger).analyze();
+                            Analyzer::new(&mut tree, &mut logger).analyze();
                         }
 
                         if logger.errors_encountered() {

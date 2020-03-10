@@ -1,4 +1,3 @@
-use super::lcrs_tree::Update;
 use serde::Serialize;
 use std::fmt;
 
@@ -34,7 +33,7 @@ impl fmt::Display for SymbolType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorType<'a> {
     SyntaxError(TokenData<'a>, Vec<TokenType>),
-    MismatchedTypes(TokenData<'a>, SymbolType, Option<SymbolType>),
+    MismatchedTypes(TokenData<'a>, SymbolType, SymbolType),
     UndeclaredIdentifier(TokenData<'a>),
     IllegalOperation(TokenData<'a>, SymbolType),
     UnmatchedComment(u32, u32),
@@ -151,41 +150,45 @@ impl<'a> Default for TokenData<'a> {
 // Nodes
 // ---------------------------------------------------------------------
 #[derive(Serialize, Debug, Clone, Copy, PartialEq)]
-pub enum NodeType {
+pub enum NodeType<'a> {
     Program,
-    Operand,
-    Expression,
-    Declaration,
-    Assignment,
-    For,
-    Read,
-    Print,
-    Assert,
+    Operand {
+        token: Option<TokenData<'a>>,
+        symbol_type: SymbolType,
+    },
+    Expression {
+        operator: Option<TokenData<'a>>,
+        symbol_type: SymbolType,
+    },
+    Declaration {
+        identifier: Option<TokenData<'a>>,
+        symbol_type: SymbolType,
+        expression: Option<usize>,
+    },
+    Assignment {
+        identifier: Option<TokenData<'a>>,
+        expression: usize,
+    },
+    For {
+        identifier: Option<TokenData<'a>>,
+        start_expression: usize,
+        end_expression: usize,
+        first_statement: Option<usize>,
+    },
+    Read {
+        identifier: Option<TokenData<'a>>,
+    },
+    Print {
+        expression: usize,
+    },
+    Assert {
+        expression: usize,
+    },
     Undefined,
 }
 
-#[derive(Serialize, Copy, Clone, Debug)]
-pub struct NodeData<'a> {
-    pub node_type: NodeType,
-    #[serde(flatten)]
-    pub token: Option<TokenData<'a>>,
-}
-
-impl<'a> Default for NodeData<'a> {
+impl<'a> Default for NodeType<'a> {
     fn default() -> Self {
-        NodeData {
-            node_type: NodeType::Undefined,
-            token: None,
-        }
-    }
-}
-
-impl<'a> Update for NodeData<'a> {
-    fn update(&mut self, data: Self) {
-        self.node_type = data.node_type;
-
-        if data.token.is_some() {
-            self.token = data.token;
-        }
+        NodeType::Undefined
     }
 }

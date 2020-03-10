@@ -39,19 +39,11 @@ impl<'a> Logger<'a> {
                     column = token.column;
                 }
                 ErrorType::MismatchedTypes(token, type1, type2) => {
-                    if type2.is_some() {
-                        eprint!("Types used with token \"{}\" don't match. ", token.value);
-                        eprintln!(
-                            "Left side is of type \"{}\", right side of type \"{}\".",
-                            type1,
-                            type2.unwrap()
-                        );
-                    } else {
-                        eprintln!(
-                            "Expression of type \"{}\" is illegal in this context.",
-                            type1
-                        );
-                    }
+                    eprint!("Types used with operator \"{}\" don't match. ", token.value);
+                    eprintln!(
+                        "Left side is of type \"{}\", right side of type \"{}\".",
+                        type1, type2
+                    );
                     line = token.line;
                     column = token.column;
                 }

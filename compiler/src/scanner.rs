@@ -1,4 +1,4 @@
-use super::data_types::{SymbolType, TokenData, TokenType};
+use super::data_types::{TokenData, TokenType};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------
