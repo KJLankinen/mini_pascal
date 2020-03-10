@@ -29,11 +29,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // Functions that handle the semantic constraints
     // ---------------------------------------------------------------------
     fn handle_statement(&mut self, idx: usize) {
-        match self.tree[idx]
-            .data
-            .node_type
-            .expect("AST should not contain Nodes with type None.")
-        {
+        match self.tree[idx].data.node_type {
             NodeType::Declaration => self.handle_declaration(idx),
             NodeType::Assignment => self.handle_assignment(idx),
             NodeType::For => self.handle_for(idx),
@@ -55,16 +51,16 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
         match token.token_type {
             TokenType::LiteralInt => {
-                self.tree[idx].data.node_type = Some(NodeType::Operand(SymbolType::Int));
+                self.tree[idx].data.node_type = NodeType::Operand(SymbolType::Int);
                 SymbolType::Int
             }
             TokenType::LiteralString => {
-                self.tree[idx].data.node_type = Some(NodeType::Operand(SymbolType::String));
+                self.tree[idx].data.node_type = NodeType::Operand(SymbolType::String);
                 SymbolType::String
             }
             TokenType::Identifier => {
                 if let Some(symbol) = self.symbols.get(token.value) {
-                    self.tree[idx].data.node_type = Some(NodeType::Operand(*symbol));
+                    self.tree[idx].data.node_type = NodeType::Operand(*symbol);
                     *symbol
                 } else {
                     self.logger
@@ -80,11 +76,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn get_expression_type(&mut self, idx: usize) -> SymbolType {
-        if let NodeType::Operand(_) = self.tree[idx]
-            .data
-            .node_type
-            .expect("No node type on expression.")
-        {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
             self.get_operand_type(idx)
         } else {
             let lc = self.tree[idx]
@@ -99,7 +91,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             match expr_token.token_type {
                 TokenType::OperatorNot => {
                     if SymbolType::Bool == et {
-                        self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                        self.tree[idx].data.node_type = NodeType::Expression(et);
                         SymbolType::Bool
                     } else {
                         self.logger
@@ -124,7 +116,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         match tt {
                             TokenType::OperatorAnd => {
                                 if SymbolType::Bool == et {
-                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    self.tree[idx].data.node_type = NodeType::Expression(et);
                                     et
                                 } else {
                                     self.logger
@@ -134,7 +126,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             TokenType::OperatorPlus => {
                                 if SymbolType::String == et || SymbolType::Int == et {
-                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    self.tree[idx].data.node_type = NodeType::Expression(et);
                                     et
                                 } else {
                                     self.logger
@@ -144,7 +136,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             TokenType::OperatorMinus => {
                                 if SymbolType::Int == et {
-                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    self.tree[idx].data.node_type = NodeType::Expression(et);
                                     et
                                 } else {
                                     self.logger
@@ -154,7 +146,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             TokenType::OperatorMultiply => {
                                 if SymbolType::Int == et {
-                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    self.tree[idx].data.node_type = NodeType::Expression(et);
                                     et
                                 } else {
                                     self.logger
@@ -164,7 +156,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             TokenType::OperatorDivide => {
                                 if SymbolType::Int == et {
-                                    self.tree[idx].data.node_type = Some(NodeType::Expression(et));
+                                    self.tree[idx].data.node_type = NodeType::Expression(et);
                                     et
                                 } else {
                                     self.logger
@@ -174,12 +166,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             }
                             TokenType::OperatorLessThan => {
                                 self.tree[idx].data.node_type =
-                                    Some(NodeType::Expression(SymbolType::Bool));
+                                    NodeType::Expression(SymbolType::Bool);
                                 SymbolType::Bool
                             }
                             TokenType::OperatorEqual => {
                                 self.tree[idx].data.node_type =
-                                    Some(NodeType::Expression(SymbolType::Bool));
+                                    NodeType::Expression(SymbolType::Bool);
                                 SymbolType::Bool
                             }
                             _ => {
@@ -238,16 +230,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             Some(et),
                         ));
                     }
-                    match self.tree[rs]
-                        .data
-                        .node_type
-                        .expect("Declaration's child expression has no node type.")
-                    {
+                    match self.tree[rs].data.node_type {
                         NodeType::Expression(_) => {
-                            self.tree[rs].data.node_type = Some(NodeType::Expression(*t))
+                            self.tree[rs].data.node_type = NodeType::Expression(*t)
                         }
                         NodeType::Operand(_) => {
-                            self.tree[rs].data.node_type = Some(NodeType::Operand(*t))
+                            self.tree[rs].data.node_type = NodeType::Operand(*t)
                         }
                         _ => assert!(
                             false,
@@ -295,17 +283,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     Some(et),
                 ));
             } else {
-                match self.tree[rs]
-                    .data
-                    .node_type
-                    .expect("Declaration's child expression has no node type.")
-                {
+                match self.tree[rs].data.node_type {
                     NodeType::Expression(_) => {
-                        self.tree[rs].data.node_type = Some(NodeType::Expression(et))
+                        self.tree[rs].data.node_type = NodeType::Expression(et)
                     }
-                    NodeType::Operand(_) => {
-                        self.tree[rs].data.node_type = Some(NodeType::Operand(et))
-                    }
+                    NodeType::Operand(_) => self.tree[rs].data.node_type = NodeType::Operand(et),
                     _ => assert!(
                         false,
                         "Declaration's child expression has a wrong node type."
@@ -380,7 +362,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         if let Some(symbol) = self.symbols.get(token.value) {
             let symbol = *symbol;
             if SymbolType::Int == symbol || SymbolType::String == symbol {
-                self.tree[idx].data.node_type = Some(NodeType::Operand(symbol));
+                self.tree[idx].data.node_type = NodeType::Operand(symbol);
             } else {
                 self.logger
                     .add_error(ErrorType::MismatchedTypes(*token, symbol, None));
@@ -402,15 +384,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .left_child
                 .expect("Print is missing a child expression.");
 
-            match self.tree[lc]
-                .data
-                .node_type
-                .expect("Print's child expression has no node type.")
-            {
-                NodeType::Expression(_) => {
-                    self.tree[lc].data.node_type = Some(NodeType::Expression(et))
-                }
-                NodeType::Operand(_) => self.tree[lc].data.node_type = Some(NodeType::Operand(et)),
+            match self.tree[lc].data.node_type {
+                NodeType::Expression(_) => self.tree[lc].data.node_type = NodeType::Expression(et),
+                NodeType::Operand(_) => self.tree[lc].data.node_type = NodeType::Operand(et),
                 _ => assert!(false, "Print's child expression has a wrong node type."),
             }
         } else {
@@ -437,15 +413,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .left_child
                 .expect("Assert is missing a child expression.");
 
-            match self.tree[lc]
-                .data
-                .node_type
-                .expect("Assert's child expression has no node type.")
-            {
-                NodeType::Expression(_) => {
-                    self.tree[lc].data.node_type = Some(NodeType::Expression(et))
-                }
-                NodeType::Operand(_) => self.tree[lc].data.node_type = Some(NodeType::Operand(et)),
+            match self.tree[lc].data.node_type {
+                NodeType::Expression(_) => self.tree[lc].data.node_type = NodeType::Expression(et),
+                NodeType::Operand(_) => self.tree[lc].data.node_type = NodeType::Operand(et),
                 _ => assert!(false, "Assert's child expression has a wrong node type."),
             }
         } else {

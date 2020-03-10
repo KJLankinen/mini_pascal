@@ -161,11 +161,12 @@ pub enum NodeType {
     Read,
     Print,
     Assert,
+    Undefined,
 }
 
 #[derive(Serialize, Copy, Clone, Debug)]
 pub struct NodeData<'a> {
-    pub node_type: Option<NodeType>,
+    pub node_type: NodeType,
     #[serde(flatten)]
     pub token: Option<TokenData<'a>>,
 }
@@ -173,7 +174,7 @@ pub struct NodeData<'a> {
 impl<'a> Default for NodeData<'a> {
     fn default() -> Self {
         NodeData {
-            node_type: None,
+            node_type: NodeType::Undefined,
             token: None,
         }
     }
@@ -181,9 +182,7 @@ impl<'a> Default for NodeData<'a> {
 
 impl<'a> Update for NodeData<'a> {
     fn update(&mut self, data: Self) {
-        if data.node_type.is_some() {
-            self.node_type = data.node_type;
-        }
+        self.node_type = data.node_type;
 
         if data.token.is_some() {
             self.token = data.token;

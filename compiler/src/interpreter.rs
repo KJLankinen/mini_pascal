@@ -32,11 +32,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     // Functions that interpret the program
     // ---------------------------------------------------------------------
     fn interpret_statement(&mut self, idx: usize) {
-        match self.tree[idx]
-            .data
-            .node_type
-            .expect("AST should not contain Nodes with type None.")
-        {
+        match self.tree[idx].data.node_type {
             NodeType::Declaration => self.interpret_declaration(idx),
             NodeType::Assignment => self.interpret_assignment(idx),
             NodeType::For => self.interpret_for(idx),
@@ -51,7 +47,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_boolean(&self, idx: usize) -> bool {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
             assert!(
                 false,
                 "There are no bool literals, so this should never happen."
@@ -71,10 +67,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                         )
                 }
                 TokenType::OperatorLessThan => {
-                    let et = self.tree[self.tree[idx].left_child.unwrap()]
-                        .data
-                        .node_type
-                        .unwrap();
+                    let et = self.tree[self.tree[idx].left_child.unwrap()].data.node_type;
                     match et {
                         NodeType::Operand(t) | NodeType::Expression(t) => match t {
                             SymbolType::Int => {
@@ -108,10 +101,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     }
                 }
                 TokenType::OperatorEqual => {
-                    let et = self.tree[self.tree[idx].left_child.unwrap()]
-                        .data
-                        .node_type
-                        .unwrap();
+                    let et = self.tree[self.tree[idx].left_child.unwrap()].data.node_type;
                     match et {
                         NodeType::Operand(t) | NodeType::Expression(t) => match t {
                             SymbolType::Int => {
@@ -161,7 +151,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_int(&self, idx: usize) -> i32 {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
             match self.tree[idx].data.token.unwrap().token_type {
                 TokenType::LiteralInt => {
                     match self.tree[idx].data.token.unwrap().value.parse::<i32>() {
@@ -207,7 +197,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_string(&self, idx: usize) -> String {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type.unwrap() {
+        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
             match self.tree[idx].data.token.unwrap().token_type {
                 TokenType::LiteralString => self.tree[idx].data.token.unwrap().value.to_owned(),
                 TokenType::Identifier => self
@@ -343,11 +333,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn interpret_print(&mut self, idx: usize) {
-        match self.tree[self.tree[idx].left_child.unwrap()]
-            .data
-            .node_type
-            .unwrap()
-        {
+        match self.tree[self.tree[idx].left_child.unwrap()].data.node_type {
             NodeType::Expression(t) | NodeType::Operand(t) => {
                 let idx = self.tree[idx].left_child.unwrap();
                 match t {
