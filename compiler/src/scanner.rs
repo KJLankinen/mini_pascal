@@ -138,7 +138,7 @@ impl<'a> Scanner<'a> {
         // Loop eternally, until an end condition is met
         loop {
             match self.get_char() {
-                Some((pos, ch)) => {
+                Some((mut pos, ch)) => {
                     if ch.is_whitespace() {
                         continue;
                     }
@@ -177,6 +177,11 @@ impl<'a> Scanner<'a> {
                         '"' => {
                             token.token_type = TokenType::LiteralString;
                             let mut escape_next = false;
+
+                            // Don't include the starting "-character in the literal.
+                            if let Some((p, _)) = self.chars.peek() {
+                                pos = *p;
+                            }
 
                             // Run until the next '"' without a preceding '\' is found, or until
                             // the source string runs out, in which case there's obviously a syntax
@@ -221,10 +226,14 @@ impl<'a> Scanner<'a> {
                         }
                     }
 
-                    let token_end = match self.chars.peek() {
+                    let mut token_end = match self.chars.peek() {
                         Some((pos, _)) => *pos,
                         None => self.source_str.len(),
                     };
+
+                    if TokenType::LiteralString == token.token_type {
+                        token_end = token_end - 1;
+                    }
                     token.value = &self.source_str[pos..token_end];
 
                     // Get your type here, if you're in the map

@@ -1,12 +1,12 @@
 mod data_types;
-//mod interpreter;
+mod interpreter;
 mod lcrs_tree;
 mod logger;
 mod parser;
 mod scanner;
 mod semantic_analyzer;
 
-//use interpreter::Interpreter;
+use interpreter::Interpreter;
 use lcrs_tree::LcRsTree;
 use logger::Logger;
 use parser::Parser;
@@ -66,7 +66,7 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            //Interpreter::new(&tree, &mut logger).interpret();
+                            Interpreter::new(&tree, &mut logger).interpret();
                         }
 
                         if logger.errors_encountered() {

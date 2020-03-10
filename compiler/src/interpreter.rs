@@ -1,13 +1,14 @@
-use super::data_types::{NodeData, NodeType, SymbolType, TokenType};
+use super::data_types::{NodeType, SymbolType, TokenData, TokenType};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::io;
 use std::process;
 
 pub struct Interpreter<'a, 'b> {
     logger: &'b mut Logger<'a>,
-    tree: &'b LcRsTree<NodeData<'a>>,
+    tree: &'b LcRsTree<NodeType<'a>>,
     symbols: HashMap<&'a str, SymbolType>,
     integers: HashMap<&'a str, i32>,
     strings: HashMap<&'a str, String>,
@@ -23,7 +24,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         let mut node = self.tree[0].left_child;
 
         while let Some(idx) = node {
-            self.interpret_statement(idx);
+            self.handle_statement(idx);
             node = self.tree[idx].right_sibling;
         }
     }
@@ -31,14 +32,51 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     // ---------------------------------------------------------------------
     // Functions that interpret the program
     // ---------------------------------------------------------------------
-    fn interpret_statement(&mut self, idx: usize) {
-        match self.tree[idx].data.node_type {
-            NodeType::Declaration => self.interpret_declaration(idx),
-            NodeType::Assignment => self.interpret_assignment(idx),
-            NodeType::For => self.interpret_for(idx),
-            NodeType::Read => self.interpret_read(idx),
-            NodeType::Print => self.interpret_print(idx),
-            NodeType::Assert => self.interpret_assert(idx),
+    fn handle_statement(&mut self, idx: usize) {
+        match self.tree[idx].data {
+            NodeType::Declaration {
+                identifier,
+                symbol_type,
+                expression,
+            } => {
+                let ref identifier =
+                    identifier.expect("Declaration is missing an identifier token.");
+                self.handle_declaration(identifier, symbol_type, expression);
+            }
+            NodeType::Assignment {
+                identifier,
+                expression,
+            } => {
+                let ref identifier =
+                    identifier.expect("Assignment is missing an identifier token.");
+                self.handle_assignment(identifier, expression);
+            }
+            NodeType::For {
+                identifier,
+                start_expression,
+                end_expression,
+                first_statement,
+            } => {
+                let ref identifier = identifier.expect("For loop is missing an identifier token.");
+                self.handle_for(
+                    identifier,
+                    start_expression,
+                    end_expression,
+                    first_statement,
+                );
+            }
+            NodeType::Read { identifier } => {
+                let ref identifier = identifier.expect("Read is missing an identifier token.");
+                self.handle_read(identifier);
+            }
+            NodeType::Print { token, expression } => {
+                let ref token = token.expect("Print is missing a token.");
+                self.handle_print(token, expression);
+            }
+            NodeType::Assert { token, expression } => {
+                let ref token = token.expect("Assert is missing a token.");
+                self.handle_assert(token, expression);
+            }
             _ => {
                 assert!(false, "Unhandled node type.");
                 ()
@@ -47,320 +85,386 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_boolean(&self, idx: usize) -> bool {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
-            assert!(
-                false,
-                "There are no bool literals, so this should never happen."
-            );
-            false
-        } else {
-            match self.tree[idx].data.token.unwrap().token_type {
-                TokenType::OperatorNot => {
-                    !self.evaluate_boolean(self.tree[idx].left_child.unwrap())
-                }
-                TokenType::OperatorAnd => {
-                    self.evaluate_boolean(self.tree[idx].left_child.unwrap())
-                        && self.evaluate_boolean(
-                            self.tree[self.tree[idx].left_child.unwrap()]
-                                .right_sibling
-                                .unwrap(),
-                        )
-                }
-                TokenType::OperatorLessThan => {
-                    let et = self.tree[self.tree[idx].left_child.unwrap()].data.node_type;
-                    match et {
-                        NodeType::Operand(t) | NodeType::Expression(t) => match t {
-                            SymbolType::Int => {
-                                self.evaluate_int(self.tree[idx].left_child.unwrap())
-                                    < self.evaluate_int(
-                                        self.tree[self.tree[idx].left_child.unwrap()]
-                                            .right_sibling
-                                            .unwrap(),
-                                    )
-                            }
-                            SymbolType::String => {
-                                self.evaluate_string(self.tree[idx].left_child.unwrap())
-                                    .len()
-                                    < self
-                                        .evaluate_string(
-                                            self.tree[self.tree[idx].left_child.unwrap()]
-                                                .right_sibling
-                                                .unwrap(),
-                                        )
-                                        .len()
-                            }
-                            _ => {
-                                assert!(false, "Illegal expression.");
-                                false
-                            }
-                        },
-                        _ => {
-                            assert!(false, "Illegal expression.");
-                            false
-                        }
+        match self.tree[idx].data {
+            NodeType::Operand {
+                token,
+                symbol_type: _,
+            } => {
+                let token = token.unwrap();
+                match token.token_type {
+                    TokenType::Identifier => *self.booleans.get(token.value).unwrap(),
+                    _ => {
+                        assert!(false, "Should never happen. {:#?}", token);
+                        false
                     }
                 }
-                TokenType::OperatorEqual => {
-                    let et = self.tree[self.tree[idx].left_child.unwrap()].data.node_type;
-                    match et {
-                        NodeType::Operand(t) | NodeType::Expression(t) => match t {
-                            SymbolType::Int => {
-                                self.evaluate_int(self.tree[idx].left_child.unwrap())
-                                    == self.evaluate_int(
-                                        self.tree[self.tree[idx].left_child.unwrap()]
-                                            .right_sibling
-                                            .unwrap(),
-                                    )
+            }
+            NodeType::Expression {
+                operator,
+                symbol_type: _,
+            } => {
+                let operator = operator.unwrap();
+                let lc = self.tree[idx].left_child.unwrap();
+                let rs = self.tree[lc].right_sibling;
+
+                match operator.token_type {
+                    TokenType::OperatorAnd => {
+                        self.evaluate_boolean(lc) && self.evaluate_boolean(rs.unwrap())
+                    }
+                    TokenType::OperatorNot => !self.evaluate_boolean(lc),
+                    tt @ TokenType::OperatorLessThan | tt @ TokenType::OperatorEqual => {
+                        let rs = rs.unwrap();
+                        let value1;
+                        let value2;
+
+                        match self.tree[lc].data {
+                            NodeType::Operand {
+                                token: _,
+                                symbol_type,
                             }
-                            SymbolType::String => {
-                                self.evaluate_string(self.tree[idx].left_child.unwrap())
-                                    .len()
-                                    == self
-                                        .evaluate_string(
-                                            self.tree[self.tree[idx].left_child.unwrap()]
-                                                .right_sibling
-                                                .unwrap(),
-                                        )
-                                        .len()
-                            }
-                            SymbolType::Bool => {
-                                self.evaluate_boolean(self.tree[idx].left_child.unwrap())
-                                    == self.evaluate_boolean(
-                                        self.tree[self.tree[idx].left_child.unwrap()]
-                                            .right_sibling
-                                            .unwrap(),
-                                    )
-                            }
+                            | NodeType::Expression {
+                                operator: _,
+                                symbol_type,
+                            } => match symbol_type {
+                                SymbolType::Int => {
+                                    value1 = self.evaluate_int(lc);
+                                    value2 = self.evaluate_int(rs);
+                                }
+                                SymbolType::String => {
+                                    value1 = self.evaluate_string(lc).len().try_into().unwrap();
+                                    value2 = self.evaluate_string(rs).len().try_into().unwrap();
+                                }
+                                SymbolType::Bool => {
+                                    value1 = if self.evaluate_boolean(lc) { 1 } else { 0 };
+                                    value2 = if self.evaluate_boolean(rs) { 1 } else { 0 };
+                                }
+                                SymbolType::Undefined => {
+                                    assert!(
+                                        false,
+                                        "Illegal symbol type for operator at interpretation."
+                                    );
+
+                                    value1 = 0;
+                                    value2 = 0;
+                                }
+                            },
                             _ => {
-                                assert!(false, "Illegal expression.");
-                                false
+                                assert!(
+                                    false,
+                                    "Illegal node type for expression at interpretation."
+                                );
+
+                                value1 = 0;
+                                value2 = 0;
                             }
-                        },
-                        _ => {
-                            assert!(false, "Illegal expression.");
-                            false
+                        }
+
+                        if TokenType::OperatorLessThan == tt {
+                            value1 < value2
+                        } else {
+                            value1 == value2
                         }
                     }
+                    _ => {
+                        assert!(false, "Illegal token type for operator at interpretation.");
+                        false
+                    }
                 }
-                _ => {
-                    assert!(false, "Illegal token type at boolean expression.");
-                    false
-                }
+            }
+            _ => {
+                assert!(false, "Illegal node type for expression at interpretation.");
+                false
             }
         }
     }
 
     fn evaluate_int(&self, idx: usize) -> i32 {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
-            match self.tree[idx].data.token.unwrap().token_type {
-                TokenType::LiteralInt => {
-                    match self.tree[idx].data.token.unwrap().value.parse::<i32>() {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!(
-                                "\"{}\" is not a valid integer. Error in parse: {}",
-                                self.tree[idx].data.token.unwrap().value,
-                                e
-                            );
-                            process::exit(1);
+        match self.tree[idx].data {
+            NodeType::Operand {
+                token,
+                symbol_type: _,
+            } => {
+                let token = token.unwrap();
+                match token.token_type {
+                    TokenType::LiteralInt => {
+                        match token.value.parse::<i32>() {
+                            Ok(v) => v,
+                            Err(e) => {
+                                eprintln!("Could not parse integer literal to integer value: {}. Exiting.", e);
+                                process::exit(1);
+                            }
                         }
                     }
-                }
-                TokenType::Identifier => *self
-                    .integers
-                    .get(self.tree[idx].data.token.unwrap().value)
-                    .unwrap(),
-                _ => {
-                    assert!(false, "Illegal token type for int operand.");
-                    0
+                    TokenType::Identifier => *self.integers.get(token.value).unwrap(),
+                    _ => {
+                        assert!(false, "Should never happen. {:#?}", token);
+                        0
+                    }
                 }
             }
-        } else {
-            let ev1 = self.evaluate_int(self.tree[idx].left_child.unwrap());
-            let ev2 = self.evaluate_int(
-                self.tree[self.tree[idx].left_child.unwrap()]
-                    .right_sibling
-                    .unwrap(),
-            );
+            NodeType::Expression {
+                operator,
+                symbol_type: _,
+            } => {
+                let operator = operator.unwrap();
+                let lc = self.tree[idx].left_child.unwrap();
+                let rs = self.tree[lc].right_sibling.unwrap();
 
-            match self.tree[idx].data.token.unwrap().token_type {
-                TokenType::OperatorPlus => ev1 + ev2,
-                TokenType::OperatorMinus => ev1 - ev2,
-                TokenType::OperatorMultiply => ev1 * ev2,
-                TokenType::OperatorDivide => ev1 / ev2,
-                _ => {
-                    assert!(false, "Illegal token type at int  expression.");
-                    0
+                match operator.token_type {
+                    TokenType::OperatorPlus => self.evaluate_int(lc) + self.evaluate_int(rs),
+                    TokenType::OperatorMinus => self.evaluate_int(lc) - self.evaluate_int(rs),
+                    TokenType::OperatorMultiply => self.evaluate_int(lc) * self.evaluate_int(rs),
+                    TokenType::OperatorDivide => self.evaluate_int(lc) / self.evaluate_int(rs),
+                    _ => {
+                        assert!(false, "Illegal token type for operator at interpretation.");
+                        0
+                    }
                 }
+            }
+            _ => {
+                assert!(false, "Illegal node type for expression at interpretation.");
+                0
             }
         }
     }
 
     fn evaluate_string(&self, idx: usize) -> String {
-        if let NodeType::Operand(_) = self.tree[idx].data.node_type {
-            match self.tree[idx].data.token.unwrap().token_type {
-                TokenType::LiteralString => self.tree[idx].data.token.unwrap().value.to_owned(),
-                TokenType::Identifier => self
-                    .strings
-                    .get(self.tree[idx].data.token.unwrap().value)
-                    .unwrap()
-                    .to_owned(),
-                _ => {
-                    assert!(false, "Illegal token type for string operand.");
-                    "".to_owned()
+        match self.tree[idx].data {
+            NodeType::Operand {
+                token,
+                symbol_type: _,
+            } => {
+                let token = token.unwrap();
+                match token.token_type {
+                    TokenType::LiteralString => token.value.to_owned(),
+                    TokenType::Identifier => self.strings.get(token.value).unwrap().to_owned(),
+                    _ => {
+                        assert!(false, "Should never happen. {:#?}", token);
+                        "".to_owned()
+                    }
                 }
             }
-        } else {
-            if TokenType::OperatorPlus == self.tree[idx].data.token.unwrap().token_type {
-                self.evaluate_string(self.tree[idx].left_child.unwrap())
-                    + &self.evaluate_string(
-                        self.tree[self.tree[idx].left_child.unwrap()]
-                            .right_sibling
-                            .unwrap(),
-                    )
-            } else {
-                assert!(false, "Illegal operation for strings.");
+            NodeType::Expression {
+                operator,
+                symbol_type: _,
+            } => {
+                let operator = operator.unwrap();
+                let lc = self.tree[idx].left_child.unwrap();
+                let rs = self.tree[lc].right_sibling.unwrap();
+
+                match operator.token_type {
+                    TokenType::OperatorPlus => self.evaluate_string(lc) + &self.evaluate_string(rs),
+                    _ => {
+                        assert!(false, "Illegal token type for operator at interpretation.");
+                        "".to_owned()
+                    }
+                }
+            }
+            _ => {
+                assert!(false, "Illegal node type for expression at interpretation.");
                 "".to_owned()
             }
         }
     }
 
-    fn interpret_declaration(&mut self, idx: usize) {
-        let identifier_type;
-        if let TokenType::Type(t) = self.tree[idx].data.token.unwrap().token_type {
-            identifier_type = t;
-        } else {
-            identifier_type = SymbolType::Undefined;
-        }
-
-        let lc = self.tree[idx].left_child.unwrap();
-        let rs = self.tree[lc].right_sibling.unwrap();
-        let identifier_name = self.tree[lc].data.token.unwrap().value;
-
-        match identifier_type {
+    fn handle_declaration(
+        &mut self,
+        identifier: &TokenData<'a>,
+        symbol_type: SymbolType,
+        expr: Option<usize>,
+    ) {
+        self.symbols.insert(identifier.value, symbol_type);
+        match symbol_type {
             SymbolType::Int => {
-                let assigned_value = match self.tree[rs].data.token {
-                    Some(_) => self.evaluate_int(rs),
+                let value = match expr {
+                    Some(idx) => self.evaluate_int(idx),
                     None => 0,
                 };
-                self.integers.insert(identifier_name, assigned_value);
+                self.integers.insert(identifier.value, value);
             }
             SymbolType::String => {
-                let assigned_value = match self.tree[rs].data.token {
-                    Some(_) => self.evaluate_string(rs),
+                let value = match expr {
+                    Some(idx) => self.evaluate_string(idx),
                     None => "".to_owned(),
                 };
-                self.strings.insert(identifier_name, assigned_value);
+                self.strings.insert(identifier.value, value);
             }
             SymbolType::Bool => {
-                let assigned_value = match self.tree[rs].data.token {
-                    Some(_) => self.evaluate_boolean(rs),
-                    None => true,
+                let value = match expr {
+                    Some(idx) => self.evaluate_boolean(idx),
+                    None => false,
                 };
-                self.booleans.insert(identifier_name, assigned_value);
+                self.booleans.insert(identifier.value, value);
             }
-            _ => {
-                assert!(false, "Illegal type in declaration.");
-            }
-        }
-
-        self.symbols.insert(identifier_name, identifier_type);
-    }
-
-    fn interpret_assignment(&mut self, idx: usize) {
-        let value = self.tree[self.tree[idx].left_child.unwrap()]
-            .data
-            .token
-            .unwrap()
-            .value;
-        let idx = self.tree[self.tree[idx].left_child.unwrap()]
-            .right_sibling
-            .unwrap();
-        match self.symbols.get(value).unwrap() {
-            SymbolType::Int => {
-                self.integers.insert(value, self.evaluate_int(idx));
-            }
-            SymbolType::String => {
-                self.strings.insert(value, self.evaluate_string(idx));
-            }
-            _ => {
-                assert!(false, "Literal booleans are not supported.");
+            SymbolType::Undefined => {
+                assert!(
+                    false,
+                    "Declaration should never have an undefined type at interpretation."
+                );
             }
         }
     }
 
-    fn interpret_for(&mut self, idx: usize) {}
+    fn handle_assignment(&mut self, identifier: &TokenData<'a>, expression: usize) {
+        match self.symbols.get(identifier.value) {
+            Some(st) => match st {
+                SymbolType::Int => {
+                    let value = self.evaluate_int(expression);
+                    self.integers.insert(identifier.value, value);
+                }
+                SymbolType::String => {
+                    let value = self.evaluate_string(expression);
+                    self.strings.insert(identifier.value, value);
+                }
+                SymbolType::Bool => {
+                    let value = self.evaluate_boolean(expression);
+                    self.booleans.insert(identifier.value, value);
+                }
+                SymbolType::Undefined => {
+                    assert!(
+                        false,
+                        "Symbol type should never be undefined at interpretation."
+                    );
+                }
+            },
+            None => {
+                assert!(false, "Should never happen.");
+            }
+        }
+    }
 
-    fn interpret_read(&mut self, idx: usize) {
-        let mut input = String::new();
-        match io::stdin().read_line(&mut input) {
-            Ok(_) => {
-                let input = match input.split(char::is_whitespace).next() {
-                    Some(v) => v,
-                    None => {
-                        eprintln!("Empty input is not accepted");
-                        process::exit(1);
-                    }
-                };
-                let value = self.tree[idx].data.token.unwrap().value;
-
-                match self.symbols.get(value).unwrap() {
-                    SymbolType::Int => match input.parse::<i32>() {
-                        Ok(v) => {
-                            self.integers.insert(value, v);
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "\"{}\" is not a valid integer. Error in parse: {}",
-                                input, e
-                            );
-                            process::exit(1);
-                        }
-                    },
-                    SymbolType::String => {
-                        self.strings.insert(value, input.to_owned());
-                    }
-                    _ => {
-                        assert!(false, "Can't read values to booleans.");
+    fn handle_for(
+        &mut self,
+        identifier: &TokenData<'a>,
+        start_expr: usize,
+        end_expr: usize,
+        first_statement: Option<usize>,
+    ) {
+        let range_start = self.evaluate_int(start_expr);
+        let range_end = self.evaluate_int(end_expr);
+        if range_start < range_end {
+            if let Some(idx) = first_statement {
+                for i in range_start..range_end {
+                    let id = idx;
+                    self.integers.insert(identifier.value, i);
+                    self.handle_statement(id);
+                    while let Some(id) = self.tree[id].right_sibling {
+                        self.handle_statement(id);
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("Bad input: {}", e);
-                process::exit(1);
-            }
-        }
-    }
-
-    fn interpret_print(&mut self, idx: usize) {
-        match self.tree[self.tree[idx].left_child.unwrap()].data.node_type {
-            NodeType::Expression(t) | NodeType::Operand(t) => {
-                let idx = self.tree[idx].left_child.unwrap();
-                match t {
-                    SymbolType::Int => println!("{}", self.evaluate_int(idx)),
-                    SymbolType::String => println!("{}", self.evaluate_string(idx)),
-                    _ => assert!(false, "Illegal symbol type for print."),
-                }
-            }
-            _ => {
-                println!("{:#?}", self.tree[idx].data.node_type);
-                assert!(false, "Illegal expression type at print.");
-            }
-        }
-    }
-
-    fn interpret_assert(&mut self, idx: usize) {
-        if false == self.evaluate_boolean(self.tree[idx].left_child.unwrap()) {
+        } else {
+            eprint!("Start of range is not smaller than end of range in for loop. ");
+            eprint!(
+                "Range starts from {} and ends at {}.",
+                range_start, range_end
+            );
             eprintln!(
-                "Assertion failed: {}",
-                self.logger
-                    .get_line(self.tree[idx].data.token.unwrap().line as usize)
+                "{}. Exiting.",
+                self.logger.get_line(identifier.line as usize)
             );
             process::exit(1);
         }
     }
 
-    pub fn new(tree: &'b LcRsTree<NodeData<'a>>, logger: &'b mut Logger<'a>) -> Self {
+    fn handle_read(&mut self, identifier: &TokenData<'a>) {
+        let mut buffer = String::new();
+        match io::stdin().read_line(&mut buffer) {
+            Ok(_) => {
+                let input = match buffer.split(char::is_whitespace).next() {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("Empty input is not accepted. Exiting.");
+                        process::exit(1);
+                    }
+                };
+                match self.symbols.get(identifier.value) {
+                    Some(st) => match st {
+                        SymbolType::Int => {
+                            match input.parse::<i32>() {
+                                Ok(v) => self.integers.insert(identifier.value, v),
+                                Err(e) => {
+                                    eprintln!(
+                                        "Bad input, couldn't parse to integer. Error: {}. Exiting.",
+                                        e
+                                    );
+                                    process::exit(1);
+                                }
+                            };
+                        }
+                        SymbolType::String => {
+                            self.strings.insert(identifier.value, input.to_owned());
+                        }
+                        SymbolType::Bool => {
+                            assert!(false, "This should be caught during semantic analysis.");
+                        }
+                        SymbolType::Undefined => {
+                            assert!(
+                                false,
+                                "Symbol type should never be undefined in interpretation."
+                            );
+                        }
+                    },
+                    None => {
+                        assert!(false, "Should never happen.");
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Bad input: {}. Exiting.", e);
+                process::exit(1);
+            }
+        }
+    }
+
+    fn handle_print(&mut self, _: &TokenData<'a>, expression: usize) {
+        match self.tree[expression].data {
+            NodeType::Operand {
+                token: _,
+                symbol_type,
+            }
+            | NodeType::Expression {
+                operator: _,
+                symbol_type,
+            } => match symbol_type {
+                SymbolType::Int => {
+                    let value = self.evaluate_int(expression);
+                    println!("{}", value);
+                }
+                SymbolType::String => {
+                    let value = self.evaluate_string(expression);
+                    println!("{}", value);
+                }
+                SymbolType::Bool => {
+                    let value = self.evaluate_boolean(expression);
+                    println!("{}", value);
+                }
+                SymbolType::Undefined => {
+                    assert!(
+                        false,
+                        "Undefined reached at print handling during interpretation."
+                    );
+                }
+            },
+            _ => {
+                assert!(false, "Should never happen.");
+            }
+        }
+    }
+
+    fn handle_assert(&mut self, token: &TokenData<'a>, expression: usize) {
+        if self.evaluate_boolean(expression) {
+        } else {
+            eprintln!(
+                "Assertion failed on line {}! {}",
+                token.line,
+                self.logger.get_line(token.line as usize)
+            );
+            process::exit(1);
+        }
+    }
+
+    pub fn new(tree: &'b LcRsTree<NodeType<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Interpreter {
             logger: logger,
             tree: tree,
