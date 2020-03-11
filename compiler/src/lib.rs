@@ -72,6 +72,8 @@ pub fn run() {
                         if logger.errors_encountered() {
                             logger.print_errors();
                         }
+
+                        println!("");
                     }
                     Err(err) => {
                         eprintln!("Application error: {}, with filename \"{}\"", err, filename);

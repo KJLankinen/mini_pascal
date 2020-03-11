@@ -188,7 +188,7 @@ impl<'a> Scanner<'a> {
                             // error. We don't care about that here, the parser will take care of it.
                             while let Some((_, ch)) = self.chars.peek() {
                                 let is_finished = &'"' == ch && false == escape_next;
-                                escape_next = &'\\' == ch;
+                                escape_next = &'\\' == ch && false == escape_next;
                                 self.get_char();
 
                                 if is_finished {

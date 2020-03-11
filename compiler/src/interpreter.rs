@@ -4,6 +4,7 @@ use super::logger::Logger;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::io;
+use std::io::Write;
 use std::process;
 
 pub struct Interpreter<'a, 'b> {
@@ -345,14 +346,19 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         if range_start < range_end {
             if let Some(idx) = first_statement {
                 let mut next;
-                for i in range_start..=range_end {
-                    self.integers.insert(identifier.value, i);
+                let mut i = range_start;
+                self.integers.insert(identifier.value, i);
+
+                while i <= range_end {
                     next = idx;
                     self.handle_statement(next);
                     while let Some(id) = self.tree[next].right_sibling {
                         self.handle_statement(id);
                         next = id;
                     }
+
+                    i += 1;
+                    self.integers.insert(identifier.value, i);
                 }
             }
         } else {
@@ -431,15 +437,39 @@ impl<'a, 'b> Interpreter<'a, 'b> {
             } => match symbol_type {
                 SymbolType::Int => {
                     let value = self.evaluate_int(expression);
-                    println!("{}", value);
+                    print!("{}", value);
+                    io::stdout().flush().expect("Could not flush stdout.");
                 }
                 SymbolType::String => {
-                    let value = self.evaluate_string(expression);
-                    println!("{}", value);
+                    let str_expr = self.evaluate_string(expression);
+                    // In the compiled program, the possible "\\" values are represented in
+                    // Rust as "\\\\", i.e each "\" is escaped once, so the amount doubles.
+                    // Four backslashes always means that we want to print one, because it's
+                    // escaped in the compiled source once.
+                    let mut values = str_expr.split("\\\\").collect::<Vec<&str>>();
+                    // Next, if there are any "\n" or "\"" patterns left
+                    // (stored as "\\n" and "\\\"" in Rust, respectively),
+                    // replace those with just "\"" and "\n", which are the internal
+                    // representations for double quote and newline, respectively.
+                    let strings = values
+                        .iter()
+                        .map(|s| s.replace("\\\"", "\"").replace("\\n", "\n"))
+                        .collect::<Vec<String>>();
+                    values = strings.iter().map(|s| &**s).collect();
+                    // Take out the last value of the original split, because we want to print "\"
+                    // in between every case, so we print the first n-1 cases with a trailing "\"
+                    // and finally the nth term.
+                    let last = values.pop();
+                    for value in values {
+                        print!("{}{}", value, "\\");
+                    }
+                    print!("{}", last.unwrap_or_else(|| ""));
+                    io::stdout().flush().expect("Could not flush stdout.");
                 }
                 SymbolType::Bool => {
                     let value = self.evaluate_boolean(expression);
-                    println!("{}", value);
+                    print!("{}", value);
+                    io::stdout().flush().expect("Could not flush stdout.");
                 }
                 SymbolType::Undefined => {
                     assert!(
