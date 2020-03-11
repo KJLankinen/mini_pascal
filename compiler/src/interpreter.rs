@@ -23,7 +23,6 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     pub fn interpret(&mut self) {
         // Start walking down the tree
         let mut node = self.tree[0].left_child;
-
         while let Some(idx) = node {
             self.handle_statement(idx);
             node = self.tree[idx].right_sibling;
@@ -86,6 +85,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_boolean(&self, idx: usize) -> bool {
+        // Evaluate boolean expressions
         match self.tree[idx].data {
             NodeType::Operand {
                 token,
@@ -106,15 +106,14 @@ impl<'a, 'b> Interpreter<'a, 'b> {
             } => {
                 let operator = operator.unwrap();
                 let lc = self.tree[idx].left_child.unwrap();
-                let rs = self.tree[lc].right_sibling;
+                let rs = self.tree[lc].right_sibling.unwrap_or_else(|| !0);
 
                 match operator.token_type {
                     TokenType::OperatorAnd => {
-                        self.evaluate_boolean(lc) && self.evaluate_boolean(rs.unwrap())
+                        self.evaluate_boolean(lc) && self.evaluate_boolean(rs)
                     }
                     TokenType::OperatorNot => !self.evaluate_boolean(lc),
                     tt @ TokenType::OperatorLessThan | tt @ TokenType::OperatorEqual => {
-                        let rs = rs.unwrap();
                         let value1;
                         let value2;
 
@@ -180,11 +179,13 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_int(&self, idx: usize) -> i32 {
+        // Evaluate integer expressions
         match self.tree[idx].data {
             NodeType::Operand {
                 token,
                 symbol_type: _,
             } => {
+                // Integer operand can be a literal or an identifier
                 let token = token.unwrap();
                 match token.token_type {
                     TokenType::LiteralInt => {
@@ -230,11 +231,13 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     }
 
     fn evaluate_string(&self, idx: usize) -> String {
+        // Evaluate string expressions
         match self.tree[idx].data {
             NodeType::Operand {
                 token,
                 symbol_type: _,
             } => {
+                // String operand can be a literal or an identifier
                 let token = token.unwrap();
                 match token.token_type {
                     TokenType::LiteralString => token.value.to_owned(),
@@ -253,6 +256,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                 let lc = self.tree[idx].left_child.unwrap();
                 let rs = self.tree[lc].right_sibling.unwrap();
 
+                // Only concatenation of strings is an allowed operation
                 match operator.token_type {
                     TokenType::OperatorPlus => self.evaluate_string(lc) + &self.evaluate_string(rs),
                     _ => {
@@ -274,9 +278,12 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         symbol_type: SymbolType,
         expr: Option<usize>,
     ) {
+        // Add every new identifier to the maps of values. If there was no expressions added to the
+        // declaration, use a default value for each type.
         self.symbols.insert(identifier.value, symbol_type);
         match symbol_type {
             SymbolType::Int => {
+                // Default int is 0
                 let value = match expr {
                     Some(idx) => self.evaluate_int(idx),
                     None => 0,
@@ -284,6 +291,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                 self.integers.insert(identifier.value, value);
             }
             SymbolType::String => {
+                // Default string is empty string ""
                 let value = match expr {
                     Some(idx) => self.evaluate_string(idx),
                     None => "".to_owned(),
@@ -291,6 +299,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                 self.strings.insert(identifier.value, value);
             }
             SymbolType::Bool => {
+                // Default bool is false
                 let value = match expr {
                     Some(idx) => self.evaluate_boolean(idx),
                     None => false,
@@ -310,16 +319,16 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         match self.symbols.get(identifier.value) {
             Some(st) => match st {
                 SymbolType::Int => {
-                    let value = self.evaluate_int(expression);
-                    self.integers.insert(identifier.value, value);
+                    self.integers
+                        .insert(identifier.value, self.evaluate_int(expression));
                 }
                 SymbolType::String => {
-                    let value = self.evaluate_string(expression);
-                    self.strings.insert(identifier.value, value);
+                    self.strings
+                        .insert(identifier.value, self.evaluate_string(expression));
                 }
                 SymbolType::Bool => {
-                    let value = self.evaluate_boolean(expression);
-                    self.booleans.insert(identifier.value, value);
+                    self.booleans
+                        .insert(identifier.value, self.evaluate_boolean(expression));
                 }
                 SymbolType::Undefined => {
                     assert!(
@@ -343,7 +352,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
     ) {
         let range_start = self.evaluate_int(start_expr);
         let range_end = self.evaluate_int(end_expr);
-        if range_start < range_end {
+        if range_start <= range_end {
             if let Some(idx) = first_statement {
                 let mut next;
                 let mut i = range_start;
@@ -360,9 +369,13 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     i += 1;
                     self.integers.insert(identifier.value, i);
                 }
+            } else {
+                // The for loop was empty, but we should still increment the identifier used in the
+                // for loop.
+                self.integers.insert(identifier.value, range_end);
             }
         } else {
-            eprint!("Start of range is not smaller than end of range in for loop. ");
+            eprint!("Start of range is not less or equal to the end of range in for loop. ");
             eprint!(
                 "Range starts from {} and ends at {}.",
                 range_start, range_end
@@ -379,6 +392,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         let mut buffer = String::new();
         match io::stdin().read_line(&mut buffer) {
             Ok(_) => {
+                // Take only the first value
                 let input = match buffer.split(char::is_whitespace).next() {
                     Some(v) => v,
                     None => {
@@ -488,7 +502,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
         if self.evaluate_boolean(expression) {
         } else {
             eprintln!(
-                "Assertion failed on line {}! {}",
+                "Assertion failed on line {}! \"{}\"",
                 token.line,
                 self.logger.get_line(token.line as usize)
             );

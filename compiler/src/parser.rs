@@ -28,8 +28,9 @@ pub struct Parser<'a, 'b> {
 // ---------------------------------------------------------------------
 impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
-    // match_token() and process() are part of the error handling of the parser.
+    // fn match_token() and fn process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
+    // Much of the handling code calls these functions with a function pointer.
     // ---------------------------------------------------------------------
     fn match_token(&mut self, token_types: &[TokenType]) -> ParseResult<TokenData<'a>> {
         // If the next token matches any of the given expected tokens, return it
@@ -256,9 +257,126 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.match_token(&[])?;
             }
         }
+
         Ok(())
     }
 
+    fn expression(&mut self, parent: usize) -> ParseResult<()> {
+        let my_id = self.tree.add_child(Some(parent));
+
+        // First case: Unary operator and operand
+        if TokenType::OperatorNot == self.scanner.peek().token_type {
+            // We just peeked this token, so the match is a certainty.
+            let token = self.match_token(&[TokenType::OperatorNot])?;
+            self.tree[my_id].data = NodeType::Expression {
+                operator: Some(token),
+                symbol_type: SymbolType::Undefined,
+            };
+            // There's nothing left of this expression after the operand,
+            // so there's no point in having any recovery tokens at this level.
+            self.operand(my_id)?;
+            return Ok(());
+        }
+
+        // Second and third case start with an operand. If we hit an operator, we might be able to
+        // recover. It is also possible in some cases, that the recovery is a false positive, i.e.
+        // that the expression meant by the user doesn't contain any operators, but a later
+        // expression does. But if a recovery token is hit, the given source code contains
+        // some syntax errors in any case, so we don't care about the possible false positive here.
+        let mut recovery_token = None;
+        self.process(
+            Parser::operand,
+            my_id,
+            &[
+                TokenType::OperatorPlus,
+                TokenType::OperatorMinus,
+                TokenType::OperatorMultiply,
+                TokenType::OperatorDivide,
+                TokenType::OperatorLessThan,
+                TokenType::OperatorEqual,
+                TokenType::OperatorAnd,
+            ],
+            &mut recovery_token,
+        )?;
+
+        match self.scanner.peek().token_type {
+            token_type @ TokenType::OperatorPlus
+            | token_type @ TokenType::OperatorMinus
+            | token_type @ TokenType::OperatorMultiply
+            | token_type @ TokenType::OperatorDivide
+            | token_type @ TokenType::OperatorLessThan
+            | token_type @ TokenType::OperatorEqual
+            | token_type @ TokenType::OperatorAnd => {
+                // Second case: operand, binary operator, operand. Again the match is a certainty,
+                // because we just peeked at the next token and got here. There's again no point
+                // in adding any recovery tokens for this level, because the operand is the
+                // last part of the expression, so there's no possible recovery at this level, if
+                // it goes wrong.
+                let token = self.match_token(&[token_type])?;
+                self.operand(my_id)?;
+                self.tree[my_id].data = NodeType::Expression {
+                    operator: Some(token),
+                    symbol_type: SymbolType::Undefined,
+                };
+
+                return Ok(());
+            }
+            _ => {
+                // Third case: a single operand
+                // This expression should have only one child so this node can be removed to
+                // simplify the AST. Otherwise nested parenthesis will cause a long chain of
+                // expr(opnd(expr(opnd))) nodes, which serve no purpose.
+                if 1 == self.tree.count_children(my_id) {
+                    self.tree.remove_node(my_id);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn operand(&mut self, parent: usize) -> ParseResult<()> {
+        let mut recovery_token = None;
+        if TokenType::LParen == self.scanner.peek().token_type {
+            // The match is a certainty due to the peek, and we can recover at the matching ')'.
+            self.match_token(&[TokenType::LParen])?;
+            self.process(
+                Parser::expression,
+                parent,
+                &[TokenType::RParen],
+                &mut recovery_token,
+            )?;
+            self.match_token(&[TokenType::RParen])?;
+        } else {
+            let token = self.match_token(&[
+                TokenType::LiteralInt,
+                TokenType::LiteralString,
+                TokenType::Identifier,
+            ])?;
+            let my_id = self.tree.add_child(Some(parent));
+            let symbol_type = match token.token_type {
+                TokenType::LiteralInt => SymbolType::Int,
+                TokenType::LiteralString => SymbolType::String,
+                TokenType::Identifier => SymbolType::Undefined,
+                _ => SymbolType::Undefined,
+            };
+            self.tree[my_id].data = NodeType::Operand {
+                token: Some(token),
+                symbol_type: symbol_type,
+            };
+        }
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------------
+    // Functions for each of the possible statements.
+    // fn statement_prefix() leads to one of these
+    // ---------------------------------------------------------------------
+    // Some of these functions use closures. The closures are used as recovery points, i.e. points
+    // at which the parsing of the code can be resumed. Each recovery token is associated with a
+    // closure. If an error is found and a recovery token is matched, the associated closure is
+    // called to continue parsing. The earlier closures can call later closures. This means that
+    // the closures have to be declared in reverse order relative to the parsed code. E.g. in the for loop
+    // function, the "do" closure is declared before "expression", "range" or "in" closures.
     fn declaration(&mut self, parent: usize) -> ParseResult<()> {
         // Declaration with an optional assignment
         let my_id = self.tree.add_child(Some(parent));
@@ -609,6 +727,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         // statement.
         self.expression(my_id)?;
 
+        // Store expression idx for later use
         let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
         self.tree[my_id].data = NodeType::Print {
             token: Some(token),
@@ -671,6 +790,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
         }
 
+        // Store expression idx for later use.
         let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
         self.tree[my_id].data = NodeType::Assert {
             token: Some(token),
@@ -702,118 +822,13 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         self.expression(my_id)?;
 
+        // Store expression idx for later use
         let expression = self.tree[my_id].left_child.unwrap_or_else(|| !0);
         self.tree[my_id].data = NodeType::Assignment {
             identifier: Some(token),
             expression: expression,
         };
 
-        Ok(())
-    }
-
-    fn expression(&mut self, parent: usize) -> ParseResult<()> {
-        let my_id = self.tree.add_child(Some(parent));
-
-        // First case: Unary operator and operand
-        if TokenType::OperatorNot == self.scanner.peek().token_type {
-            // We just peeked this token, so the match is a certainty.
-            let token = self.match_token(&[TokenType::OperatorNot])?;
-            self.tree[my_id].data = NodeType::Expression {
-                operator: Some(token),
-                symbol_type: SymbolType::Undefined,
-            };
-            // There's nothing left of this expression after the operand,
-            // so there's no point in having any recovery tokens at this level.
-            self.operand(my_id)?;
-            return Ok(());
-        }
-
-        // Second and third case start with an operand. If we hit an operator, we might be able to
-        // recover. It is also possible in some cases, that the recovery is a false positive, i.e.
-        // that the expression meant by the user doesn't contain any operators, but a later
-        // expression does. But if a recovery token is hit, the given source code contains
-        // some syntax errors in any case, so we don't care about the possible false positive here.
-        let mut recovery_token = None;
-        self.process(
-            Parser::operand,
-            my_id,
-            &[
-                TokenType::OperatorPlus,
-                TokenType::OperatorMinus,
-                TokenType::OperatorMultiply,
-                TokenType::OperatorDivide,
-                TokenType::OperatorLessThan,
-                TokenType::OperatorEqual,
-                TokenType::OperatorAnd,
-            ],
-            &mut recovery_token,
-        )?;
-
-        match self.scanner.peek().token_type {
-            token_type @ TokenType::OperatorPlus
-            | token_type @ TokenType::OperatorMinus
-            | token_type @ TokenType::OperatorMultiply
-            | token_type @ TokenType::OperatorDivide
-            | token_type @ TokenType::OperatorLessThan
-            | token_type @ TokenType::OperatorEqual
-            | token_type @ TokenType::OperatorAnd => {
-                // Second case: operand, binary operator, operand. Again the match is a certainty,
-                // because we just peeked at the next token and got here. There's again no point
-                // in adding any recovery tokens for this level, because the operand is the
-                // last part of the expression, so there's no possible recovery at this level, if
-                // it goes wrong.
-                let token = self.match_token(&[token_type])?;
-                self.operand(my_id)?;
-                self.tree[my_id].data = NodeType::Expression {
-                    operator: Some(token),
-                    symbol_type: SymbolType::Undefined,
-                };
-
-                return Ok(());
-            }
-            _ => {
-                // Third case: a single operand
-                // This expression should have only one child so this node can be removed to
-                // simplify the AST. Otherwise nested parenthesis will cause a long chain of
-                // expr(opnd(expr(opnd))) nodes, which serve no purpose.
-                if 1 == self.tree.count_children(my_id) {
-                    self.tree.remove_node(my_id);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn operand(&mut self, parent: usize) -> ParseResult<()> {
-        let mut recovery_token = None;
-        if TokenType::LParen == self.scanner.peek().token_type {
-            // The match is a certainty due to the peek, and we can recover at the matching ')'.
-            self.match_token(&[TokenType::LParen])?;
-            self.process(
-                Parser::expression,
-                parent,
-                &[TokenType::RParen],
-                &mut recovery_token,
-            )?;
-            self.match_token(&[TokenType::RParen])?;
-        } else {
-            let token = self.match_token(&[
-                TokenType::LiteralInt,
-                TokenType::LiteralString,
-                TokenType::Identifier,
-            ])?;
-            let my_id = self.tree.add_child(Some(parent));
-            let symbol_type = match token.token_type {
-                TokenType::LiteralInt => SymbolType::Int,
-                TokenType::LiteralString => SymbolType::String,
-                TokenType::Identifier => SymbolType::Undefined,
-                _ => SymbolType::Undefined,
-            };
-            self.tree[my_id].data = NodeType::Operand {
-                token: Some(token),
-                symbol_type: symbol_type,
-            };
-        }
         Ok(())
     }
 
@@ -835,8 +850,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     pub fn parse(&mut self, out_file: Option<&'a str>) {
-        // Start the parsing and print out syntax errors and never ending
-        // multiline comments if there were any.
+        // Parse the program
         match self.program() {
             Ok(_) => (),
             Err(_) => {
@@ -845,13 +859,15 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
 
+        // If there were any unmatched multiline comment starting tokens, add those as errors.
         for (line, col) in &self.scanner.unmatched_multiline_comment_prefixes {
             self.logger
                 .add_error(ErrorType::UnmatchedComment(*line, *col));
         }
 
+        // Serialize the AST to a json if so specified.
         if let Some(filename) = out_file {
-            if let Some(json) = self.serialize() {
+            if let Some(json) = self.tree.serialize() {
                 let file = fs::File::create(&filename).expect(
                     format!("Could not create a new file with the name {}", &filename).as_str(),
                 );
@@ -867,9 +883,5 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
             }
         }
-    }
-
-    pub fn serialize(&mut self) -> Option<serde_json::Value> {
-        self.tree.serialize()
     }
 }
