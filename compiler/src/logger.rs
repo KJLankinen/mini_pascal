@@ -23,6 +23,11 @@ impl<'a> Logger<'a> {
             let column;
             let line;
             match error {
+                ErrorType::LexicalError(token) => {
+                    eprintln!("Encountered an undefined token \"{}\".", token.value);
+                    line = token.line;
+                    column = token.column;
+                }
                 ErrorType::SyntaxError(token, expected) => {
                     if 1 < expected.len() {
                         eprint!("Expected one of ");
