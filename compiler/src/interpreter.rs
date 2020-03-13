@@ -466,16 +466,22 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     io::stdout().flush().expect("Could not flush stdout.");
                 }
                 SymbolType::String => {
+                    // These string replacements could be handled more generally
+                    // by going through the unicode code point representation of the characters.
+                    // Now each case needs to be implemented by itself, which is always tedious and bad.
+
                     let str_expr = self.evaluate_string(expression);
+
                     // In the compiled program, the possible "\\" values are represented in
                     // Rust as "\\\\", i.e each "\" is escaped once, so the amount doubles.
                     // Four backslashes always means that we want to print one, because it's
                     // escaped in the compiled source once.
                     let mut values = str_expr.split("\\\\").collect::<Vec<&str>>();
-                    // Next, if there are any "\n" or "\"" patterns left
-                    // (stored as "\\n" and "\\\"" in Rust, respectively),
-                    // replace those with just "\"" and "\n", which are the internal
-                    // representations for double quote and newline, respectively.
+
+                    // Next, if there are any special escaped patterns left
+                    // (stored as "\\n",  "\\\"" etc. in Rust), replace those
+                    // with the internal Rust representation. In other words,
+                    // remove some backslashes.
                     let strings = values
                         .iter()
                         .map(|s| {
@@ -485,6 +491,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                         })
                         .collect::<Vec<String>>();
                     values = strings.iter().map(|s| &**s).collect();
+
                     // Take out the last value of the original split, because we want to print "\"
                     // in between every case, so we print the first n-1 cases with a trailing "\"
                     // and finally the nth term.
