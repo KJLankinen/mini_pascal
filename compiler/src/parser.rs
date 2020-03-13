@@ -63,6 +63,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             // first token that matches any of the recovery tokens on any recursion level.
             // Then, if that token has been set as a recovery token for multiple levels,
             // find the deepest level.
+            if TokenType::Identifier == self.scanner.peek().token_type {
+                // If the token that triggered this error is identified as an identifier by the
+                // scanner, but it's not expected here, it's probably a typoed keyword. Let's skip
+                // it and continue recovery from the next token.
+                self.scanner.next();
+            }
+
             let tt = self.scanner.peek().token_type;
             if let Some(set) = self.recovery_tokens.get(&tt) {
                 if 0 < set.len() {
@@ -211,6 +218,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         TokenType::KeywordRead,
                         TokenType::KeywordPrint,
                         TokenType::KeywordAssert,
+                        TokenType::Identifier,
                     ],
                     &mut recovery_token,
                 )?;
@@ -556,15 +564,47 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         // Recovery point for the 'do' token
         let do_closure = |parser: &mut Self| -> ParseResult<()> {
-            parser.match_token(&[TokenType::KeywordDo])?;
-
+            // If the 'do' token is not matched,
+            // recover at the first statement of the for loop or at loop end.
             let mut recovery_token = None;
-            parser.process(
-                Parser::statement_list,
-                my_id,
-                &[TokenType::KeywordEnd],
+            let token = parser.process(
+                Parser::match_token,
+                &[TokenType::KeywordDo],
+                &[
+                    TokenType::KeywordVar,
+                    TokenType::KeywordFor,
+                    TokenType::KeywordRead,
+                    TokenType::KeywordPrint,
+                    TokenType::KeywordAssert,
+                    TokenType::Identifier,
+                    TokenType::KeywordEnd,
+                ],
                 &mut recovery_token,
             )?;
+
+            let should_process_statements = match recovery_token {
+                Some(t) => match t {
+                    TokenType::KeywordEnd => false,
+                    _ => true,
+                },
+                None => {
+                    assert!(
+                        token.is_some(),
+                        "Token and recovery token can't both be None."
+                    );
+                    true
+                }
+            };
+
+            if should_process_statements {
+                recovery_token = None;
+                parser.process(
+                    Parser::statement_list,
+                    my_id,
+                    &[TokenType::KeywordEnd],
+                    &mut recovery_token,
+                )?;
+            }
             end_closure(parser)
         };
 

@@ -478,7 +478,11 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     // representations for double quote and newline, respectively.
                     let strings = values
                         .iter()
-                        .map(|s| s.replace("\\\"", "\"").replace("\\n", "\n"))
+                        .map(|s| {
+                            s.replace("\\\"", "\"")
+                                .replace("\\n", "\n")
+                                .replace("\\t", "\t")
+                        })
                         .collect::<Vec<String>>();
                     values = strings.iter().map(|s| &**s).collect();
                     // Take out the last value of the original split, because we want to print "\"
