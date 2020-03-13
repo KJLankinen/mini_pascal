@@ -216,7 +216,18 @@ impl<'a, 'b> Interpreter<'a, 'b> {
                     TokenType::OperatorPlus => self.evaluate_int(lc) + self.evaluate_int(rs),
                     TokenType::OperatorMinus => self.evaluate_int(lc) - self.evaluate_int(rs),
                     TokenType::OperatorMultiply => self.evaluate_int(lc) * self.evaluate_int(rs),
-                    TokenType::OperatorDivide => self.evaluate_int(lc) / self.evaluate_int(rs),
+                    TokenType::OperatorDivide => {
+                        let denominator = self.evaluate_int(rs);
+                        if 0 == denominator {
+                            eprintln!(
+                                "Encountered division by zero in expression \"{}\". Exiting.",
+                                self.logger.get_line(operator.line as usize)
+                            );
+                            process::exit(1);
+                        } else {
+                            self.evaluate_int(lc) / denominator
+                        }
+                    }
                     _ => {
                         assert!(false, "Illegal token type for operator at interpretation.");
                         0
