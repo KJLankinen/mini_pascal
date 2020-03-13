@@ -82,26 +82,29 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn check_expression(&mut self, idx: usize) -> SymbolType {
         match self.tree[idx].data {
-            NodeType::Operand { token, symbol_type } => match symbol_type {
-                SymbolType::Int | SymbolType::String | SymbolType::Bool => symbol_type,
-                SymbolType::Undefined => {
-                    let ref token = token.expect("Operand is missing a token.");
-                    match self.symbols.get(token.value) {
-                        Some(st) => {
-                            self.tree[idx].data = NodeType::Operand {
-                                token: Some(*token),
-                                symbol_type: *st,
-                            };
-                            *st
-                        }
-                        None => {
-                            self.logger
-                                .add_error(ErrorType::UndeclaredIdentifier(*token));
-                            SymbolType::Undefined
+            NodeType::Operand { token, symbol_type } => {
+                match symbol_type {
+                    SymbolType::Int | SymbolType::String | SymbolType::Bool => symbol_type,
+                    SymbolType::Undefined => {
+                        let ref token = token.expect("Operand is missing a token.");
+                        match self.symbols.get(token.value) {
+                            Some(st) => {
+                                assert!(SymbolType::Undefined != *st, "Symbol type of a declared identifier should never be undefined.");
+                                self.tree[idx].data = NodeType::Operand {
+                                    token: Some(*token),
+                                    symbol_type: *st,
+                                };
+                                *st
+                            }
+                            None => {
+                                self.logger
+                                    .add_error(ErrorType::UndeclaredIdentifier(*token));
+                                SymbolType::Undefined
+                            }
                         }
                     }
                 }
-            },
+            }
             NodeType::Expression {
                 operator,
                 symbol_type: _,
@@ -113,15 +116,16 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 let expr_type = self.check_expression(lc);
 
                 let et = match operator.token_type {
-                    TokenType::OperatorNot => {
-                        if SymbolType::Bool == expr_type {
-                            SymbolType::Bool
-                        } else {
+                    TokenType::OperatorNot => match expr_type {
+                        // If expression has type Undefined, an error has already been flagged so
+                        // stop the error propagation here.
+                        SymbolType::Bool | SymbolType::Undefined => SymbolType::Bool,
+                        _ => {
                             self.logger
                                 .add_error(ErrorType::IllegalOperation(operator, expr_type));
                             SymbolType::Undefined
                         }
-                    }
+                    },
                     tt @ TokenType::OperatorAnd
                     | tt @ TokenType::OperatorPlus
                     | tt @ TokenType::OperatorMinus
@@ -135,53 +139,70 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                 .expect("Expression is missing its second child."),
                         );
 
-                        if expr_type == expr_type2 {
-                            match tt {
-                                TokenType::OperatorAnd => {
-                                    if SymbolType::Bool == expr_type {
-                                        expr_type
-                                    } else {
+                        let same_type = expr_type == expr_type2;
+                        let has_undefined = SymbolType::Undefined == expr_type
+                            || SymbolType::Undefined == expr_type2;
+
+                        if same_type && has_undefined {
+                            // Both are Undefined, don't check anything, because we have no
+                            // information, making any analysis just guessing.
+                            return SymbolType::Undefined;
+                        } else if same_type || has_undefined {
+                            let correct_type = if SymbolType::Undefined == expr_type {
+                                expr_type2
+                            } else {
+                                expr_type
+                            };
+
+                            match correct_type {
+                                SymbolType::Int => match tt {
+                                    TokenType::OperatorPlus
+                                    | TokenType::OperatorMinus
+                                    | TokenType::OperatorMultiply
+                                    | TokenType::OperatorDivide => correct_type,
+                                    TokenType::OperatorAnd => SymbolType::Undefined,
+                                    TokenType::OperatorLessThan | TokenType::OperatorEqual => {
+                                        SymbolType::Bool
+                                    }
+                                    _ => {
+                                        assert!(false, "Illegal token type for an operator.");
                                         SymbolType::Undefined
                                     }
-                                }
-                                TokenType::OperatorPlus => {
-                                    if SymbolType::String == expr_type
-                                        || SymbolType::Int == expr_type
-                                    {
-                                        expr_type
-                                    } else {
+                                },
+                                SymbolType::String => match tt {
+                                    TokenType::OperatorPlus => correct_type,
+                                    TokenType::OperatorAnd
+                                    | TokenType::OperatorMinus
+                                    | TokenType::OperatorMultiply
+                                    | TokenType::OperatorDivide => SymbolType::Undefined,
+                                    TokenType::OperatorLessThan | TokenType::OperatorEqual => {
+                                        SymbolType::Bool
+                                    }
+                                    _ => {
+                                        assert!(false, "Illegal token type for an operator.");
                                         SymbolType::Undefined
                                     }
-                                }
-                                TokenType::OperatorMinus => {
-                                    if SymbolType::Int == expr_type {
-                                        expr_type
-                                    } else {
+                                },
+                                SymbolType::Bool => match tt {
+                                    TokenType::OperatorPlus
+                                    | TokenType::OperatorMinus
+                                    | TokenType::OperatorMultiply
+                                    | TokenType::OperatorDivide => SymbolType::Undefined,
+                                    TokenType::OperatorAnd
+                                    | TokenType::OperatorLessThan
+                                    | TokenType::OperatorEqual => SymbolType::Bool,
+                                    _ => {
+                                        assert!(false, "Illegal token type for an operator.");
                                         SymbolType::Undefined
                                     }
-                                }
-                                TokenType::OperatorMultiply => {
-                                    if SymbolType::Int == expr_type {
-                                        expr_type
-                                    } else {
-                                        SymbolType::Undefined
-                                    }
-                                }
-                                TokenType::OperatorDivide => {
-                                    if SymbolType::Int == expr_type {
-                                        expr_type
-                                    } else {
-                                        SymbolType::Undefined
-                                    }
-                                }
-                                TokenType::OperatorLessThan => SymbolType::Bool,
-                                TokenType::OperatorEqual => SymbolType::Bool,
-                                _ => {
-                                    assert!(false, "Illegal token type for an operator.");
+                                },
+                                SymbolType::Undefined => {
+                                    assert!(false, "This should never happen.");
                                     SymbolType::Undefined
                                 }
                             }
                         } else {
+                            // Neither is undefined, but types are different. This is a new error.
                             self.logger.add_error(ErrorType::MismatchedTypes(
                                 operator, expr_type, expr_type2,
                             ));
@@ -231,7 +252,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 self.symbols.insert(identifier.value, symbol_type);
                 if let Some(idx) = expr {
                     let expr_type = self.check_expression(idx);
-                    if expr_type != symbol_type {
+                    // Don't flag error, if the expression type is undefined, because something is
+                    // wrong with the expression and errors about that have already been flagged.
+                    // This prevents unnecessary error propagation.
+                    if expr_type != symbol_type && SymbolType::Undefined != expr_type {
                         self.logger.add_error(ErrorType::AssignMismatchedType(
                             *identifier,
                             symbol_type,
@@ -252,7 +276,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 Some(st) => {
                     let st = *st;
                     let expr_type = self.check_expression(expression);
-                    if expr_type != st {
+                    // Don't flag error, if the expression type is undefined, because something is
+                    // wrong with the expression and errors about that have already been flagged.
+                    // This prevents unnecessary error propagation.
+                    if expr_type != st && SymbolType::Undefined != expr_type {
                         self.logger.add_error(ErrorType::AssignMismatchedType(
                             *identifier,
                             st,
@@ -289,7 +316,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                 next_statement = self.tree[rs].right_sibling;
                             }
                             self.blocked_identifiers.remove(identifier.value);
-                        } else {
+                        } else if SymbolType::Undefined != expr_type {
                             self.logger.add_error(ErrorType::ForMismatchedType(
                                 *identifier,
                                 None,
@@ -297,7 +324,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                 Some(expr_type),
                             ));
                         }
-                    } else {
+                    } else if SymbolType::Undefined != expr_type {
                         self.logger.add_error(ErrorType::ForMismatchedType(
                             *identifier,
                             None,
@@ -339,7 +366,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn handle_print(&mut self, token: &TokenData<'a>, expression: usize) {
         let expr_type = self.check_expression(expression);
-        if SymbolType::Int != expr_type && SymbolType::String != expr_type {
+        if SymbolType::Int != expr_type
+            && SymbolType::String != expr_type
+            && SymbolType::Undefined != expr_type
+        {
             self.logger
                 .add_error(ErrorType::IOMismatchedType(*token, expr_type));
         }
@@ -347,7 +377,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn handle_assert(&mut self, token: &TokenData<'a>, expression: usize) {
         let expr_type = self.check_expression(expression);
-        if SymbolType::Bool != expr_type {
+        if SymbolType::Bool != expr_type && SymbolType::Undefined != expr_type {
             self.logger
                 .add_error(ErrorType::AssertMismatchedType(*token, expr_type));
         }

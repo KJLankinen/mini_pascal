@@ -27,6 +27,12 @@ pub struct Parser<'a, 'b> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a, 'b> Parser<'a, 'b> {
+    const DUMMY_TOKEN: TokenData<'a> = TokenData {
+        column: !0,
+        line: !0,
+        token_type: TokenType::Undefined,
+        value: "DummyDummy",
+    };
     // ---------------------------------------------------------------------
     // fn match_token() and fn process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
@@ -430,11 +436,17 @@ impl<'a, 'b> Parser<'a, 'b> {
 
             // Specify the symbol type of the identifier in this declaration.
             // It will be used later by semantic analysis and interpretation.
-            symbol_type = match token.unwrap_or_else(|| TokenData::default()).value {
+            symbol_type = match token.unwrap_or_else(|| Parser::DUMMY_TOKEN).value {
                 "int" => SymbolType::Int,
                 "string" => SymbolType::String,
                 "bool" => SymbolType::Bool,
-                _ => SymbolType::Undefined,
+                t @ _ => {
+                    assert!(
+                        "DummyDummy" == t && recovery_token.is_some(),
+                        "This can only happen when the type was not matched correctly."
+                    );
+                    SymbolType::Undefined
+                }
             };
 
             if token.is_some()
