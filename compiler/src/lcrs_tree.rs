@@ -175,46 +175,42 @@ where
         if self.nodes.is_empty() {
             return None;
         } else {
-            return self.recursive_serialize(Some(0));
+            return Some(self.recursive_serialize(0));
         }
     }
 
-    fn recursive_serialize(&self, id: Option<usize>) -> Option<serde_json::Value> {
-        if let Some(my_id) = id {
-            let mut my_children = vec![];
-            if let Some(id) = self.nodes[my_id].left_child {
-                // Add first child
-                my_children.push(self.recursive_serialize(Some(id)));
+    fn recursive_serialize(&self, id: usize) -> serde_json::Value {
+        let mut my_children = vec![];
+        if let Some(lc) = self.nodes[id].left_child {
+            // Add first child
+            my_children.push(self.recursive_serialize(lc));
 
-                // Add the rest of the children
-                let mut next = id;
-                while let Some(id) = self.nodes[next].right_sibling {
-                    my_children.push(self.recursive_serialize(Some(id)));
-                    next = id;
-                }
+            // Add the rest of the children
+            let mut next = lc;
+            while let Some(rs) = self.nodes[next].right_sibling {
+                my_children.push(self.recursive_serialize(rs));
+                next = rs;
             }
-
-            let mut obj = json!(&self.nodes[my_id]);
-            match my_children.len() {
-                0 => {}
-                1 => {
-                    // Add the only child to the already serialized map
-                    obj.as_object_mut()
-                        .unwrap()
-                        .insert("child".to_string(), json!(my_children[0].as_ref().unwrap()));
-                }
-                _ => {
-                    // Add all the children to the already serialized map
-                    obj.as_object_mut()
-                        .unwrap()
-                        .insert("children".to_string(), json!(my_children));
-                }
-            }
-
-            return Some(json!(obj));
         }
 
-        return None;
+        let mut obj = json!(&self.nodes[id].data);
+        match my_children.len() {
+            0 => {}
+            1 => {
+                // Add the only child to the already serialized map
+                obj.as_object_mut()
+                    .unwrap()
+                    .insert("child".to_string(), json!(my_children[0]));
+            }
+            _ => {
+                // Add all the children to the already serialized map
+                obj.as_object_mut()
+                    .unwrap()
+                    .insert("children".to_string(), json!(my_children));
+            }
+        }
+
+        return json!(obj);
     }
 }
 

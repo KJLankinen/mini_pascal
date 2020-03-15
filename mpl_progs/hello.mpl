@@ -3,7 +3,6 @@ print "How many times?" /**/;
 read nTimes;
 var x : int;
 for x in 0..nTimes - 1 do
-    nTimes := 1;
     print x;
     print ": Hello so called \"world\"!\n";
 end for;

@@ -1,3 +1,4 @@
+use serde::ser::{SerializeStructVariant, Serializer};
 use serde::Serialize;
 use std::fmt;
 
@@ -164,7 +165,7 @@ impl<'a> Default for TokenData<'a> {
 // ---------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------
-#[derive(Serialize, Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Program,
     Operand {
@@ -207,5 +208,174 @@ pub enum NodeType<'a> {
 impl<'a> Default for NodeType<'a> {
     fn default() -> Self {
         NodeType::Undefined
+    }
+}
+
+impl<'a> From<NodeType<'a>> for u32 {
+    fn from(nt: NodeType) -> Self {
+        match nt {
+            NodeType::Program => 0,
+            NodeType::Operand {
+                token: _,
+                symbol_type: _,
+            } => 1,
+            NodeType::Expression {
+                operator: _,
+                symbol_type: _,
+            } => 2,
+            NodeType::Declaration {
+                identifier: _,
+                symbol_type: _,
+                expression: _,
+            } => 3,
+            NodeType::Assignment {
+                identifier: _,
+                expression: _,
+            } => 4,
+            NodeType::For {
+                identifier: _,
+                start_expression: _,
+                end_expression: _,
+                first_statement: _,
+            } => 5,
+            NodeType::Read { identifier: _ } => 6,
+            NodeType::Print {
+                token: _,
+                expression: _,
+            } => 7,
+            NodeType::Assert {
+                token: _,
+                expression: _,
+            } => 8,
+            NodeType::Undefined => 9,
+        }
+    }
+}
+
+impl<'a> Serialize for NodeType<'a> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            NodeType::Program => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Program",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Operand {
+                ref token,
+                symbol_type: _,
+            } => {
+                let token = token.unwrap();
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Operand",
+                    1,
+                )?;
+                state.serialize_field("opnd", token.value)?;
+                state.end()
+            }
+            NodeType::Expression {
+                ref operator,
+                symbol_type: _,
+            } => {
+                let operator = operator.unwrap();
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Expression",
+                    1,
+                )?;
+                state.serialize_field("op", operator.value)?;
+                state.end()
+            }
+            NodeType::Declaration {
+                ref identifier,
+                symbol_type: _,
+                expression: _,
+            } => {
+                let identifier = identifier.unwrap();
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Declaration",
+                    1,
+                )?;
+                state.serialize_field("identifier", identifier.value)?;
+                state.end()
+            }
+            NodeType::Assignment {
+                ref identifier,
+                expression: _,
+            } => {
+                let identifier = identifier.unwrap();
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Assignment",
+                    1,
+                )?;
+                state.serialize_field("identifier", identifier.value)?;
+                state.end()
+            }
+            NodeType::For {
+                ref identifier,
+                start_expression: _,
+                end_expression: _,
+                first_statement: _,
+            } => {
+                let identifier = identifier.unwrap();
+                let mut state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "For", 1)?;
+                state.serialize_field("identifier", identifier.value)?;
+                state.end()
+            }
+            NodeType::Read { ref identifier } => {
+                let identifier = identifier.unwrap();
+                let mut state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Read", 1)?;
+                state.serialize_field("identifier", identifier.value)?;
+                state.end()
+            }
+            NodeType::Print {
+                token: _,
+                expression: _,
+            } => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Print",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Assert {
+                token: _,
+                expression: _,
+            } => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Assert",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Undefined => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Undefined",
+                    0,
+                )?;
+                state.end()
+            }
+        }
     }
 }
