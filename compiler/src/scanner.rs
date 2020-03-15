@@ -195,7 +195,7 @@ impl<'a> Scanner<'a> {
                                 }
                             }
                         }
-                        'A'..='z' => {
+                        'A'..='Z' | 'a'..='z' => {
                             token.token_type = TokenType::Identifier;
 
                             while let Some((_, ch)) = self.chars.peek() {

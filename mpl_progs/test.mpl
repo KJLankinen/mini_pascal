@@ -1,5 +1,5 @@
 ,,,;;;
-asd ;asd e]r    [/  
+asd ;asd er £|€]/&s   [/  
 var X : int:=1 * (5 / 3);
 var x : int := (1 * 2) + 5;
 
