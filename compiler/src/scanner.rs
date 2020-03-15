@@ -39,9 +39,8 @@ impl<'a> Scanner<'a> {
     // ---------------------------------------------------------------------
     fn get_char(&mut self) -> Option<(usize, char)> {
         // This function makes sure line and column are always counted correctly. Every possible
-        // character that goes through the scanner comes from this function. Token length and
-        // possible internal state changes are also done, e.g. when a newline character is found.
-        // Also each line is stored individually for error messaging purposes.
+        // character that goes through the scanner comes from this function.
+        // Possible internal state changes are also done, e.g. when a newline character is found.
         match self.chars.peek() {
             Some((_, ch)) => {
                 self.column += 1;
@@ -231,6 +230,7 @@ impl<'a> Scanner<'a> {
                         None => self.source_str.len(),
                     };
 
+                    // Don't include the ending " with literal strings.
                     if TokenType::LiteralString == token.token_type {
                         token_end = token_end - 1;
                     }
