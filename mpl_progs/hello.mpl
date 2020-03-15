@@ -12,7 +12,7 @@ assert(x = nTimes);
 var X : string := "false";
 var a : int;
 var asd : int := 10;
-for a in 5 .. asd d
+for a in 5 .. asd do
     asd := 5;
     print asd;
     print "\n";

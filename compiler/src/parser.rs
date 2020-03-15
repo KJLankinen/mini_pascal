@@ -52,7 +52,6 @@ impl<'a, 'b> Parser<'a, 'b> {
         // before the next recovery token). If the token is a known token, it is still unexpected,
         // so mark it as a syntax error.
         if TokenType::Undefined != token_type {
-            println!("{:#?}", self.scanner.peek());
             self.logger.add_error(ErrorType::SyntaxError(
                 *self.scanner.peek(),
                 token_types.to_vec(),
