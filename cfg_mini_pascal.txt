@@ -1,0 +1,83 @@
+# Context-free grammar for Mini-Pascal language
+<program>               "program" <id> ";" <subs> <block> "."
+<subs>                  (<procedure> | <function>) <subs> | <empty>
+
+<procedure>             "procedure" <id> "(" <parameter_list> ")"            ";" <block> ";"
+<function>              "function"  <id> "(" <parameter_list> ")" ":" <type> ";" <block> ";"
+
+<parameter_list>        <parameter> <parameter_list_tail> | <empty>
+<parameter_list_tail>   "," <parameter> <parameter_list_tail> | <empty>
+<parameter>             ["var"] <id> ":" <type>
+
+<var_declaration>       "var" <id_list> ":" <type>
+<id_list>               <id> <id_list_tail>
+<id_list_tail>          "," <id> <id_list_tail> | <empty>
+
+<type>                  <simple_type> | <array_type>
+<simple_type>           <type_id>
+<array_type>            "array" "[" [<integer_expr>] "]" "of" <simple_type>
+
+<block>                 "begin" <statement_list> [";"] "end"
+<statement_list>        <statement> <statement_list_tail>
+<statement_list_tail>   ";" <statement> <statement_list_tail> | <empty>
+<statement>             <simple_statement> | <structured_statement> | <var_declaration>
+<empty>                 
+
+<simple_statement>      <id_statement> | <return_statement> | <read_statement> | <write_statement> | <assert_statement>
+<id_statement>          <id> (<call_tail> | <variable_tail> ":=" <expr>)
+<return_statement>      "return" [<expr>]
+<read_statement>        "read" "(" <variable_list> ")"
+<write_statement>       "writeln" "(" <argument_list> ")"
+<assert_statement>      "assert" "(" <boolean_expr>")"
+
+<argument_list>         <expr> <argument_list_tail> | <empty>
+<argument_list_tail>    "," <expr> <argument_list_tail> | <empty>
+<variable_list>         <variable> <variable_list_tail>
+<variable_list_tail>    "," <variable> <variable_list_tail> | <empty>
+<call_tail>             "(" <argument_list> ")"
+<variable>              <id> <variable_tail>
+<variable_tail>         "[" <integer_expr> "]" | <empty>
+
+<structured_statement>  <block> | <if_statement> | <while_statement>
+<if_statement>          "if" <boolean_expr> "then" <statement> <if_statement_tail>
+<if_statement_tail>     "else" <statement> | <empty>
+<while_statement>       "while" <boolean_expr> "do" <statement>
+
+<expr>                  <simple_expr> <expr_tail>
+<expr_tail>             <rel_op> <simple_expr> | <empty>
+
+<simple_expr>           [<sign>] <term> <simple_expr_tail>
+<simple_expr_tail>      <add_op> <term> <simple_expr_tail> | <empty>
+
+<term>                  <factor> <term_tail>
+<term_tail>             <mul_op> <factor> <term_tail> | <empty>
+
+<factor>                <factor_head> <factor_tail>
+<factor_head>           <id_factor> | <literal> | "(" <expr> ")" | "not" <factor>
+<factor_tail>           ".""size" | <empty>
+<id_factor>             <id> (<call_tail> | <variable_tail>)
+
+<rel_op>                "=" | "<>" | "<" | "<=" | ">=" | ">"
+<add_op>                "+" | "-" | "or"
+<mul_op>                "*" | "/" | "%" | "and"
+<negation>              "not"
+<sign>                  "+" | "-"
+
+<type_id>               "Boolean" | "integer" | "real" | "string"
+
+# Lexical elements
+<id>                    <letter> <id_tail>
+<id_tail>               (<letter> | <digit> | "_") <id_tail> | <empty>
+<literal>               <integer_literal> | <real_literal> | <string_literal>
+<integer_literal>       <digits>
+<digits>                <digit> <digit_tail>
+<digit_tail>            <digit> <digit_tail> | <empty>
+<real_literal>          <digits> "." <digits> ["e" [<sign>] <digits>]
+<string_literal>        "\"" {<a char or escape char>} "\""
+<letter>                a | b | c | d | e | f | g | h | i | j | k | l | m | n | o | p | q | r | s | t | u | v | w | x | y | z |
+                        A | B | C | D | E | F | G | H | I | J | K | L | M | N | O | P | Q | R | S | T | U | V | W | X | Y | Z
+<digit>                 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+<special_symbol>        "+" | "-" | "*" | "/" | "%" | "=" | "<>" | ">" | "<" | ">=" | "<=" | "(" | ")" | "[" | "]" | ":=" | "." |
+                        "," | ";" | ":" | "or" | "and" | "not" | "if" | "then" | "else" | "of" | "while" | "do" | "begin" | "end" |
+                        "var" | "array" | "procedure" | "function" | "program" | "assert" | "return"
+<predefined_id>         "Boolean" | "integer" | "real" | "string" | "false" | "true" | "read" | "writeln" | "size"

@@ -1,0 +1,18 @@
+- token patternit, eli scannerin muuttaminen vastaamaan mini pascalia
+- semantic analyserin funktioiden muuttaminen vastaamaan mini pascalin cfg:tä
+- semantic errorien läpikäyminen ja esim. selvittäminen, milloin pitää backtrackata scannerissa
+- semnatic analyzeriin constant evaluation
+- interpreter pois
+- koodin emitter
+- webassembly:
+    - arrayt/stringit: miten toimii?    --> lineaarista muistia, johon raakaa bytedataa
+    - print ja read?                    --> käytetään wasin fd_read ja fd_write apunfunktiota.
+    - "main block" tai entry point      --> start osoittaa funktioon, joka on main block
+    - lexical nesting?                  --> 
+    - var, eli pass-by-reference        --> 
+    - rekursio?                         --> onnistuu
+    - assert, eli onko "goto exit"?     --> unreachable tuottaa trapin, joka toimii sopivasti
+
+- kirjoitettavaa webassemblykoodia:
+    - string bufferista erikseen arvot omille paikoilleen, kun on tiedossa niiden tyypit
+    - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.

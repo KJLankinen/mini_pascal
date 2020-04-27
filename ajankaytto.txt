@@ -1,1 +1,6 @@
-17.3. & 1h & project setup
+17.3. & 1h   & project setup
+20.4. & 10h  & researching webassembly
+21.4. & 10h  & researching webassembly and wasi
+23.4. & 8h   & researching webassembly and designing itoa and atoi functions
+24.4. & 10h  & implementing webassembly lib
+25.4. &      &

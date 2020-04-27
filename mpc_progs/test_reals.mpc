@@ -1,0 +1,46 @@
+{*
+    This program tests some reals
+    Some letters are purposefully capitals
+*}
+PrograM test_reals;
+
+funcTion add(a: real, b: real): real
+begin
+    return a + b;
+end;
+
+function sUb(a: real, b: real): real
+begin
+    retURn a - b;
+end;
+
+FUNCTION mul(a: real, b: real): real
+begin
+    return a * b;
+END;
+
+function div(a: real, b: real): real
+begin
+    return a / b;
+end;
+
+function mad(a: real, b: real, c: real): real
+begin
+    return a * b + c;
+end;
+
+{* Main block *}
+begin
+    var a, b, c: real;
+    read(a, b, c);
+    writeln(a, " + ", b, " = ", add(a, b));
+    WRITEln(a, " - ", b, " = ", sub(a, b));
+    writeln(A, " * ", b, " = ", mul(a, B));
+    writeln(a, " / ", b, " = ", div(a, b));
+
+    writeln("The next four ARE different ways to calculate ", a, " * ", a, " + ", a);
+    writeln(mAd(a, a, a));
+    writeln(add(a, mul(a, a)));
+    writeln(a + mUL(a, a));
+    writeln(add(a, a * a));
+end.

@@ -5,6 +5,10 @@ use std::collections::{HashMap, HashSet};
 
 pub struct Analyzer<'a, 'b> {
     tree: &'b mut LcRsTree<NodeType<'a>>,
+    // scoped symbol table with a vector can be something like the following:
+    // symbols: HashMap<(&'a str, u32), SymbolType>,
+    // scope_stack: Vec<u32>,
+    // then loop over scope_stack and get the first variable with the correct name
     symbols: HashMap<&'a str, SymbolType>,
     logger: &'b mut Logger<'a>,
     blocked_identifiers: HashSet<&'a str>,

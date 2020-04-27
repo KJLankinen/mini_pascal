@@ -55,20 +55,10 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn skipped_comment(&mut self) -> bool {
-        // Enter this function with a single '/'. Peek ahead, and if a comment is starting,
-        // skip it. If not, return false and let the scanner continue.
+    fn handle_comment(&mut self) {
         match self.chars.peek() {
             Some((_, ch)) => {
                 match ch {
-                    &'/' => {
-                        // Singe line comment
-                        self.skip_until_newline = true;
-                        while self.skip_until_newline {
-                            // get_char() will change skip_until_newline to false once it finds '\n'
-                            self.get_char();
-                        }
-                    }
                     &'*' => {
                         // Multi line comment
                         let mut depth: i32 = 1;
@@ -84,14 +74,14 @@ impl<'a> Scanner<'a> {
                                 '*' => {
                                     // This comment might be ending
                                     if let Some((_, ch)) = self.chars.peek() {
-                                        if &'/' == ch {
+                                        if &'}' == ch {
                                             self.get_char();
                                             depth -= 1;
                                             self.unmatched_multiline_comment_prefixes.pop();
                                         }
                                     }
                                 }
-                                '/' => {
+                                '{' => {
                                     // A new multiline comment might be starting
                                     if let Some((_, ch)) = self.chars.peek() {
                                         if &'*' == ch {
@@ -115,11 +105,10 @@ impl<'a> Scanner<'a> {
                             assert!(depth > 0);
                         }
                     }
-                    _ => return false, // The next character after the first '/' was neither '/' nor '*'.
+                    _ => {}
                 }
-                true // Some characters were skipped over
             }
-            None => false, // There are no more characters left, so couldn't possibly skip over them
+            None => {}
         }
     }
 
@@ -146,27 +135,57 @@ impl<'a> Scanner<'a> {
                     token.line = self.line;
 
                     // Most tokens get their type from the map access at the bottom.
-                    // This match disambiguates between some situations like comment vs divide op
-                    // when '/' is encountered. Also longer tokens are handled by this match.
+                    // This match disambiguates between some situations
+                    // Also longer tokens are handled by this match.
                     // These rules/patterns in the match statements are only for the starting
                     // characters. Once an arm is entered, it's not left until the correct
                     // token is finished.
                     match ch {
+                        '{' => {
+                            self.handle_comment();
+                            continue;
+                        }
                         '.' => {
-                            // See if there's a second dot following the first
+                            // End of program or .size. According to the cfg, real literals always
+                            // start with at least one digit, so a single dot does not start a real
+                            // literal.
                             if let Some((_, ch)) = self.chars.peek() {
-                                if &'.' == ch {
+                                if &'s' == ch {
+                                    // .size
+                                    self.get_char();
+                                    if let Some((_, ch)) = self.chars.peek() {
+                                        if &'i' == ch {
+                                            self.get_char();
+                                            if let Some((_, ch)) = self.chars.peek() {
+                                                if &'z' == ch {
+                                                    self.get_char();
+                                                    if let Some((_, ch)) = self.chars.peek() {
+                                                        if &'e' == ch {
+                                                            self.get_char();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        '<' => {
+                            if let Some((_, ch)) = self.chars.peek() {
+                                if &'=' == ch || &'>' == ch {
                                     self.get_char();
                                 }
                             }
                         }
-                        '/' => {
-                            if self.skipped_comment() {
-                                continue;
+                        '>' => {
+                            if let Some((_, ch)) = self.chars.peek() {
+                                if &'=' == ch {
+                                    self.get_char();
+                                }
                             }
                         }
                         ':' => {
-                            // Disambiguate between separator and assignment
                             if let Some((_, ch)) = self.chars.peek() {
                                 if &'=' == ch {
                                     self.get_char();
@@ -196,6 +215,8 @@ impl<'a> Scanner<'a> {
                             }
                         }
                         'A'..='Z' | 'a'..='z' => {
+                            // boolean literals, i.e. "true" and "false" get their type from the
+                            // map below and overwrite this type
                             token.token_type = TokenType::Identifier;
 
                             while let Some((_, ch)) = self.chars.peek() {
@@ -208,13 +229,64 @@ impl<'a> Scanner<'a> {
                         }
                         '0'..='9' => {
                             token.token_type = TokenType::LiteralInt;
+                            let mut scientific = false;
+                            let mut signed = false;
 
                             while let Some((_, ch)) = self.chars.peek() {
-                                if ch.is_numeric() {
-                                    self.get_char();
-                                    continue;
+                                match ch {
+                                    '0'..='9' => {
+                                        self.get_char();
+                                    }
+                                    '.' => {
+                                        if TokenType::LiteralInt == token.token_type {
+                                            token.token_type = TokenType::LiteralReal;
+                                            self.get_char();
+                                        }
+                                    }
+                                    'e' => {
+                                        if TokenType::LiteralReal == token.token_type
+                                            && false == scientific
+                                        {
+                                            scientific = true;
+                                            self.get_char();
+
+                                            if let Some((_, ch)) = self.chars.peek() {
+                                                if false == ch.is_numeric()
+                                                    && &'-' != ch
+                                                    && &'+' != ch
+                                                {
+                                                    // Malformed scientific notation
+                                                    token.token_type = TokenType::Undefined;
+                                                    break;
+                                                }
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    '-' | '+' => {
+                                        if TokenType::LiteralReal == token.token_type
+                                            && scientific
+                                            && false == signed
+                                        {
+                                            signed = true;
+                                            self.get_char();
+
+                                            if let Some((_, ch)) = self.chars.peek() {
+                                                if false == ch.is_numeric() {
+                                                    // Malformed scientific notation
+                                                    token.token_type = TokenType::Undefined;
+                                                    break;
+                                                }
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    _ => {
+                                        break;
+                                    }
                                 }
-                                break;
                             }
                         }
                         _ => {
@@ -236,8 +308,9 @@ impl<'a> Scanner<'a> {
                     }
                     token.value = &self.source_str[pos..token_end];
 
-                    // Get your type here, if you're in the map
-                    if let Some(tt) = self.token_map.get(token.value) {
+                    // Get your type here, if you're in the map. As mini pascal is a case
+                    // insensitive language, check keywords with a lowercase version.
+                    if let Some(tt) = self.token_map.get::<str>(&token.value.to_lowercase()) {
                         token.token_type = *tt;
                     }
                 }
@@ -269,31 +342,53 @@ impl<'a> Scanner<'a> {
             source_str: source_str,
             next_token: TokenData::default(),
             token_map: [
-                ("var", TokenType::KeywordVar),
-                ("for", TokenType::KeywordFor),
-                ("end", TokenType::KeywordEnd),
-                ("in", TokenType::KeywordIn),
-                ("do", TokenType::KeywordDo),
-                ("read", TokenType::KeywordRead),
-                ("print", TokenType::KeywordPrint),
-                ("assert", TokenType::KeywordAssert),
-                ("int", TokenType::Type),
-                ("string", TokenType::Type),
-                ("bool", TokenType::Type),
-                ("(", TokenType::LParen),
-                (")", TokenType::RParen),
-                (";", TokenType::EndOfStatement),
                 ("+", TokenType::OperatorPlus),
                 ("-", TokenType::OperatorMinus),
                 ("*", TokenType::OperatorMultiply),
                 ("/", TokenType::OperatorDivide),
-                ("<", TokenType::OperatorLessThan),
+                ("%", TokenType::OperatorModulo),
                 ("=", TokenType::OperatorEqual),
-                ("&", TokenType::OperatorAnd),
-                ("!", TokenType::OperatorNot),
-                ("..", TokenType::Range),
-                (":", TokenType::TypeSeparator),
+                ("<>", TokenType::OperatorNotEqual),
+                (">", TokenType::OperatorGreater),
+                ("<", TokenType::OperatorLess),
+                (">=", TokenType::OperatorGreaterEqual),
+                ("<=", TokenType::OperatorLessEqual),
+                ("and", TokenType::OperatorAnd),
+                ("not", TokenType::OperatorNot),
+                ("or", TokenType::OperatorOr),
+                (".size", TokenType::OperatorSize),
+                ("(", TokenType::LParen),
+                (")", TokenType::RParen),
+                ("[", TokenType::LBracket),
+                ("]", TokenType::RBracket),
                 (":=", TokenType::Assignment),
+                (",", TokenType::ListSeparator),
+                (":", TokenType::TypeSeparator),
+                (";", TokenType::StatementSeparator),
+                ("if", TokenType::KeywordIf),
+                ("then", TokenType::KeywordThen),
+                ("else", TokenType::KeywordElse),
+                ("of", TokenType::KeywordOf),
+                ("while", TokenType::KeywordWhile),
+                ("do", TokenType::KeywordDo),
+                ("begin", TokenType::KeywordBegin),
+                ("end", TokenType::KeywordEnd),
+                ("var", TokenType::KeywordVar),
+                ("array", TokenType::KeywordArray),
+                ("procedure", TokenType::KeywordProcedure),
+                ("function", TokenType::KeywordFunction),
+                ("program", TokenType::KeywordProgram),
+                ("assert", TokenType::KeywordAssert),
+                ("return", TokenType::KeywordReturn),
+                ("read", TokenType::KeywordRead),
+                ("writeln", TokenType::KeywordWrite),
+                ("true", TokenType::LiteralBoolean),
+                ("false", TokenType::LiteralBoolean),
+                ("Boolean", TokenType::Type),
+                ("int", TokenType::Type),
+                ("real", TokenType::Type),
+                ("string", TokenType::Type),
+                (".", TokenType::EndOfProgram),
             ]
             .iter()
             .cloned()
