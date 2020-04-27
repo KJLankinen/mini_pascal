@@ -315,16 +315,11 @@ impl<'a> Scanner<'a> {
                     }
                 }
                 None => {
-                    // Out of characters
-                    token.value = "\0";
-                    token.token_type = TokenType::EndOfProgram;
+                    // Out of characters, repeat the last token
+                    token = self.next_token;
                 }
             }
 
-            // Always return Some(token), even when it's illegal or we've encountered the
-            // EndOfProgram. In the first case, the token is undefined, in the second we'll just
-            // repeatedly return the EndOfProgram token until even the most stone headed parser
-            // will understand to stop parsing nothingness.
             return token;
         }
     }

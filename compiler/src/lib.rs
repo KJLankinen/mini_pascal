@@ -1,17 +1,15 @@
 mod data_types;
 //mod interpreter;
-//mod lcrs_tree;
+mod lcrs_tree;
 mod logger;
-//mod parser;
+mod parser;
 mod scanner;
 //mod semantic_analyzer;
 
 //use interpreter::Interpreter;
-//use lcrs_tree::LcRsTree;
-use data_types::{ErrorType, TokenData, TokenType};
+use lcrs_tree::LcRsTree;
 use logger::Logger;
-use scanner::Scanner;
-//use parser::Parser;
+use parser::Parser;
 //use semantic_analyzer::Analyzer;
 use std::{env, fs, process};
 
@@ -52,28 +50,11 @@ pub fn run() {
                             _ => None,
                         };
                         let mut logger = Logger::new(&source_str);
-                        let mut scanner = Scanner::new(&source_str);
-
-                        loop {
-                            let token = scanner.next();
-                            if TokenType::Undefined == token.token_type {
-                                logger.add_error(ErrorType::SyntaxError(token, [].to_vec()));
-                            } else if TokenType::EndOfProgram == token.token_type {
-                                break;
-                            } else {
-                                println!("{:?}", token);
-                            }
+                        let mut tree = LcRsTree::new();
+                        {
+                            Parser::new(&source_str, &mut logger, &mut tree)
+                                .parse(out_file.as_ref().map(|s| &**s));
                         }
-
-                        // If there were any unmatched multiline comment starting tokens, add those as errors.
-                        for (line, col) in &scanner.unmatched_multiline_comment_prefixes {
-                            logger.add_error(ErrorType::UnmatchedComment(*line, *col));
-                        }
-                        //let mut tree = LcRsTree::new();
-                        //{
-                        //    Parser::new(&source_str, &mut logger, &mut tree)
-                        //        .parse(out_file.as_ref().map(|s| &**s));
-                        //}
 
                         //if logger.errors_encountered() {
                         //    logger.print_errors();
