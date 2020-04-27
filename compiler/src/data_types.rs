@@ -15,6 +15,10 @@ pub enum SymbolType {
     String,
     Bool,
     Real,
+    ArrayInt,
+    ArrayString,
+    ArrayBool,
+    ArrayReal,
     Undefined,
 }
 
@@ -25,6 +29,10 @@ impl fmt::Display for SymbolType {
             SymbolType::String => write!(f, "string"),
             SymbolType::Bool => write!(f, "Boolean"),
             SymbolType::Real => write!(f, "real"),
+            SymbolType::ArrayInt => write!(f, "array of int"),
+            SymbolType::ArrayString => write!(f, "array of string"),
+            SymbolType::ArrayBool => write!(f, "array of Boolean"),
+            SymbolType::ArrayReal => write!(f, "array of real"),
             SymbolType::Undefined => write!(f, "undefined"),
         }
     }
@@ -209,7 +217,26 @@ impl<'a> Default for TokenData<'a> {
 // ---------------------------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
-    Program,
+    Program {
+        id: Option<TokenData<'a>>,
+        block_id: usize,
+        sub_id: Option<usize>,
+    },
+    Block {
+        first_statement: usize,
+    },
+    Subroutines {
+        first_subroutine: usize,
+    },
+    Function {
+        id: Option<TokenData<'a>>,
+        symbol_type: Option<SymbolType>,
+        param_id: Option<usize>,
+        block_id: usize,
+    },
+    Parameters {
+        first_parameter: usize,
+    },
     Operand {
         token: Option<TokenData<'a>>,
         symbol_type: SymbolType,
@@ -219,26 +246,25 @@ pub enum NodeType<'a> {
         symbol_type: SymbolType,
     },
     Declaration {
-        identifier: Option<TokenData<'a>>,
+        id: Option<TokenData<'a>>,
         symbol_type: SymbolType,
-        expression: Option<usize>,
     },
     Assignment {
-        identifier: Option<TokenData<'a>>,
+        id: Option<TokenData<'a>>,
         expression: usize,
     },
-    For {
-        identifier: Option<TokenData<'a>>,
-        start_expression: usize,
-        end_expression: usize,
+    While {
+        token: Option<TokenData<'a>>,
+        expression: usize,
         first_statement: Option<usize>,
     },
     Read {
-        identifier: Option<TokenData<'a>>,
-    },
-    Print {
         token: Option<TokenData<'a>>,
-        expression: usize,
+        first_var: usize,
+    },
+    Write {
+        token: Option<TokenData<'a>>,
+        first_expression: usize,
     },
     Assert {
         token: Option<TokenData<'a>>,
@@ -256,40 +282,56 @@ impl<'a> Default for NodeType<'a> {
 impl<'a> From<NodeType<'a>> for u32 {
     fn from(nt: NodeType) -> Self {
         match nt {
-            NodeType::Program => 0,
+            NodeType::Program {
+                id: _,
+                block_id: _,
+                sub_id: _,
+            } => 0,
+            NodeType::Block { first_statement: _ } => 1,
+            NodeType::Subroutines {
+                first_subroutine: _,
+            } => 2,
+            NodeType::Function {
+                id: _,
+                symbol_type: _,
+                param_id: _,
+                block_id: _,
+            } => 3,
+            NodeType::Parameters { first_parameter: _ } => 4,
             NodeType::Operand {
                 token: _,
                 symbol_type: _,
-            } => 1,
+            } => 5,
             NodeType::Expression {
                 operator: _,
                 symbol_type: _,
-            } => 2,
+            } => 6,
             NodeType::Declaration {
-                identifier: _,
+                id: _,
                 symbol_type: _,
-                expression: _,
-            } => 3,
+            } => 7,
             NodeType::Assignment {
-                identifier: _,
+                id: _,
                 expression: _,
-            } => 4,
-            NodeType::For {
-                identifier: _,
-                start_expression: _,
-                end_expression: _,
-                first_statement: _,
-            } => 5,
-            NodeType::Read { identifier: _ } => 6,
-            NodeType::Print {
+            } => 8,
+            NodeType::While {
                 token: _,
                 expression: _,
-            } => 7,
+                first_statement: _,
+            } => 9,
+            NodeType::Read {
+                token: _,
+                first_var: _,
+            } => 10,
+            NodeType::Write {
+                token: _,
+                first_expression: _,
+            } => 11,
             NodeType::Assert {
                 token: _,
                 expression: _,
-            } => 8,
-            NodeType::Undefined => 9,
+            } => 12,
+            NodeType::Undefined => 13,
         }
     }
 }
@@ -300,11 +342,63 @@ impl<'a> Serialize for NodeType<'a> {
         S: Serializer,
     {
         match *self {
-            NodeType::Program => {
-                let state = serializer.serialize_struct_variant(
+            NodeType::Program {
+                ref id,
+                block_id: _,
+                sub_id: _,
+            } => {
+                let id = id.unwrap();
+                let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
                     "Program",
+                    1,
+                )?;
+                state.serialize_field("id", id.value)?;
+                state.end()
+            }
+            NodeType::Block { first_statement: _ } => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Block",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Subroutines {
+                first_subroutine: _,
+            } => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Subroutines",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Function {
+                ref id,
+                ref symbol_type,
+                param_id: _,
+                block_id: _,
+            } => {
+                let id = id.unwrap();
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Function",
+                    2,
+                )?;
+                state.serialize_field("id", id.value)?;
+                state.serialize_field("type", symbol_type)?;
+                state.end()
+            }
+            NodeType::Parameters { first_parameter: _ } => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Parameters",
                     0,
                 )?;
                 state.end()
@@ -338,11 +432,10 @@ impl<'a> Serialize for NodeType<'a> {
                 state.end()
             }
             NodeType::Declaration {
-                ref identifier,
+                ref id,
                 symbol_type: _,
-                expression: _,
             } => {
-                let identifier = identifier.unwrap();
+                let identifier = id.unwrap();
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
@@ -353,10 +446,10 @@ impl<'a> Serialize for NodeType<'a> {
                 state.end()
             }
             NodeType::Assignment {
-                ref identifier,
+                ref id,
                 expression: _,
             } => {
-                let identifier = identifier.unwrap();
+                let identifier = id.unwrap();
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
@@ -366,35 +459,14 @@ impl<'a> Serialize for NodeType<'a> {
                 state.serialize_field("identifier", identifier.value)?;
                 state.end()
             }
-            NodeType::For {
-                ref identifier,
-                start_expression: _,
-                end_expression: _,
-                first_statement: _,
+            NodeType::Read {
+                ref token,
+                first_var: _,
             } => {
-                let identifier = identifier.unwrap();
-                let mut state =
-                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "For", 1)?;
-                state.serialize_field("identifier", identifier.value)?;
-                state.end()
-            }
-            NodeType::Read { ref identifier } => {
-                let identifier = identifier.unwrap();
+                let identifier = token.unwrap();
                 let mut state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Read", 1)?;
                 state.serialize_field("identifier", identifier.value)?;
-                state.end()
-            }
-            NodeType::Print {
-                token: _,
-                expression: _,
-            } => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Print",
-                    0,
-                )?;
                 state.end()
             }
             NodeType::Assert {
