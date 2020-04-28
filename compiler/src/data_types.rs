@@ -252,6 +252,12 @@ pub struct TokenIdxBool<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IdxIdx {
+    pub idx: usize,
+    pub idx2: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Program(TokenIdxOptIdx<'a>),
     Block(usize),
@@ -262,6 +268,8 @@ pub enum NodeType<'a> {
     VariableType(SymbolType),
     Expression(TokenIdxIdx<'a>),
     SimpleExpression(TokenIdxOptIdx<'a>),
+    Declaration(IdxIdx),
+    Identifier(Option<TokenData<'a>>),
     Undefined,
 }
 
@@ -284,6 +292,8 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::VariableType(_) => 7,
             NodeType::Expression(_) => 8,
             NodeType::SimpleExpression(_) => 9,
+            NodeType::Declaration(_) => 10,
+            NodeType::Identifier(_) => 11,
         }
     }
 }
@@ -381,6 +391,25 @@ impl<'a> Serialize for NodeType<'a> {
                     1,
                 )?;
                 state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::Declaration(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Declaration",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Identifier(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Identifier",
+                    1,
+                )?;
+                state.serialize_field("identifier", &data.unwrap().value)?;
                 state.end()
             }
             NodeType::Undefined => {
