@@ -279,6 +279,10 @@ pub enum NodeType<'a> {
     If(IdxIdxOptIdx),
     While(IdxIdx),
     Return(usize),
+    Write(usize),
+    Call(TokenIdx<'a>),
+    Assert(usize),
+    Assignment(TokenIdxOptIdx<'a>),
     Undefined,
 }
 
@@ -306,6 +310,10 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::If(_) => 12,
             NodeType::While(_) => 13,
             NodeType::Return(_) => 14,
+            NodeType::Write(_) => 15,
+            NodeType::Call(_) => 16,
+            NodeType::Assert(_) => 17,
+            NodeType::Assignment(_) => 18,
         }
     }
 }
@@ -445,6 +453,44 @@ impl<'a> Serialize for NodeType<'a> {
                     "Return",
                     0,
                 )?;
+                state.end()
+            }
+            NodeType::Write(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Write",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Call(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Function call",
+                    1,
+                )?;
+                state.serialize_field("identifier", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::Assert(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Assert",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Assignment(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Assignment",
+                    1,
+                )?;
+                state.serialize_field("identifier", &data.token.unwrap().value)?;
                 state.end()
             }
             NodeType::Undefined => {
