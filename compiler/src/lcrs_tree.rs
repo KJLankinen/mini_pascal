@@ -24,8 +24,8 @@ where
     T: Serialize,
 {
     pub fn add_child(&mut self, parent: Option<usize>) -> usize {
-        let my_id = self.new_node();
-        self.nodes[my_id].parent = parent;
+        let my_idx = self.new_node();
+        self.nodes[my_idx].parent = parent;
 
         match parent {
             Some(id) => {
@@ -38,21 +38,21 @@ where
                             prev = id;
                         }
                         // prev is my youngest older sibling
-                        self.nodes[prev].right_sibling = Some(my_id);
+                        self.nodes[prev].right_sibling = Some(my_idx);
                     }
                     None => {
                         // Parent is childless, I am first child, id is parent's id
-                        self.nodes[id].left_child = Some(my_id);
+                        self.nodes[id].left_child = Some(my_idx);
                     }
                 }
             }
             None => {
                 // Parent is None, which should only be the case when the first node is added.
-                assert!(0 == my_id, "Parent of a new node cannot be None.");
+                assert!(0 == my_idx, "Parent of a new node cannot be None.");
             }
         }
 
-        my_id
+        my_idx
     }
 
     fn new_node(&mut self) -> usize {
@@ -93,20 +93,20 @@ where
         // removed node doesn't have older siblings, the oldest child of the removed node will
         // become the oldest child of the parent of the removed node.
 
-        let promote_children = |my_id: usize, tree: &mut Self| {
+        let promote_children = |my_idx: usize, tree: &mut Self| {
             // This closure changes the children. Parent of children is set to be the parent
             // of the given id, and the younger siblings of the given id are set to be
             // the younger siblings of the children.
-            let my_child = tree.nodes[my_id].left_child.unwrap();
-            tree.nodes[my_child].parent = tree.nodes[my_id].parent;
+            let my_child = tree.nodes[my_idx].left_child.unwrap();
+            tree.nodes[my_child].parent = tree.nodes[my_idx].parent;
 
             let mut next = my_child;
             while let Some(my_child) = tree.nodes[next].right_sibling {
-                tree.nodes[my_child].parent = tree.nodes[my_id].parent;
+                tree.nodes[my_child].parent = tree.nodes[my_idx].parent;
                 next = my_child;
             }
 
-            tree.nodes[next].right_sibling = tree.nodes[my_id].right_sibling;
+            tree.nodes[next].right_sibling = tree.nodes[my_idx].right_sibling;
         };
 
         if id < self.nodes.len() {

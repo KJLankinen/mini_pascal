@@ -380,7 +380,7 @@ impl<'a> Scanner<'a> {
                 ("true", TokenType::LiteralBoolean),
                 ("false", TokenType::LiteralBoolean),
                 ("Boolean", TokenType::Type),
-                ("int", TokenType::Type),
+                ("integer", TokenType::Type),
                 ("real", TokenType::Type),
                 ("string", TokenType::Type),
                 (".", TokenType::EndOfProgram),

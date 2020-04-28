@@ -15,24 +15,24 @@ pub enum SymbolType {
     String,
     Bool,
     Real,
-    ArrayInt,
-    ArrayString,
-    ArrayBool,
-    ArrayReal,
+    ArrayInt(usize),
+    ArrayString(usize),
+    ArrayBool(usize),
+    ArrayReal(usize),
     Undefined,
 }
 
 impl fmt::Display for SymbolType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            SymbolType::Int => write!(f, "int"),
+            SymbolType::Int => write!(f, "integer"),
             SymbolType::String => write!(f, "string"),
             SymbolType::Bool => write!(f, "Boolean"),
             SymbolType::Real => write!(f, "real"),
-            SymbolType::ArrayInt => write!(f, "array of int"),
-            SymbolType::ArrayString => write!(f, "array of string"),
-            SymbolType::ArrayBool => write!(f, "array of Boolean"),
-            SymbolType::ArrayReal => write!(f, "array of real"),
+            SymbolType::ArrayInt(_) => write!(f, "array of int"),
+            SymbolType::ArrayString(_) => write!(f, "array of string"),
+            SymbolType::ArrayBool(_) => write!(f, "array of Boolean"),
+            SymbolType::ArrayReal(_) => write!(f, "array of real"),
             SymbolType::Undefined => write!(f, "undefined"),
         }
     }
@@ -182,7 +182,7 @@ impl fmt::Display for TokenType {
             TokenType::KeywordReturn => write!(f, "return"),
             TokenType::KeywordRead => write!(f, "read"),
             TokenType::KeywordWrite => write!(f, "writeln"),
-            TokenType::Type => write!(f, "Boolean, int, string or real"),
+            TokenType::Type => write!(f, "Boolean, integer, string or real"),
             TokenType::LiteralBoolean => write!(f, "a literal bool"),
             TokenType::LiteralInt => write!(f, "a literal int"),
             TokenType::LiteralString => write!(f, "a literal string"),
@@ -224,11 +224,11 @@ pub struct TokenIdxOptIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TokenIdxOptIdxOptSymbol<'a> {
+pub struct TokenIdxOptIdxOptIdx<'a> {
     pub token: Option<TokenData<'a>>,
     pub idx: usize,
     pub opt_idx: Option<usize>,
-    pub opt_symbol: Option<SymbolType>,
+    pub opt_idx2: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -238,9 +238,17 @@ pub struct TokenIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TokenSymbol<'a> {
+pub struct TokenIdxIdx<'a> {
     pub token: Option<TokenData<'a>>,
-    pub symbol: SymbolType,
+    pub idx: usize,
+    pub idx2: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenIdxBool<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub idx: usize,
+    pub b: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -248,16 +256,11 @@ pub enum NodeType<'a> {
     Program(TokenIdxOptIdx<'a>),
     Block(usize),
     Subroutines(usize),
-    Function(TokenIdxOptIdxOptSymbol<'a>),
-    Parameters(usize),
-    Operand(TokenSymbol<'a>),
-    Expression(TokenSymbol<'a>),
-    Declaration(TokenSymbol<'a>),
-    Assignment(TokenIdx<'a>),
-    While(TokenIdxOptIdx<'a>),
-    Read(TokenIdx<'a>),
-    Write(TokenIdx<'a>),
-    Assert(TokenIdx<'a>),
+    Function(TokenIdxOptIdxOptIdx<'a>),
+    ParamList(usize),
+    Parameter(TokenIdxBool<'a>),
+    VariableType(SymbolType),
+    Expression(TokenIdxIdx<'a>),
     Undefined,
 }
 
@@ -270,20 +273,15 @@ impl<'a> Default for NodeType<'a> {
 impl<'a> From<NodeType<'a>> for u32 {
     fn from(nt: NodeType) -> Self {
         match nt {
-            NodeType::Program(_) => 0,
-            NodeType::Block(_) => 1,
-            NodeType::Subroutines(_) => 2,
-            NodeType::Function(_) => 3,
-            NodeType::Parameters(_) => 4,
-            NodeType::Operand(_) => 5,
-            NodeType::Expression(_) => 6,
-            NodeType::Declaration(_) => 7,
-            NodeType::Assignment(_) => 8,
-            NodeType::While(_) => 9,
-            NodeType::Read(_) => 10,
-            NodeType::Write(_) => 11,
-            NodeType::Assert(_) => 12,
-            NodeType::Undefined => 13,
+            NodeType::Undefined => 0,
+            NodeType::Program(_) => 1,
+            NodeType::Block(_) => 2,
+            NodeType::Subroutines(_) => 3,
+            NodeType::Function(_) => 4,
+            NodeType::ParamList(_) => 5,
+            NodeType::Parameter(_) => 6,
+            NodeType::VariableType(_) => 7,
+            NodeType::Expression(_) => 8,
         }
     }
 }
@@ -329,98 +327,48 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "Function",
-                    2,
+                    1,
                 )?;
                 state.serialize_field("id", token)?;
-                state.serialize_field(
-                    "type",
-                    &data.opt_symbol.unwrap_or_else(|| SymbolType::Undefined),
-                )?;
                 state.end()
             }
-            NodeType::Parameters(_) => {
+            NodeType::ParamList(_) => {
                 let state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
-                    "Parameters",
+                    "Parameter list",
                     0,
                 )?;
                 state.end()
             }
-            NodeType::Operand(data) => {
+            NodeType::Parameter(data) => {
                 let token = data.token.unwrap().value;
+                let is_ref = data.b;
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
-                    "Operand",
-                    1,
+                    "Parameter",
+                    2,
                 )?;
-                state.serialize_field("opnd", token)?;
+
+                state.serialize_field("id", token)?;
+                state.serialize_field("is reference", &is_ref)?;
+                state.end()
+            }
+            NodeType::VariableType(data) => {
+                let mut state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Type", 1)?;
+                state.serialize_field("type", &data)?;
                 state.end()
             }
             NodeType::Expression(data) => {
-                let token = data.token.unwrap().value;
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
                     "Expression",
                     1,
                 )?;
-                state.serialize_field("op", token)?;
-                state.end()
-            }
-            NodeType::Declaration(data) => {
-                let token = data.token.unwrap().value;
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Declaration",
-                    1,
-                )?;
-                state.serialize_field("id", token)?;
-                state.end()
-            }
-            NodeType::Assignment(data) => {
-                let token = data.token.unwrap().value;
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Assignment",
-                    1,
-                )?;
-                state.serialize_field("id", token)?;
-                state.end()
-            }
-            NodeType::While(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "While",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Read(_) => {
-                let state =
-                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Read", 0)?;
-                state.end()
-            }
-            NodeType::Write(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Write",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Assert(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Assert",
-                    0,
-                )?;
+                state.serialize_field("operator", &data.token.unwrap().value)?;
                 state.end()
             }
             NodeType::Undefined => {
