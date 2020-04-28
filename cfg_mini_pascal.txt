@@ -39,9 +39,9 @@
 <variable_tail>         "[" <integer_expr> "]" | <empty>
 
 <structured_statement>  <block> | <if_statement> | <while_statement>
-<if_statement>          "if" <boolean_expr> "then" <statement> <if_statement_tail>
-<if_statement_tail>     "else" <statement> | <empty>
-<while_statement>       "while" <boolean_expr> "do" <statement>
+<if_statement>          "if" <boolean_expr> "then" <statement_list> <if_statement_tail>
+<if_statement_tail>     "else" <statement_list> | <empty>
+<while_statement>       "while" <boolean_expr> "do" <statement_list>
 
 <expr>                  <simple_expr> <expr_tail>
 <expr_tail>             <rel_op> <simple_expr> | <empty>

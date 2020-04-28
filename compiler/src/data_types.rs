@@ -256,6 +256,12 @@ pub struct IdxIdx {
     pub idx: usize,
     pub idx2: usize,
 }
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IdxIdxOptIdx {
+    pub idx: usize,
+    pub idx2: usize,
+    pub opt_idx: Option<usize>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
@@ -270,6 +276,7 @@ pub enum NodeType<'a> {
     SimpleExpression(TokenIdxOptIdx<'a>),
     Declaration(IdxIdx),
     Identifier(Option<TokenData<'a>>),
+    If(IdxIdxOptIdx),
     Undefined,
 }
 
@@ -294,6 +301,7 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::SimpleExpression(_) => 9,
             NodeType::Declaration(_) => 10,
             NodeType::Identifier(_) => 11,
+            NodeType::If(_) => 12,
         }
     }
 }
@@ -410,6 +418,11 @@ impl<'a> Serialize for NodeType<'a> {
                     1,
                 )?;
                 state.serialize_field("identifier", &data.unwrap().value)?;
+                state.end()
+            }
+            NodeType::If(_) => {
+                let state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "If", 0)?;
                 state.end()
             }
             NodeType::Undefined => {
