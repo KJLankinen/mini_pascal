@@ -1,6 +1,6 @@
 use super::data_types::{
     ErrorType, IdxIdx, IdxIdxOptIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool,
-    TokenIdxIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenType,
+    TokenIdxIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -876,6 +876,109 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(expr_idx)
     }
 
+    fn variable(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+        let mut node_data = TokenOptIdx {
+            token: None,
+            opt_idx: None,
+        };
+
+        fn parse_variable<'a, 'b>(
+            parser: &mut Parser<'a, 'b>,
+            tt: TokenType,
+            my_idx: usize,
+            node_data: &mut TokenOptIdx<'a>,
+        ) -> ParseResult<()> {
+            let mut recovery_token = None;
+            let tt = match tt {
+                TokenType::Identifier => {
+                    node_data.token = parser.process(
+                        Parser::match_token,
+                        &[TokenType::Identifier],
+                        &[TokenType::LBracket, TokenType::RBracket],
+                        &mut recovery_token,
+                    )?;
+                    if TokenType::LBracket == parser.scanner.peek().token_type {
+                        TokenType::LBracket
+                    } else {
+                        TokenType::Undefined
+                    }
+                }
+                TokenType::LBracket => {
+                    parser.process(
+                        Parser::match_token,
+                        &[TokenType::LBracket],
+                        &[TokenType::RBracket],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                }
+                TokenType::LiteralInt => {
+                    // Label for array expression
+                    node_data.opt_idx = Some(
+                        parser
+                            .process(
+                                Parser::expression,
+                                my_idx,
+                                &[TokenType::RBracket],
+                                &mut recovery_token,
+                            )?
+                            .unwrap_or_else(|| !0),
+                    );
+                    TokenType::RBracket
+                }
+                TokenType::RBracket => {
+                    parser.match_token(&[TokenType::RBracket])?;
+                    TokenType::Undefined
+                }
+                _ => {
+                    assert!(false, "Token {} doesn't belong here.", tt);
+                    TokenType::Undefined
+                }
+            };
+
+            if TokenType::Undefined != tt {
+                parse_variable(parser, tt, my_idx, node_data)?;
+            }
+            Ok(())
+        }
+
+        parse_variable(self, TokenType::Identifier, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::Variable(node_data);
+        Ok(my_idx)
+    }
+
+    fn variable_list(&mut self, parent: usize) -> ParseResult<usize> {
+        let mut recovery_token = None;
+        let variable_idx = self
+            .process(
+                Parser::variable,
+                parent,
+                &[TokenType::ListSeparator],
+                &mut recovery_token,
+            )?
+            .unwrap_or_else(|| !0);
+
+        match self.scanner.peek().token_type {
+            TokenType::ListSeparator => {
+                self.match_token(&[TokenType::ListSeparator])?;
+            }
+            TokenType::Identifier => {
+                // Mising list separator
+                self.logger.add_error(ErrorType::SyntaxError(
+                    *self.scanner.peek(),
+                    vec![TokenType::ListSeparator],
+                ));
+            }
+            _ => {
+                return Ok(variable_idx);
+            }
+        }
+
+        self.variable_list(parent)?;
+        Ok(variable_idx)
+    }
+
     // ---------------------------------------------------------------------
     // Functions for each of the possible statements.
     // fn statement() leads to one of these
@@ -1164,8 +1267,68 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn read_statement(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn read_statement(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+        let mut arg = !0;
+
+        fn parse_read<'a, 'b>(
+            parser: &mut Parser<'a, 'b>,
+            tt: TokenType,
+            my_idx: usize,
+            arg: &mut usize,
+        ) -> ParseResult<()> {
+            let mut recovery_token = None;
+            let tt = match tt {
+                TokenType::KeywordRead => {
+                    parser.process(
+                        Parser::match_token,
+                        &[TokenType::KeywordRead],
+                        &[TokenType::LParen, TokenType::RParen],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                }
+                TokenType::LParen => {
+                    parser.process(
+                        Parser::match_token,
+                        &[TokenType::LParen],
+                        &[TokenType::RParen],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                }
+                TokenType::LiteralInt => {
+                    // Label for argument list
+                    *arg = parser
+                        .process(
+                            Parser::variable_list,
+                            my_idx,
+                            &[TokenType::RParen],
+                            &mut recovery_token,
+                        )?
+                        .unwrap_or_else(|| !0);
+                    TokenType::RParen
+                }
+                TokenType::RParen => {
+                    parser.match_token(&[TokenType::RParen])?;
+                    TokenType::Undefined
+                }
+                _ => {
+                    assert!(false, "Token {} doesn't belong here.", tt);
+                    TokenType::Undefined
+                }
+            };
+
+            if TokenType::Undefined != tt {
+                parse_read(parser, tt, my_idx, arg)?;
+            }
+            Ok(())
+        }
+
+        parse_read(self, TokenType::KeywordRead, my_idx, &mut arg)?;
+        self.tree[my_idx].data = NodeType::Read(arg);
+
+        Ok(my_idx)
     }
 
     fn assert_statement(&mut self, parent: usize) -> ParseResult<usize> {

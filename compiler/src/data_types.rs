@@ -238,6 +238,12 @@ pub struct TokenIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenOptIdx<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub opt_idx: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TokenIdxIdx<'a> {
     pub token: Option<TokenData<'a>>,
     pub idx: usize,
@@ -256,6 +262,7 @@ pub struct IdxIdx {
     pub idx: usize,
     pub idx2: usize,
 }
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IdxIdxOptIdx {
     pub idx: usize,
@@ -283,6 +290,8 @@ pub enum NodeType<'a> {
     Call(TokenIdx<'a>),
     Assert(usize),
     Assignment(TokenIdxOptIdx<'a>),
+    Read(usize),
+    Variable(TokenOptIdx<'a>),
     Undefined,
 }
 
@@ -314,6 +323,8 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::Call(_) => 16,
             NodeType::Assert(_) => 17,
             NodeType::Assignment(_) => 18,
+            NodeType::Read(_) => 19,
+            NodeType::Variable(_) => 20,
         }
     }
 }
@@ -488,6 +499,21 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "Assignment",
+                    1,
+                )?;
+                state.serialize_field("identifier", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::Read(_) => {
+                let state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Read", 0)?;
+                state.end()
+            }
+            NodeType::Variable(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Variable",
                     1,
                 )?;
                 state.serialize_field("identifier", &data.token.unwrap().value)?;
