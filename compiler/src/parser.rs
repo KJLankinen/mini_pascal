@@ -973,16 +973,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralBoolean => {
                     // Label for second statement
-                    node_data.opt_idx = Some(
-                        parser
-                            .process(
-                                Parser::statement,
-                                my_idx,
-                                &[TokenType::KeywordElse],
-                                &mut recovery_token,
-                            )?
-                            .unwrap_or_else(|| !0),
-                    );
+                    node_data.opt_idx = Some(parser.statement(my_idx)?);
                     TokenType::Undefined
                 }
                 _ => {
@@ -1003,8 +994,64 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn while_statement(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn while_statement(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+        let mut node_data = IdxIdx { idx: !0, idx2: !0 };
+
+        fn parse_while<'a, 'b>(
+            parser: &mut Parser<'a, 'b>,
+            tt: TokenType,
+            my_idx: usize,
+            node_data: &mut IdxIdx,
+        ) -> ParseResult<()> {
+            let mut recovery_token = None;
+            let tt = match tt {
+                TokenType::KeywordWhile => {
+                    parser.process(
+                        Parser::match_token,
+                        &[TokenType::KeywordWhile],
+                        &[TokenType::KeywordDo],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                }
+                TokenType::KeywordDo => {
+                    parser.match_token(&[TokenType::KeywordDo])?;
+                    TokenType::LiteralString
+                }
+                TokenType::LiteralInt => {
+                    // Label for expression
+                    node_data.idx = parser
+                        .process(
+                            Parser::expression,
+                            my_idx,
+                            &[TokenType::KeywordDo],
+                            &mut recovery_token,
+                        )?
+                        .unwrap_or_else(|| !0);
+                    TokenType::KeywordDo
+                }
+                TokenType::LiteralString => {
+                    // Label for statement
+                    node_data.idx2 = parser.statement(my_idx)?;
+                    TokenType::Undefined
+                }
+                _ => {
+                    assert!(false, "Token {} doesn't belong here.", tt);
+                    TokenType::Undefined
+                }
+            };
+
+            if TokenType::Undefined != tt {
+                parse_while(parser, tt, my_idx, node_data)?;
+            }
+            Ok(())
+        }
+
+        parse_while(self, TokenType::KeywordWhile, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::While(node_data);
+
+        Ok(my_idx)
     }
 
     fn return_statement(&mut self, _parent: usize) -> ParseResult<usize> {
@@ -1185,6 +1232,6 @@ impl<'a, 'b> Parser<'a, 'b> {
     //    parse_(self, TokenType::KeywordASDASD, my_idx, &mut node_data)?;
     //    self.tree[my_idx].data = NodeType::ASDASD(node_data);
 
-    //    Ok(())
+    //    Ok(my_idx)
     //}
 }
