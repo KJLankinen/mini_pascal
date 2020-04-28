@@ -278,6 +278,7 @@ pub enum NodeType<'a> {
     Identifier(Option<TokenData<'a>>),
     If(IdxIdxOptIdx),
     While(IdxIdx),
+    Return(usize),
     Undefined,
 }
 
@@ -304,6 +305,7 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::Identifier(_) => 11,
             NodeType::If(_) => 12,
             NodeType::While(_) => 13,
+            NodeType::Return(_) => 14,
         }
     }
 }
@@ -432,6 +434,15 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "While",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Return(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Return",
                     0,
                 )?;
                 state.end()

@@ -1054,8 +1054,13 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn return_statement(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn return_statement(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+
+        self.match_token(&[TokenType::KeywordReturn])?;
+        self.tree[my_idx].data = NodeType::Return(self.expression(my_idx)?);
+
+        Ok(my_idx)
     }
 
     fn write_statement(&mut self, _parent: usize) -> ParseResult<usize> {
