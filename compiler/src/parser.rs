@@ -174,162 +174,130 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     fn program(&mut self) -> ParseResult<()> {
         let my_id = self.tree.add_child(None);
+        //let mut nd = NodeType::Program{}; // pass this inside and fill
 
-        let mut eop_closure = |parser: &mut Self| -> ParseResult<()> {
-            parser.match_token(&[TokenType::EndOfProgram])?;
-            Ok(())
-        };
-
-        let mut block_id = !0;
-        let mut block_closure = |parser: &mut Self| -> ParseResult<()> {
+        fn parse_closure(parser: &mut Parser, tt: TokenType, my_id: usize) -> ParseResult<()> {
             let mut recovery_token = None;
-            parser.process(
-                Parser::block,
-                my_id,
-                &[TokenType::EndOfProgram],
-                &mut recovery_token,
-            )?;
-
-            if let Some(lc) = parser.tree[my_id].left_child {
-                if let Some(rs) = parser.tree[lc].right_sibling {
-                    // Program has subroutines, block is the right sibling
-                    block_id = rs;
-                } else {
-                    // Program doesn't have subroutines (or something is wrong),
-                    // block is the left child
-                    block_id = lc;
-                }
-            }
-
-            eop_closure(parser)
-        };
-
-        let mut sub_id = None;
-        let mut subs_closure = |parser: &mut Self| -> ParseResult<()> {
-            let tt = parser.scanner.peek().token_type;
-            match tt {
-                TokenType::KeywordProcedure | TokenType::KeywordFunction => {
-                    sub_id = Some(parser.tree.add_child(Some(my_id)));
-                    let mut recovery_token = None;
-                    parser.process(
-                        Parser::subroutines,
-                        sub_id.unwrap(),
-                        &[TokenType::KeywordBegin, TokenType::EndOfProgram],
+            let tt = match tt {
+                TokenType::KeywordProgram => {
+                    let token = parser.process(
+                        Parser::match_token,
+                        &[TokenType::KeywordProgram],
+                        &[
+                            TokenType::StatementSeparator,
+                            TokenType::KeywordProcedure,
+                            TokenType::KeywordFunction,
+                            TokenType::KeywordBegin,
+                            TokenType::EndOfProgram,
+                        ],
                         &mut recovery_token,
                     )?;
 
-                    let fs = parser.tree[sub_id.unwrap()]
-                        .left_child
-                        .unwrap_or_else(|| !0);
-                    parser.tree[sub_id.unwrap()].data = NodeType::Subroutines {
-                        first_subroutine: fs,
-                    };
-
-                    if recovery_token.is_some()
-                        && TokenType::EndOfProgram == recovery_token.unwrap()
-                    {
-                        eop_closure(parser)?;
+                    // Give the token type at which parsing shall continue
+                    if token.is_some() {
+                        TokenType::Identifier
                     } else {
-                        block_closure(parser)?;
+                        recovery_token.expect("Recovery token must be some token.")
                     }
                 }
-                _ => {}
-            }
-
-            Ok(())
-        };
-
-        let mut sep_closure = |parser: &mut Self| -> ParseResult<()> {
-            let mut recovery_token = None;
-            let result = parser.process(
-                Parser::match_token,
-                &[TokenType::StatementSeparator],
-                &[
-                    TokenType::KeywordProcedure,
-                    TokenType::KeywordFunction,
-                    TokenType::KeywordBegin,
-                    TokenType::EndOfProgram,
-                ],
-                &mut recovery_token,
-            )?;
-
-            if result.is_some() {
-                subs_closure(parser)?;
-            } else {
-                match recovery_token.expect("Recovery token must be some token.") {
-                    TokenType::KeywordProcedure | TokenType::KeywordFunction => {
-                        subs_closure(parser)?
+                TokenType::Identifier => {
+                    let token = parser.process(
+                        Parser::match_token,
+                        &[TokenType::Identifier],
+                        &[
+                            TokenType::StatementSeparator,
+                            TokenType::KeywordProcedure,
+                            TokenType::KeywordFunction,
+                            TokenType::KeywordBegin,
+                            TokenType::EndOfProgram,
+                        ],
+                        &mut recovery_token,
+                    )?;
+                    if token.is_some() {
+                        TokenType::StatementSeparator
+                    } else {
+                        recovery_token.expect("Recovery token must be some token.")
                     }
-                    TokenType::KeywordBegin => block_closure(parser)?,
-                    _ => eop_closure(parser)?,
-                };
-            }
-
-            Ok(())
-        };
-
-        let mut id_token = None;
-        let mut id_closure = |parser: &mut Self| -> ParseResult<()> {
-            let mut recovery_token = None;
-            id_token = parser.process(
-                Parser::match_token,
-                &[TokenType::Identifier],
-                &[
-                    TokenType::StatementSeparator,
-                    TokenType::KeywordProcedure,
-                    TokenType::KeywordFunction,
-                    TokenType::KeywordBegin,
-                    TokenType::EndOfProgram,
-                ],
-                &mut recovery_token,
-            )?;
-
-            if id_token.is_some() {
-                sep_closure(parser)?;
-            } else {
-                match recovery_token.expect("Recovery token must be some token.") {
-                    TokenType::StatementSeparator => sep_closure(parser)?,
-                    TokenType::KeywordProcedure | TokenType::KeywordFunction => {
-                        subs_closure(parser)?
+                }
+                TokenType::StatementSeparator => {
+                    if parser
+                        .process(
+                            Parser::match_token,
+                            &[TokenType::StatementSeparator],
+                            &[
+                                TokenType::KeywordProcedure,
+                                TokenType::KeywordFunction,
+                                TokenType::KeywordBegin,
+                                TokenType::EndOfProgram,
+                            ],
+                            &mut recovery_token,
+                        )?
+                        .is_some()
+                    {
+                        TokenType::KeywordProcedure
+                    } else {
+                        recovery_token.expect("Recovery token must be some token.")
                     }
-                    TokenType::KeywordBegin => block_closure(parser)?,
-                    _ => eop_closure(parser)?,
-                };
-            }
+                }
+                TokenType::KeywordFunction | TokenType::KeywordProcedure => {
+                    // Subroutines are voluntary, so check if there are some
+                    match parser.scanner.peek().token_type {
+                        TokenType::KeywordFunction | TokenType::KeywordProcedure => {
+                            let sub_id = parser.tree.add_child(Some(my_id));
+                            parser.process(
+                                Parser::subroutines,
+                                sub_id,
+                                &[TokenType::KeywordBegin, TokenType::EndOfProgram],
+                                &mut recovery_token,
+                            )?;
 
-            Ok(())
-        };
+                            recovery_token.unwrap_or_else(|| TokenType::KeywordBegin)
+                        }
+                        _ => TokenType::KeywordBegin,
+                    }
+                }
+                TokenType::KeywordBegin => {
+                    parser.process(
+                        Parser::block,
+                        my_id,
+                        &[TokenType::EndOfProgram],
+                        &mut recovery_token,
+                    )?;
 
-        let mut recovery_token = None;
-        let token = self.process(
-            Parser::match_token,
-            &[TokenType::KeywordProgram],
-            &[
-                TokenType::StatementSeparator,
-                TokenType::KeywordProcedure,
-                TokenType::KeywordFunction,
-                TokenType::KeywordBegin,
-                TokenType::EndOfProgram,
-            ],
-            &mut recovery_token,
-        )?;
-
-        if token.is_some() {
-            id_closure(self)?;
-        } else {
-            match recovery_token.expect("Recovery token must be some token.") {
-                TokenType::StatementSeparator => sep_closure(self)?,
-                TokenType::KeywordProcedure | TokenType::KeywordFunction => subs_closure(self)?,
-                TokenType::KeywordBegin => block_closure(self)?,
-                _ => eop_closure(self)?,
+                    TokenType::EndOfProgram
+                }
+                TokenType::EndOfProgram => {
+                    parser.match_token(&[TokenType::EndOfProgram])?;
+                    TokenType::Undefined
+                }
+                _ => TokenType::Undefined,
             };
+
+            if TokenType::Undefined != tt {
+                parse_closure(parser, tt, my_id);
+            }
+            Ok(())
         }
 
-        self.tree[my_id].data = NodeType::Program {
-            id: id_token,
-            block_id: block_id,
-            sub_id: sub_id,
-        };
+        parse_closure(self, TokenType::KeywordProgram, my_id)?;
+
+        //let block_id;
+        //if let Some(lc) = self.tree[my_id].left_child {
+        //    if let Some(rs) = self.tree[lc].right_sibling {
+        //        // Program has subroutines, block is the right sibling
+        //        block_id = rs;
+        //    } else {
+        //        // Program doesn't have subroutines (or something is wrong),
+        //        // block is the left child
+        //        block_id = lc;
+        //    }
+        //}
+
+        //self.tree[my_id].data = NodeType::Program {
+        //    id: id_token,
+        //    block_id: block_id,
+        //    sub_id: sub_id,
+        //};
 
         Ok(())
     }
@@ -383,7 +351,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         let mut sep_closure = |parser: &mut Self| -> ParseResult<()> {
             let mut recovery_token = None;
-            let result = parser.process(
+            parser.process(
                 Parser::match_token,
                 &[TokenType::StatementSeparator],
                 &[TokenType::KeywordBegin],
