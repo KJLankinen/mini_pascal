@@ -487,11 +487,11 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn parameter_list(&mut self, parent: usize) -> ParseResult<Option<usize>> {
+        // TODO: Aren't these identifiers supposed to be saved somewhere?
         let my_idx = self.tree.add_child(Some(parent));
-        let mut recovery_token = None;
         let tt = self.scanner.peek().token_type;
         while TokenType::KeywordVar == tt || TokenType::Identifier == tt {
-            recovery_token = None;
+            let recovery_token = None;
             self.process(
                 Parser::parameter,
                 my_idx,
@@ -792,12 +792,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         self.statement_list(parent)
     }
 
-    fn statement(&mut self, _parent: usize) -> ParseResult<()> {
+    fn statement(&mut self, parent: usize) -> ParseResult<()> {
         match self.scanner.peek().token_type {
-            //TokenType::KeywordVar => self.declaration(parent)?,
-            //TokenType::KeywordRead => self.read_statement(parent)?,
-            //TokenType::KeywordAssert => self.assert_statement(parent)?,
-            //TokenType::Identifier => self.assignment(parent)?,
+            TokenType::KeywordVar => self.declaration(parent)?,
+            TokenType::KeywordBegin => self.block(parent)?,
+            TokenType::KeywordIf => self.if_statement(parent)?,
+            TokenType::KeywordWhile => self.while_statement(parent)?,
+            TokenType::KeywordReturn => self.return_statement(parent)?,
+            TokenType::KeywordWrite => self.write_statement(parent)?,
+            TokenType::KeywordRead => self.read_statement(parent)?,
+            TokenType::KeywordAssert => self.assert_statement(parent)?,
+            TokenType::Identifier => self.id_statement(parent)?,
             _ => {
                 // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
                 // statements and lexical errors lead to here.
@@ -805,6 +810,50 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
 
+        Ok(())
+    }
+
+    // ---------------------------------------------------------------------
+    // Functions for each of the possible statements.
+    // fn statement() leads to one of these
+    // ---------------------------------------------------------------------
+    fn declaration(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn if_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn while_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn return_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn write_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn read_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn assert_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn id_statement(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn call(&mut self, parent: usize) -> ParseResult<()> {
+        Ok(())
+    }
+
+    fn assignment(&mut self, parent: usize) -> ParseResult<()> {
         Ok(())
     }
 
@@ -861,7 +910,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn simple_expr(&mut self, _parent: usize) -> ParseResult<usize> {
+    fn simple_expr(&mut self, parent: usize) -> ParseResult<usize> {
         Ok(!0)
     }
 
@@ -872,11 +921,6 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn factor(&mut self, _parent: usize) -> ParseResult<usize> {
         Ok(!0)
     }
-
-    // ---------------------------------------------------------------------
-    // Functions for each of the possible statements.
-    // fn statement_prefix() leads to one of these
-    // ---------------------------------------------------------------------
 
     // ---------------------------------------------------------------------
     // Public utility functions

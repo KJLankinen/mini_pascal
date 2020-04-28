@@ -261,6 +261,7 @@ pub enum NodeType<'a> {
     Parameter(TokenIdxBool<'a>),
     VariableType(SymbolType),
     Expression(TokenIdxIdx<'a>),
+    SimpleExpression(TokenIdxOptIdx<'a>),
     Undefined,
 }
 
@@ -282,6 +283,7 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::Parameter(_) => 6,
             NodeType::VariableType(_) => 7,
             NodeType::Expression(_) => 8,
+            NodeType::SimpleExpression(_) => 9,
         }
     }
 }
@@ -366,6 +368,16 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "Expression",
+                    1,
+                )?;
+                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::SimpleExpression(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Simple expression",
                     1,
                 )?;
                 state.serialize_field("operator", &data.token.unwrap().value)?;
