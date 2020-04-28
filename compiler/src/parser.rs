@@ -184,6 +184,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             opt_idx: None,
         };
 
+        // This inner function is called recursively.
         fn parse_program<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
@@ -295,7 +296,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             recovery_token = None;
             self.process(
                 Parser::function,
-                parent,
+                my_id,
                 &[TokenType::KeywordFunction, TokenType::KeywordProcedure],
                 &mut recovery_token,
             )?;
@@ -323,6 +324,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             opt_symbol: None,
         };
 
+        // This inner function is called recursively.
         fn parse_function<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
@@ -480,8 +482,53 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(())
     }
 
-    fn parameter_list(&mut self, _parent: usize) -> ParseResult<Option<usize>> {
-        Ok(None)
+    fn parameter_list(&mut self, parent: usize) -> ParseResult<Option<usize>> {
+        let my_id = self.tree.add_child(Some(parent));
+        let mut recovery_token = None;
+        let tt = self.scanner.peek().token_type;
+        while TokenType::KeywordVar == tt || TokenType::Identifier == tt {
+            recovery_token = None;
+            self.process(
+                Parser::parameter,
+                my_id,
+                &[
+                    TokenType::ListSeparator,
+                    TokenType::KeywordVar,
+                    TokenType::Identifier,
+                ],
+                &mut recovery_token,
+            )?;
+
+            match self.scanner.peek().token_type {
+                TokenType::KeywordVar | TokenType::Identifier => {
+                    // Mising list separator
+                    self.logger.add_error(ErrorType::SyntaxError(
+                        *self.scanner.peek(),
+                        vec![TokenType::ListSeparator],
+                    ));
+                }
+                TokenType::ListSeparator => {
+                    self.match_token(&[TokenType::ListSeparator])?;
+                }
+                _ => {}
+            }
+            let tt = self.scanner.peek().token_type;
+        }
+
+        let idx = if self.tree[my_id].left_child.is_some() {
+            self.tree[my_id].data = NodeType::Parameters(self.tree[my_id].left_child.unwrap());
+            Some(my_id)
+        } else {
+            // No parameters, remove this node
+            self.tree.remove_node(my_id);
+            None
+        };
+
+        Ok(idx)
+    }
+
+    fn parameter(&mut self, _parent: usize) -> ParseResult<()> {
+        Ok(())
     }
 
     fn var_type(&mut self, _parent: usize) -> ParseResult<Option<SymbolType>> {
