@@ -1593,15 +1593,115 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn simple_expression(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn simple_expression(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+
+        fn parse_term<'a, 'b>(
+            parser: &mut Parser<'a, 'b>,
+            parent: usize,
+            is_head: bool,
+        ) -> ParseResult<Option<usize>> {
+            let token = match parser.scanner.peek().token_type {
+                TokenType::OperatorPlus | TokenType::OperatorMinus => {
+                    Some(parser.match_token(&[TokenType::OperatorPlus, TokenType::OperatorMinus])?)
+                }
+                TokenType::OperatorOr => {
+                    if is_head {
+                        None
+                    } else {
+                        Some(parser.match_token(&[TokenType::OperatorOr])?)
+                    }
+                }
+                _ => None,
+            };
+
+            if is_head || token.is_some() {
+                let my_idx = parser.tree.add_child(Some(parent));
+                let mut node_data = TokenIdx {
+                    token: token,
+                    idx: !0,
+                };
+
+                let mut recovery_token = None;
+                node_data.idx = parser
+                    .process(
+                        Parser::term,
+                        my_idx,
+                        &[
+                            TokenType::OperatorPlus,
+                            TokenType::OperatorMinus,
+                            TokenType::OperatorOr,
+                        ],
+                        &mut recovery_token,
+                    )?
+                    .unwrap_or_else(|| !0);
+
+                parser.tree[my_idx].data = NodeType::Term(node_data);
+                parse_term(parser, parent, false)?;
+
+                Ok(Some(my_idx))
+            } else {
+                Ok(None)
+            }
+        }
+
+        self.tree[my_idx].data =
+            NodeType::SimpleExpression(parse_term(self, my_idx, true)?.unwrap_or_else(|| !0));
+        Ok(my_idx)
     }
 
-    fn _term(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn term(&mut self, parent: usize) -> ParseResult<usize> {
+        let my_idx = self.tree.add_child(Some(parent));
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
+
+        let operators = [
+            TokenType::OperatorMultiply,
+            TokenType::OperatorDivide,
+            TokenType::OperatorModulo,
+            TokenType::OperatorAnd,
+        ];
+        let mut recovery_token = None;
+        node_data.idx = self
+            .process(Parser::factor, my_idx, &operators, &mut recovery_token)?
+            .unwrap_or_else(|| !0);
+
+        fn parse_factor<'a, 'b>(
+            parser: &mut Parser<'a, 'b>,
+            parent: usize,
+            operators: &[TokenType],
+        ) -> ParseResult<()> {
+            // If the next token is one of the given operators, parse factor
+            if let Some(tt) = operators
+                .iter()
+                .find(|&&op| op == parser.scanner.peek().token_type)
+            {
+                let my_idx = parser.tree.add_child(Some(parent));
+                let mut node_data = TokenIdx {
+                    token: Some(parser.match_token(&[*tt])?),
+                    idx: !0,
+                };
+
+                let mut recovery_token = None;
+                node_data.idx = parser
+                    .process(Parser::factor, my_idx, operators, &mut recovery_token)?
+                    .unwrap_or_else(|| !0);
+
+                parser.tree[my_idx].data = NodeType::Factor(node_data);
+                parse_factor(parser, parent, operators)?;
+            }
+            Ok(())
+        }
+
+        self.tree[my_idx].data = NodeType::Factor(node_data);
+        parse_factor(self, parent, &operators)?;
+
+        Ok(my_idx)
     }
 
-    fn _factor(&mut self, _parent: usize) -> ParseResult<usize> {
+    fn factor(&mut self, _parent: usize) -> ParseResult<usize> {
         Ok(!0)
     }
 
