@@ -1,48 +1,53 @@
 # Context-free grammar for Mini-Pascal language
+##============================
+##      Program & functions
+##============================
 <program>               "program" <id> ";" <subs> <block> "."
 <subs>                  (<procedure> | <function>) <subs> | <empty>
 
 <procedure>             "procedure" <id> "(" <parameter_list> ")"            ";" <block> ";"
 <function>              "function"  <id> "(" <parameter_list> ")" ":" <type> ";" <block> ";"
 
+<parameter>             ["var"] <id> ":" <type>
 <parameter_list>        <parameter> <parameter_list_tail> | <empty>
 <parameter_list_tail>   "," <parameter> <parameter_list_tail> | <empty>
-<parameter>             ["var"] <id> ":" <type>
 
-<var_declaration>       "var" <id_list> ":" <type>
-<id_list>               <id> <id_list_tail>
-<id_list_tail>          "," <id> <id_list_tail> | <empty>
-
-<type>                  <simple_type> | <array_type>
-<simple_type>           <type_id>
-<array_type>            "array" "[" [<integer_expr>] "]" "of" <simple_type>
-
+##============================
+##      Statements
+##============================
 <block>                 "begin" <statement_list> [";"] "end"
 <statement_list>        <statement> <statement_list_tail>
 <statement_list_tail>   ";" <statement> <statement_list_tail> | <empty>
+
 <statement>             <simple_statement> | <structured_statement> | <var_declaration>
 <empty>                 
-
-<simple_statement>      <id_statement> | <return_statement> | <read_statement> | <write_statement> | <assert_statement>
-<id_statement>          <id> (<call_tail> | <variable_tail> ":=" <expr>)
+<simple_statement>      <call_statement> | <assignment_statement> | <return_statement> | <read_statement> | <write_statement> | <assert_statement>
 <return_statement>      "return" [<expr>]
-<read_statement>        "read" "(" <variable_list> ")"
-<write_statement>       "writeln" "(" <argument_list> ")"
-<assert_statement>      "assert" "(" <boolean_expr>")"
-
-<argument_list>         <expr> <argument_list_tail> | <empty>
-<argument_list_tail>    "," <expr> <argument_list_tail> | <empty>
-<variable_list>         <variable> <variable_list_tail>
-<variable_list_tail>    "," <variable> <variable_list_tail> | <empty>
-<call_tail>             "(" <argument_list> ")"
-<variable>              <id> <variable_tail>
-<variable_tail>         "[" <integer_expr> "]" | <empty>
+<var_declaration>       "var"           <id_list> ":" <type>
+<read_statement>        "read"      "(" <variable_list> ")"
+<write_statement>       "writeln"   "(" <argument_list> ")"
+<assert_statement>      "assert"    "(" <boolean_expr>  ")"
+<call_statement>        <id>        "(" <argument_list> ")"
+<assignment_statement>  <variable> ":=" <expr>
+<variable>              <id>        [ "[" <integer_expr> "]" ]
 
 <structured_statement>  <block> | <if_statement> | <while_statement>
 <if_statement>          "if" <boolean_expr> "then" <statement_list> <if_statement_tail>
 <if_statement_tail>     "else" <statement_list> | <empty>
 <while_statement>       "while" <boolean_expr> "do" <statement_list>
 
+<id_list>               <id> <id_list_tail>
+<id_list_tail>          "," <id> <id_list_tail> | <empty>
+
+<argument_list>         <expr> <argument_list_tail> | <empty>
+<argument_list_tail>    "," <expr> <argument_list_tail> | <empty>
+
+<variable_list>         <variable> <variable_list_tail>
+<variable_list_tail>    "," <variable> <variable_list_tail> | <empty>
+
+##============================
+##      Expressions
+##============================
 <expr>                  <simple_expr> <expr_tail>
 <expr_tail>             <rel_op> <simple_expr> | <empty>
 
@@ -53,9 +58,8 @@
 <term_tail>             <mul_op> <factor> <term_tail> | <empty>
 
 <factor>                <factor_head> <factor_tail>
-<factor_head>           <id_factor> | <literal> | "(" <expr> ")" | "not" <factor>
+<factor_head>           <call_statement> | <variable> | <literal> | "(" <expr> ")" | "not" <factor>
 <factor_tail>           ".""size" | <empty>
-<id_factor>             <id> (<call_tail> | <variable_tail>)
 
 <rel_op>                "=" | "<>" | "<" | "<=" | ">=" | ">"
 <add_op>                "+" | "-" | "or"
@@ -63,9 +67,18 @@
 <negation>              "not"
 <sign>                  "+" | "-"
 
+##============================
+##      Types
+##============================
 <type_id>               "Boolean" | "integer" | "real" | "string"
+<type>                  <simple_type> | <array_type>
+<simple_type>           <type_id>
+<array_type>            "array" "[" [<integer_expr>] "]" "of" <simple_type>
 
-# Lexical elements
+
+##============================
+##      Lexical elements
+##============================
 <id>                    <letter> <id_tail>
 <id_tail>               (<letter> | <digit> | "_") <id_tail> | <empty>
 <literal>               <integer_literal> | <real_literal> | <string_literal>
