@@ -294,6 +294,9 @@ pub enum NodeType<'a> {
     Variable(TokenOptIdx<'a>),
     Term(TokenIdx<'a>),
     Factor(TokenIdx<'a>),
+    Literal(Option<TokenData<'a>>),
+    Not(TokenIdx<'a>),
+    ArraySize(TokenIdx<'a>),
     Undefined,
 }
 
@@ -329,6 +332,9 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::Variable(_) => 20,
             NodeType::Term(_) => 21,
             NodeType::Factor(_) => 22,
+            NodeType::Literal(_) => 23,
+            NodeType::Not(_) => 24,
+            NodeType::ArraySize(_) => 25,
         }
     }
 }
@@ -533,6 +539,32 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "Factor",
+                    1,
+                )?;
+                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::Literal(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Literal",
+                    1,
+                )?;
+                state.serialize_field("value", &data.unwrap().value)?;
+                state.end()
+            }
+            NodeType::Not(data) => {
+                let mut state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Not", 1)?;
+                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.end()
+            }
+            NodeType::ArraySize(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Array size",
                     1,
                 )?;
                 state.serialize_field("operator", &data.token.unwrap().value)?;

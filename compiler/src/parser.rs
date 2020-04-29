@@ -1701,8 +1701,61 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn factor(&mut self, _parent: usize) -> ParseResult<usize> {
-        Ok(!0)
+    fn factor(&mut self, parent: usize) -> ParseResult<usize> {
+        let parent = self.tree.add_child(Some(parent));
+        let child_idx = match self.scanner.peek().token_type {
+            TokenType::Identifier => {
+                let token = self.match_token(&[TokenType::Identifier])?;
+                if TokenType::LParen == self.scanner.peek().token_type {
+                    Some(self.call(parent, token)?)
+                } else {
+                    Some(self.assignment(parent, token)?)
+                }
+            }
+            tt @ TokenType::LiteralBoolean
+            | tt @ TokenType::LiteralInt
+            | tt @ TokenType::LiteralReal
+            | tt @ TokenType::LiteralString => {
+                let my_idx = self.tree.add_child(Some(parent));
+                self.tree[my_idx].data = NodeType::Literal(Some(self.match_token(&[tt])?));
+                Some(my_idx)
+            }
+            TokenType::LParen => {
+                let mut recovery_token = None;
+                self.match_token(&[TokenType::LParen])?;
+                let my_idx = self
+                    .process(
+                        Parser::expression,
+                        parent,
+                        &[TokenType::RParen],
+                        &mut recovery_token,
+                    )?
+                    .unwrap_or_else(|| !0);
+                self.match_token(&[TokenType::RParen])?;
+                Some(my_idx)
+            }
+            TokenType::OperatorNot => {
+                let my_idx = self.tree.add_child(Some(parent));
+                self.tree[my_idx].data = NodeType::Not(TokenIdx {
+                    token: Some(self.match_token(&[TokenType::OperatorNot])?),
+                    idx: self.factor(my_idx)?,
+                });
+                Some(my_idx)
+            }
+            _ => None,
+        };
+
+        if TokenType::OperatorSize == self.scanner.peek().token_type {
+            let my_idx = parent;
+            self.tree[my_idx].data = NodeType::ArraySize(TokenIdx {
+                token: Some(self.match_token(&[TokenType::OperatorSize])?),
+                idx: child_idx.unwrap_or_else(|| !0),
+            });
+            Ok(my_idx)
+        } else {
+            self.tree.remove_node(parent);
+            Ok(child_idx.unwrap_or_else(|| !0))
+        }
     }
 
     // ---------------------------------------------------------------------
