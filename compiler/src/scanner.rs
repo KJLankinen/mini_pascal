@@ -1,5 +1,5 @@
 use super::data_types::{TokenData, TokenType};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 // ---------------------------------------------------------------------
 // Type definition for the scanner that goes through the source string
@@ -11,6 +11,7 @@ pub struct Scanner<'a> {
     skip_until_newline: bool,
     pub unmatched_multiline_comment_prefixes: Vec<(u32, u32)>,
     chars: std::iter::Peekable<std::str::CharIndices<'a>>,
+    token_queue: VecDeque<TokenData<'a>>,
     token_map: HashMap<&'static str, TokenType>,
     source_str: &'a str,
     next_token: TokenData<'a>,
@@ -26,8 +27,30 @@ impl<'a> Scanner<'a> {
     pub fn next(&mut self) -> TokenData<'a> {
         // The parser receives new tokens by calling this function
         let token = self.next_token;
-        self.next_token = self.get_token();
+        self.next_token = if self.token_queue.is_empty() {
+            self.get_token()
+        } else {
+            self.token_queue
+                .pop_front()
+                .expect("Token queue should have actual tokens, if it's not empty.")
+        };
         token
+    }
+
+    pub fn peek_at(&mut self, distance: usize) -> &TokenData<'a> {
+        assert!(distance < 10, "Sanity check.");
+
+        if 0 == distance {
+            &self.next_token
+        } else {
+            while self.token_queue.len() < distance {
+                let token = self.get_token();
+                self.token_queue.push_back(token);
+            }
+            self.token_queue
+                .get(distance - 1)
+                .expect("Token queue should contain a token at distance - 1")
+        }
     }
 
     pub fn peek(&mut self) -> &TokenData<'a> {
@@ -336,6 +359,7 @@ impl<'a> Scanner<'a> {
             chars: source_str.char_indices().peekable(),
             source_str: source_str,
             next_token: TokenData::default(),
+            token_queue: VecDeque::new(),
             token_map: [
                 ("+", TokenType::OperatorPlus),
                 ("-", TokenType::OperatorMinus),

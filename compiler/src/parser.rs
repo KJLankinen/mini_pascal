@@ -30,13 +30,6 @@ pub struct Parser<'a, 'b> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a, 'b> Parser<'a, 'b> {
-    const DUMMY_TOKEN: TokenData<'a> = TokenData {
-        column: !0,
-        line: !0,
-        token_type: TokenType::Undefined,
-        value: "DummyDummy",
-    };
-
     // ---------------------------------------------------------------------
     // fn match_token() and fn process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
@@ -782,11 +775,14 @@ impl<'a, 'b> Parser<'a, 'b> {
             TokenType::StatementSeparator => {
                 self.match_token(&[TokenType::StatementSeparator])?;
             }
-            TokenType::KeywordEnd => return Ok(()),
             _ => {}
         }
 
-        self.statement_list(parent)
+        if TokenType::KeywordEnd != self.scanner.peek().token_type {
+            self.statement_list(parent)
+        } else {
+            Ok(())
+        }
     }
 
     fn statement(&mut self, parent: usize) -> ParseResult<usize> {
@@ -803,6 +799,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             _ => {
                 // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
                 // statements and lexical errors lead to here.
+                println!("test");
                 self.match_token(&[])?;
                 Ok(!0)
             }
@@ -1396,18 +1393,17 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     fn id_statement(&mut self, parent: usize) -> ParseResult<usize> {
-        let token = self.match_token(&[TokenType::Identifier])?;
-        if TokenType::LParen == self.scanner.peek().token_type {
-            self.call(parent, token)
+        if TokenType::LParen == self.scanner.peek_at(1).token_type {
+            self.call(parent)
         } else {
-            self.assignment(parent, token)
+            self.assignment(parent)
         }
     }
 
-    fn call(&mut self, parent: usize, token: TokenData<'a>) -> ParseResult<usize> {
+    fn call(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenIdx {
-            token: Some(token),
+            token: None,
             idx: !0,
         };
 
@@ -1419,6 +1415,15 @@ impl<'a, 'b> Parser<'a, 'b> {
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
+                TokenType::Identifier => {
+                    node_data.token = parser.process(
+                        Parser::match_token,
+                        &[TokenType::Identifier],
+                        &[TokenType::LParen, TokenType::RParen],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                }
                 TokenType::LParen => {
                     parser.process(
                         Parser::match_token,
@@ -1456,16 +1461,16 @@ impl<'a, 'b> Parser<'a, 'b> {
             Ok(())
         }
 
-        parse_call(self, TokenType::LParen, my_idx, &mut node_data)?;
+        parse_call(self, TokenType::Identifier, my_idx, &mut node_data)?;
         self.tree[my_idx].data = NodeType::Call(node_data);
 
         Ok(my_idx)
     }
 
-    fn assignment(&mut self, parent: usize, token: TokenData<'a>) -> ParseResult<usize> {
+    fn assignment(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenIdxOptIdx {
-            token: Some(token),
+            token: None,
             idx: !0,
             opt_idx: None,
         };
@@ -1478,6 +1483,19 @@ impl<'a, 'b> Parser<'a, 'b> {
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
+                TokenType::Identifier => {
+                    node_data.token = parser.process(
+                        Parser::match_token,
+                        &[TokenType::Identifier],
+                        &[
+                            TokenType::LBracket,
+                            TokenType::RBracket,
+                            TokenType::Assignment,
+                        ],
+                        &mut recovery_token,
+                    )?;
+                    recovery_token.unwrap_or_else(|| TokenType::LBracket)
+                }
                 TokenType::LBracket => {
                     if TokenType::LBracket == parser.scanner.peek().token_type {
                         parser.process(
@@ -1535,7 +1553,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             Ok(())
         }
 
-        parse_assignment(self, TokenType::LBracket, my_idx, &mut node_data)?;
+        parse_assignment(self, TokenType::Identifier, my_idx, &mut node_data)?;
         self.tree[my_idx].data = NodeType::Assignment(node_data);
         Ok(my_idx)
     }
@@ -1705,11 +1723,10 @@ impl<'a, 'b> Parser<'a, 'b> {
         let parent = self.tree.add_child(Some(parent));
         let child_idx = match self.scanner.peek().token_type {
             TokenType::Identifier => {
-                let token = self.match_token(&[TokenType::Identifier])?;
-                if TokenType::LParen == self.scanner.peek().token_type {
-                    Some(self.call(parent, token)?)
+                if TokenType::LParen == self.scanner.peek_at(1).token_type {
+                    Some(self.call(parent)?)
                 } else {
-                    Some(self.assignment(parent, token)?)
+                    Some(self.variable(parent)?)
                 }
             }
             tt @ TokenType::LiteralBoolean

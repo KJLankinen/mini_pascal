@@ -6,6 +6,13 @@ use std::fmt;
 // Type definitions for enums and auxiliary data types
 // ---------------------------------------------------------------------
 
+const EMPTY_TOKEN: TokenData<'static> = TokenData {
+    column: !0,
+    line: !0,
+    token_type: TokenType::Undefined,
+    value: "Empty Token",
+};
+
 // ---------------------------------------------------------------------
 // Symbols
 // ---------------------------------------------------------------------
@@ -346,14 +353,13 @@ impl<'a> Serialize for NodeType<'a> {
     {
         match *self {
             NodeType::Program(data) => {
-                let token = data.token.unwrap().value;
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
                     "Program",
                     1,
                 )?;
-                state.serialize_field("id", token)?;
+                state.serialize_field("id", &data.token.expect("Program token is none.").value)?;
                 state.end()
             }
             NodeType::Block(_) => {
@@ -375,14 +381,13 @@ impl<'a> Serialize for NodeType<'a> {
                 state.end()
             }
             NodeType::Function(data) => {
-                let token = data.token.unwrap().value;
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
                     "Function",
                     1,
                 )?;
-                state.serialize_field("id", token)?;
+                state.serialize_field("id", data.token.expect("Function token is none.").value)?;
                 state.end()
             }
             NodeType::ParamList(_) => {
@@ -395,8 +400,6 @@ impl<'a> Serialize for NodeType<'a> {
                 state.end()
             }
             NodeType::Parameter(data) => {
-                let token = data.token.unwrap().value;
-                let is_ref = data.b;
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
@@ -404,8 +407,9 @@ impl<'a> Serialize for NodeType<'a> {
                     2,
                 )?;
 
-                state.serialize_field("id", token)?;
-                state.serialize_field("is reference", &is_ref)?;
+                state
+                    .serialize_field("id", &data.token.expect("Parameter token is none.").value)?;
+                state.serialize_field("is reference", &data.b)?;
                 state.end()
             }
             NodeType::VariableType(data) => {
@@ -421,7 +425,10 @@ impl<'a> Serialize for NodeType<'a> {
                     "Expression",
                     1,
                 )?;
-                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "operator",
+                    &data.token.expect("Expression token is none.").value,
+                )?;
                 state.end()
             }
             NodeType::SimpleExpression(_) => {
@@ -449,7 +456,10 @@ impl<'a> Serialize for NodeType<'a> {
                     "Identifier",
                     1,
                 )?;
-                state.serialize_field("identifier", &data.unwrap().value)?;
+                state.serialize_field(
+                    "identifier",
+                    &data.expect("Identifier token is none.").value,
+                )?;
                 state.end()
             }
             NodeType::If(_) => {
@@ -491,7 +501,10 @@ impl<'a> Serialize for NodeType<'a> {
                     "Function call",
                     1,
                 )?;
-                state.serialize_field("identifier", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "identifier",
+                    &data.token.expect("Call token is none.").value,
+                )?;
                 state.end()
             }
             NodeType::Assert(_) => {
@@ -510,7 +523,10 @@ impl<'a> Serialize for NodeType<'a> {
                     "Assignment",
                     1,
                 )?;
-                state.serialize_field("identifier", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "identifier",
+                    &data.token.expect("Assignment token is none.").value,
+                )?;
                 state.end()
             }
             NodeType::Read(_) => {
@@ -525,13 +541,19 @@ impl<'a> Serialize for NodeType<'a> {
                     "Variable",
                     1,
                 )?;
-                state.serialize_field("identifier", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "identifier",
+                    &data.token.expect("Variable token is none.").value,
+                )?;
                 state.end()
             }
             NodeType::Term(data) => {
                 let mut state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Term", 1)?;
-                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "operator",
+                    &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,
+                )?;
                 state.end()
             }
             NodeType::Factor(data) => {
@@ -541,7 +563,10 @@ impl<'a> Serialize for NodeType<'a> {
                     "Factor",
                     1,
                 )?;
-                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.serialize_field(
+                    "operator",
+                    &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,
+                )?;
                 state.end()
             }
             NodeType::Literal(data) => {
@@ -551,13 +576,14 @@ impl<'a> Serialize for NodeType<'a> {
                     "Literal",
                     1,
                 )?;
-                state.serialize_field("value", &data.unwrap().value)?;
+                state.serialize_field("value", &data.expect("Literal token is none.").value)?;
                 state.end()
             }
             NodeType::Not(data) => {
                 let mut state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Not", 1)?;
-                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state
+                    .serialize_field("operator", &data.token.expect("Not token is none.").value)?;
                 state.end()
             }
             NodeType::ArraySize(data) => {
@@ -567,7 +593,7 @@ impl<'a> Serialize for NodeType<'a> {
                     "Array size",
                     1,
                 )?;
-                state.serialize_field("operator", &data.token.unwrap().value)?;
+                state.serialize_field("operator", &data.token.expect("Token is none.").value)?;
                 state.end()
             }
             NodeType::Undefined => {
