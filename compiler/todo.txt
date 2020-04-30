@@ -1,4 +1,4 @@
-- token patternit, eli scannerin muuttaminen vastaamaan mini pascalia
+- parserin testaaminen, eli useiden eri pascal ohjelmien kirjoittaminen
 - semantic analyserin funktioiden muuttaminen vastaamaan mini pascalin cfg:tä
 - semantic errorien läpikäyminen ja esim. selvittäminen, milloin pitää backtrackata scannerissa
 - semnatic analyzeriin constant evaluation
@@ -16,3 +16,5 @@
 - kirjoitettavaa webassemblykoodia:
     - string bufferista erikseen arvot omille paikoilleen, kun on tiedossa niiden tyypit
     - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.
+
+- serialisoidun puurakenteen parantelu: helpompaa nähdä, jos jokin on vialla

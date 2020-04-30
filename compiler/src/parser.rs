@@ -795,7 +795,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             TokenType::KeywordWrite => self.write_statement(parent),
             TokenType::KeywordRead => self.read_statement(parent),
             TokenType::KeywordAssert => self.assert_statement(parent),
-            TokenType::Identifier => self.id_statement(parent),
+            TokenType::Identifier => {
+                if TokenType::LParen == self.scanner.peek_at(1).token_type {
+                    self.call(parent)
+                } else {
+                    self.assignment(parent)
+                }
+            }
             _ => {
                 // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
                 // statements and lexical errors lead to here.
@@ -1392,14 +1398,6 @@ impl<'a, 'b> Parser<'a, 'b> {
         Ok(my_idx)
     }
 
-    fn id_statement(&mut self, parent: usize) -> ParseResult<usize> {
-        if TokenType::LParen == self.scanner.peek_at(1).token_type {
-            self.call(parent)
-        } else {
-            self.assignment(parent)
-        }
-    }
-
     fn call(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenIdx {
@@ -1654,7 +1652,11 @@ impl<'a, 'b> Parser<'a, 'b> {
                     )?
                     .unwrap_or_else(|| !0);
 
-                parser.tree[my_idx].data = NodeType::Term(node_data);
+                if 1 == parser.tree.count_children(my_idx) && token.is_none() {
+                    parser.tree.remove_node(my_idx);
+                } else {
+                    parser.tree[my_idx].data = NodeType::Term(node_data);
+                }
                 parse_term(parser, parent, false)?;
 
                 Ok(Some(my_idx))
@@ -1663,8 +1665,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
 
-        self.tree[my_idx].data =
-            NodeType::SimpleExpression(parse_term(self, my_idx, true)?.unwrap_or_else(|| !0));
+        let idx = parse_term(self, my_idx, true)?.unwrap_or_else(|| !0);
+        if 1 == self.tree.count_children(my_idx) {
+            self.tree.remove_node(my_idx);
+        } else {
+            self.tree[my_idx].data = NodeType::SimpleExpression(idx);
+        }
         Ok(my_idx)
     }
 
@@ -1713,7 +1719,11 @@ impl<'a, 'b> Parser<'a, 'b> {
             Ok(())
         }
 
-        self.tree[my_idx].data = NodeType::Factor(node_data);
+        if 1 == self.tree.count_children(my_idx) {
+            self.tree.remove_node(my_idx);
+        } else {
+            self.tree[my_idx].data = NodeType::Factor(node_data);
+        }
         parse_factor(self, parent, &operators)?;
 
         Ok(my_idx)
