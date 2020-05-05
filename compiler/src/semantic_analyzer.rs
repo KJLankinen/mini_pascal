@@ -10,8 +10,7 @@ pub struct Analyzer<'a, 'b> {
     // scope_stack: Vec<u32>,
     // then loop over scope_stack and get the first variable with the correct name
     symbols: HashMap<&'a str, SymbolType>,
-    functions: HashMap<&'a str, FunctionSignature<'a>>,
-    unmatched_calls: HashMap<&'a str, FunctionSignature<'a>>,
+    function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
 }
 
@@ -55,67 +54,68 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn subroutines(&mut self, idx: usize) {
+        // Process the functions in two passes:
+        // - first: process all function signatures and add them to map
+        // - second: process the blocks of the functions
+        // This way (mutually) recursive functions calls can be matched to known signatures.
         match self.tree[idx].data {
             NodeType::Subroutines(idx) => {
-                // Idx points to first subroutine
-                self.function(idx);
+                // Process signatures
+                self.function_signature(idx);
                 let mut next = idx;
                 while let Some(idx) = self.tree[next].right_sibling {
-                    self.function(idx);
+                    self.function_signature(idx);
+                    next = idx;
+                }
+
+                // Process blocks
+                self.function_block(idx);
+                let mut next = idx;
+                while let Some(idx) = self.tree[next].right_sibling {
+                    self.function_block(idx);
                     next = idx;
                 }
             }
             _ => {
-                assert!(false, "Program must start with program node.");
+                assert!(false, "Unexpected node.");
             }
         }
     }
 
     fn block(&mut self, idx: usize) {
+        // Block must check that:
+        // - if return type = Some, there is return statements everywhere and they have the correct
+        // type
+        // - else, there is no return statements, since the cfg does not allow "empty" returns.
         match self.tree[idx].data {
             NodeType::Block(idx) => {
                 // Idx points to first statement
-                self.handle_statement(idx);
+                self.statement(idx);
                 let mut next = idx;
                 while let Some(idx) = self.tree[next].right_sibling {
-                    self.handle_statement(idx);
+                    self.statement(idx);
                     next = idx;
                 }
             }
             _ => {
-                assert!(false, "Program must start with program node.");
+                assert!(false, "Unexpected node.");
             }
         }
     }
 
-    fn function(&mut self, idx: usize) {
-        // Checks:
-        // - no name clash, i.e. unique identifier
-        // - if has return type, must have return statements and those must have correct type
-        // - maybe store function signature somewhere: callers use id to check map and make sure
-        // call matches signature
-        //
+    fn function_signature(&mut self, idx: usize) {
         match self.tree[idx].data {
             NodeType::Function(data) => {
-                // TokenIdxOptIdxOptIdx
-                // Token is identifier
-                // Idx is block
-                // opt_idx1 is parameter list?
-                // opt_idx2 is return type
-                if let Some(_) = self
-                    .functions
-                    .get(data.token.expect("Function has no identifier token.").value)
-                {
-                    self.logger.add_error(ErrorType::Redeclaration(
-                        data.token.expect("Function has no identifier token."),
-                    ));
+                let token = data.token.expect("Function has no identifier token.");
+                if let Some(_) = self.function_signatures.get(token.value) {
+                    self.logger.add_error(ErrorType::Redeclaration(token));
                 } else {
-                    // insert
-                    let fs = FunctionSignature {
+                    let mut fs = FunctionSignature {
                         parameters: None,
                         return_type: None,
                     };
 
+                    // Handle parameter list
                     if let Some(idx) = data.opt_idx {
                         fn parameter<'a, 'b>(
                             analyzer: &mut Analyzer<'a, 'b>,
@@ -154,9 +154,19 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                 next = idx;
                             }
                         }
-
-                        // insert, change func sig
+                        fs.parameters = Some(param_vec);
                     }
+
+                    // Handle return type
+                    if let Some(idx) = data.opt_idx2 {
+                        fs.return_type = if let NodeType::VariableType(st) = self.tree[idx].data {
+                            Some(st)
+                        } else {
+                            None
+                        };
+                    }
+
+                    self.function_signatures.insert(token.value, fs);
                 }
             }
             _ => {
@@ -165,13 +175,27 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn handle_statement(&mut self, idx: usize) {
+    fn function_block(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Identifier(token) => {
-                // token is identifier
+            NodeType::Function(data) => {
+                self.block(data.idx);
             }
-            NodeType::Assert(idx) => {
-                // idx points to boolean expression
+            _ => {
+                assert!(false, "Unexpected node.");
+            }
+        }
+    }
+
+    fn statement(&mut self, idx: usize) {
+        match self.tree[idx].data {
+            NodeType::Assert(data) => {
+                let et = self.check_expression(data.idx);
+                if SymbolType::Bool != et && SymbolType::Undefined != et {
+                    self.logger.add_error(ErrorType::AssertMismatchedType(
+                        data.token.expect("Assert is missing a token."),
+                        et,
+                    ));
+                }
             }
             NodeType::Assignment(data) => {
                 // token is identifier
@@ -185,22 +209,30 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             NodeType::Declaration(data) => {
                 // idx1 is first identifier
                 // idx2 is type
+                //NodeType::Identifier(token) => {
+                // token is identifier
+                //}
             }
-            NodeType::Return(idx) => {
+            NodeType::Return(data) => {
+                // token is "return" token
                 // idx is expression
             }
-            NodeType::Read(idx) => {
+            NodeType::Read(data) => {
+                // token is "read" token
                 // idx is first variable node
             }
-            NodeType::Write(idx) => {
+            NodeType::Write(data) => {
+                // token is "write" token
                 // idx is first expression
             }
             NodeType::If(data) => {
+                // token is "if" token
                 // idx1 is boolean expr
                 // idx2 is if statement
                 // opt_idx is else statement
             }
             NodeType::While(data) => {
+                // token is "while" token
                 // idx1 is boolean expression
                 // idx2 is statement
             }
@@ -242,6 +274,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         };
     }
 
+    fn check_expression(&mut self, idx: usize) -> SymbolType {
+        SymbolType::Undefined
+    }
+
     // ---------------------------------------------------------------------
     // Auxiliary functions
     // ---------------------------------------------------------------------
@@ -249,8 +285,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         Analyzer {
             tree: tree,
             symbols: HashMap::new(),
-            functions: HashMap::new(),
-            unmatched_calls: HashMap::new(),
+            function_signatures: HashMap::new(),
             logger: logger,
         }
     }

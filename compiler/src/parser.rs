@@ -1,6 +1,6 @@
 use super::data_types::{
     ErrorType, IdxIdx, IdxIdxOptIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool,
-    TokenIdxIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
+    TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -1043,7 +1043,8 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn if_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = IdxIdxOptIdx {
+        let mut node_data = TokenIdxIdxOptIdx {
+            token: None,
             idx: !0,
             idx2: !0,
             opt_idx: None,
@@ -1053,12 +1054,12 @@ impl<'a, 'b> Parser<'a, 'b> {
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut IdxIdxOptIdx,
+            node_data: &mut TokenIdxIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordIf => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordIf],
                         &[TokenType::KeywordThen, TokenType::KeywordElse],
@@ -1133,18 +1134,22 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn while_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = IdxIdx { idx: !0, idx2: !0 };
+        let mut node_data = TokenIdxIdx {
+            token: None,
+            idx: !0,
+            idx2: !0,
+        };
 
         fn parse_while<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut IdxIdx,
+            node_data: &mut TokenIdxIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordWhile => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordWhile],
                         &[TokenType::KeywordDo],
@@ -1193,25 +1198,30 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn return_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        self.match_token(&[TokenType::KeywordReturn])?;
-        self.tree[my_idx].data = NodeType::Return(self.expression(my_idx)?);
+        self.tree[my_idx].data = NodeType::Return(TokenIdx {
+            token: Some(self.match_token(&[TokenType::KeywordReturn])?),
+            idx: self.expression(my_idx)?,
+        });
         Ok(my_idx)
     }
 
     fn write_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut arg = !0;
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
 
         fn parse_write<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            arg: &mut usize,
+            node_data: &mut TokenIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordWrite => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordWrite],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1230,7 +1240,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    *arg = parser
+                    node_data.idx = parser
                         .process(
                             Parser::argument_list,
                             my_idx,
@@ -1251,31 +1261,34 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_write(parser, tt, my_idx, arg)?;
+                parse_write(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_write(self, TokenType::KeywordWrite, my_idx, &mut arg)?;
-        self.tree[my_idx].data = NodeType::Write(arg);
+        parse_write(self, TokenType::KeywordWrite, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::Write(node_data);
 
         Ok(my_idx)
     }
 
     fn read_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut arg = !0;
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
 
         fn parse_read<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            arg: &mut usize,
+            node_data: &mut TokenIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordRead => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordRead],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1294,7 +1307,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    *arg = parser
+                    node_data.idx = parser
                         .process(
                             Parser::variable_list,
                             my_idx,
@@ -1315,31 +1328,34 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_read(parser, tt, my_idx, arg)?;
+                parse_read(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_read(self, TokenType::KeywordRead, my_idx, &mut arg)?;
-        self.tree[my_idx].data = NodeType::Read(arg);
+        parse_read(self, TokenType::KeywordRead, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::Read(node_data);
 
         Ok(my_idx)
     }
 
     fn assert_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut arg = !0;
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
 
         fn parse_assert<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            arg: &mut usize,
+            node_data: &mut TokenIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordAssert => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordAssert],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1358,7 +1374,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    *arg = parser
+                    node_data.idx = parser
                         .process(
                             Parser::expression,
                             my_idx,
@@ -1379,13 +1395,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_assert(parser, tt, my_idx, arg)?;
+                parse_assert(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_assert(self, TokenType::KeywordAssert, my_idx, &mut arg)?;
-        self.tree[my_idx].data = NodeType::Assert(arg);
+        parse_assert(self, TokenType::KeywordAssert, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::Assert(node_data);
 
         Ok(my_idx)
     }

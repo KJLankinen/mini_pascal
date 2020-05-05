@@ -223,6 +223,14 @@ pub struct TokenIdxOptIdxOptIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenIdxIdxOptIdx<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub idx: usize,
+    pub idx2: usize,
+    pub opt_idx: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TokenIdx<'a> {
     pub token: Option<TokenData<'a>>,
     pub idx: usize,
@@ -272,15 +280,15 @@ pub enum NodeType<'a> {
     Parameter(TokenIdxBool<'a>),
     VariableType(SymbolType),
     Identifier(Option<TokenData<'a>>),
-    Assert(usize),
+    Assert(TokenIdx<'a>),
     Assignment(TokenIdxOptIdx<'a>),
     Call(TokenIdx<'a>),
     Declaration(IdxIdx),
-    Return(usize),
-    Read(usize),
-    Write(usize),
-    If(IdxIdxOptIdx),
-    While(IdxIdx),
+    Return(TokenIdx<'a>),
+    Read(TokenIdx<'a>),
+    Write(TokenIdx<'a>),
+    If(TokenIdxIdxOptIdx<'a>),
+    While(TokenIdxIdx<'a>),
     Expression(TokenIdxIdx<'a>),
     SimpleExpression(usize),
     Term(TokenIdx<'a>),
