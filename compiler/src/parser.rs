@@ -177,7 +177,6 @@ impl<'a, 'b> Parser<'a, 'b> {
             opt_idx: None,
         };
 
-        // This inner function is called recursively.
         fn parse_program<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
@@ -185,11 +184,6 @@ impl<'a, 'b> Parser<'a, 'b> {
             node_data: &mut TokenIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
-
-            // Each arm parses a small fraction of the entire "program" definition and then passes
-            // on the next token at which to continue parsing. Then this function is called
-            // recursively. This continues until all the parts are parsed. The node of the program
-            // is filled as the parsing continues.
             let tt = match tt {
                 TokenType::KeywordProgram => {
                     parser.process(
@@ -319,7 +313,6 @@ impl<'a, 'b> Parser<'a, 'b> {
             opt_idx2: None,
         };
 
-        // This inner function is called recursively.
         fn parse_function<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
@@ -327,7 +320,6 @@ impl<'a, 'b> Parser<'a, 'b> {
             node_data: &mut TokenIdxOptIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
-
             let tt = match tt {
                 // Handle "function" and "procedure" both here.
                 TokenType::KeywordFunction => {
@@ -1837,39 +1829,4 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
         }
     }
-
-    //fn template(&mut self, parent: usize) -> ParseResult<()> {
-    //    let my_idx = self.tree.add_child(Some(parent));
-    //    let mut node_data = SomethingOrOther {
-    //        token: None,
-    //        idx: !0,
-    //        opt_idx: None,
-    //    };
-
-    //    fn parse_<'a, 'b>(
-    //        parser: &mut Parser<'a, 'b>,
-    //        tt: TokenType,
-    //        my_idx: usize,
-    //        node_data: &mut SomethingOrOther,
-    //    ) -> ParseResult<()> {
-    //        let mut recovery_token = None;
-    //        let tt = match tt {
-    //            TokenType::KeywordNOTAKEYWORD => TokenType::Undefined,
-    //            _ => {
-    //                assert!(false, "Token {} doesn't belong here.", tt);
-    //                TokenType::Undefined
-    //            }
-    //        };
-
-    //        if TokenType::Undefined != tt {
-    //            parse_(parser, tt, my_idx, node_data)?;
-    //        }
-    //        Ok(())
-    //    }
-
-    //    parse_(self, TokenType::KeywordASDASD, my_idx, &mut node_data)?;
-    //    self.tree[my_idx].data = NodeType::ASDASD(node_data);
-
-    //    Ok(my_idx)
-    //}
 }

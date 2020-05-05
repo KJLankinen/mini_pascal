@@ -1,6 +1,11 @@
-17.3. & 1h   & project setup
-20.4. & 10h  & researching webassembly
-21.4. & 10h  & researching webassembly and wasi
-23.4. & 8h   & researching webassembly and designing itoa and atoi functions
-24.4. & 10h  & implementing webassembly lib
-25.4. &      &
+17.3. & 1h      & project setup
+20.4. & 10h     & researching webassembly
+21.4. & 10h     & researching webassembly and wasi
+23.4. & 8h      & researching webassembly and designing itoa and atoi functions
+24.4. & 10h     & implementing webassembly lib
+25.4. & 4h      & implementing webassembly lib
+27.4. & 10h     & implementing scanner and parser
+28.4. & 12,5h   & implementing parser
+29.4. & 2,5h    & implementing parser
+30.4. & 1,5h    & implementing parser
+5.5.  & 10-->

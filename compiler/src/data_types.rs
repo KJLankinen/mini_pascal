@@ -6,13 +6,6 @@ use std::fmt;
 // Type definitions for enums and auxiliary data types
 // ---------------------------------------------------------------------
 
-const EMPTY_TOKEN: TokenData<'static> = TokenData {
-    column: !0,
-    line: !0,
-    token_type: TokenType::Undefined,
-    value: "Empty Token",
-};
-
 // ---------------------------------------------------------------------
 // Symbols
 // ---------------------------------------------------------------------
@@ -57,13 +50,6 @@ pub enum ErrorType<'a> {
     IllegalOperation(TokenData<'a>, SymbolType),
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
-    AssignmentToBlockedVariable(TokenData<'a>),
-    ForMismatchedType(
-        TokenData<'a>,
-        Option<SymbolType>,
-        Option<SymbolType>,
-        Option<SymbolType>,
-    ),
     AssignMismatchedType(TokenData<'a>, SymbolType, SymbolType),
     IOMismatchedType(TokenData<'a>, SymbolType),
     AssertMismatchedType(TokenData<'a>, SymbolType),
@@ -79,10 +65,6 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::IllegalOperation(_, _) => write!(f, "illegal operation"),
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
             ErrorType::Redeclaration(_) => write!(f, "redeclaration"),
-            ErrorType::AssignmentToBlockedVariable(_) => {
-                write!(f, "assignment to a blocked variable")
-            }
-            ErrorType::ForMismatchedType(_, _, _, _) => write!(f, "mismatched type"),
             ErrorType::AssignMismatchedType(_, _, _) => write!(f, "mismatched type"),
             ErrorType::IOMismatchedType(_, _) => write!(f, "mismatched type"),
             ErrorType::AssertMismatchedType(_, _) => write!(f, "mismatched type"),
@@ -279,6 +261,7 @@ pub struct IdxIdxOptIdx {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
+    Undefined,
     Program(TokenIdxOptIdx<'a>),
     Block(usize),
     Subroutines(usize),
@@ -286,25 +269,24 @@ pub enum NodeType<'a> {
     ParamList(usize),
     Parameter(TokenIdxBool<'a>),
     VariableType(SymbolType),
-    Expression(TokenIdxIdx<'a>),
-    SimpleExpression(usize),
-    Declaration(IdxIdx),
     Identifier(Option<TokenData<'a>>),
-    If(IdxIdxOptIdx),
-    While(IdxIdx),
-    Return(usize),
-    Write(usize),
-    Call(TokenIdx<'a>),
     Assert(usize),
     Assignment(TokenIdxOptIdx<'a>),
+    Call(TokenIdx<'a>),
+    Declaration(IdxIdx),
+    Return(usize),
     Read(usize),
-    Variable(TokenOptIdx<'a>),
+    Write(usize),
+    If(IdxIdxOptIdx),
+    While(IdxIdx),
+    Expression(TokenIdxIdx<'a>),
+    SimpleExpression(usize),
     Term(TokenIdx<'a>),
     Factor(TokenIdx<'a>),
+    Variable(TokenOptIdx<'a>),
     Literal(Option<TokenData<'a>>),
     Not(TokenIdx<'a>),
     ArraySize(TokenIdx<'a>),
-    Undefined,
 }
 
 impl<'a> Default for NodeType<'a> {
@@ -324,21 +306,21 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::ParamList(_) => 5,
             NodeType::Parameter(_) => 6,
             NodeType::VariableType(_) => 7,
-            NodeType::Expression(_) => 8,
-            NodeType::SimpleExpression(_) => 9,
-            NodeType::Declaration(_) => 10,
-            NodeType::Identifier(_) => 11,
-            NodeType::If(_) => 12,
-            NodeType::While(_) => 13,
-            NodeType::Return(_) => 14,
+            NodeType::Identifier(_) => 8,
+            NodeType::Assert(_) => 9,
+            NodeType::Assignment(_) => 10,
+            NodeType::Call(_) => 11,
+            NodeType::Declaration(_) => 12,
+            NodeType::Return(_) => 13,
+            NodeType::Read(_) => 14,
             NodeType::Write(_) => 15,
-            NodeType::Call(_) => 16,
-            NodeType::Assert(_) => 17,
-            NodeType::Assignment(_) => 18,
-            NodeType::Read(_) => 19,
-            NodeType::Variable(_) => 20,
-            NodeType::Term(_) => 21,
-            NodeType::Factor(_) => 22,
+            NodeType::If(_) => 16,
+            NodeType::While(_) => 17,
+            NodeType::Expression(_) => 18,
+            NodeType::SimpleExpression(_) => 19,
+            NodeType::Term(_) => 20,
+            NodeType::Factor(_) => 21,
+            NodeType::Variable(_) => 22,
             NodeType::Literal(_) => 23,
             NodeType::Not(_) => 24,
             NodeType::ArraySize(_) => 25,
@@ -352,6 +334,15 @@ impl<'a> Serialize for NodeType<'a> {
         S: Serializer,
     {
         match *self {
+            NodeType::Undefined => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Undefined",
+                    0,
+                )?;
+                state.end()
+            }
             NodeType::Program(data) => {
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
@@ -418,37 +409,6 @@ impl<'a> Serialize for NodeType<'a> {
                 state.serialize_field("type", &data)?;
                 state.end()
             }
-            NodeType::Expression(data) => {
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Expression",
-                    1,
-                )?;
-                state.serialize_field(
-                    "operator",
-                    &data.token.expect("Expression token is none.").value,
-                )?;
-                state.end()
-            }
-            NodeType::SimpleExpression(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Simple expression",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Declaration(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Declaration",
-                    0,
-                )?;
-                state.end()
-            }
             NodeType::Identifier(data) => {
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
@@ -459,51 +419,6 @@ impl<'a> Serialize for NodeType<'a> {
                 state.serialize_field(
                     "identifier",
                     &data.expect("Identifier token is none.").value,
-                )?;
-                state.end()
-            }
-            NodeType::If(_) => {
-                let state =
-                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "If", 0)?;
-                state.end()
-            }
-            NodeType::While(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "While",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Return(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Return",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Write(_) => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Write",
-                    0,
-                )?;
-                state.end()
-            }
-            NodeType::Call(data) => {
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Function call",
-                    1,
-                )?;
-                state.serialize_field(
-                    "identifier",
-                    &data.token.expect("Call token is none.").value,
                 )?;
                 state.end()
             }
@@ -529,21 +444,84 @@ impl<'a> Serialize for NodeType<'a> {
                 )?;
                 state.end()
             }
+            NodeType::Call(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Function call",
+                    1,
+                )?;
+                state.serialize_field(
+                    "identifier",
+                    &data.token.expect("Call token is none.").value,
+                )?;
+                state.end()
+            }
+            NodeType::Declaration(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Declaration",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Return(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Return",
+                    0,
+                )?;
+                state.end()
+            }
             NodeType::Read(_) => {
                 let state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Read", 0)?;
                 state.end()
             }
-            NodeType::Variable(data) => {
+            NodeType::Write(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Write",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::If(_) => {
+                let state =
+                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "If", 0)?;
+                state.end()
+            }
+            NodeType::While(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "While",
+                    0,
+                )?;
+                state.end()
+            }
+            NodeType::Expression(data) => {
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
-                    "Variable",
+                    "Expression",
                     1,
                 )?;
                 state.serialize_field(
-                    "identifier",
-                    &data.token.expect("Variable token is none.").value,
+                    "operator",
+                    &data.token.expect("Expression token is none.").value,
+                )?;
+                state.end()
+            }
+            NodeType::SimpleExpression(_) => {
+                let state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Simple expression",
+                    0,
                 )?;
                 state.end()
             }
@@ -566,6 +544,19 @@ impl<'a> Serialize for NodeType<'a> {
                 state.serialize_field(
                     "operator",
                     &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,
+                )?;
+                state.end()
+            }
+            NodeType::Variable(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Variable",
+                    1,
+                )?;
+                state.serialize_field(
+                    "identifier",
+                    &data.token.expect("Variable token is none.").value,
                 )?;
                 state.end()
             }
@@ -596,15 +587,13 @@ impl<'a> Serialize for NodeType<'a> {
                 state.serialize_field("operator", &data.token.expect("Token is none.").value)?;
                 state.end()
             }
-            NodeType::Undefined => {
-                let state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Undefined",
-                    0,
-                )?;
-                state.end()
-            }
         }
     }
 }
+
+const EMPTY_TOKEN: TokenData<'static> = TokenData {
+    column: !0,
+    line: !0,
+    token_type: TokenType::Undefined,
+    value: "Empty Token",
+};

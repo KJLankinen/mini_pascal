@@ -11,7 +11,6 @@ pub struct Analyzer<'a, 'b> {
     // then loop over scope_stack and get the first variable with the correct name
     symbols: HashMap<&'a str, SymbolType>,
     logger: &'b mut Logger<'a>,
-    blocked_identifiers: HashSet<&'a str>,
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
@@ -19,14 +18,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // Called to start the semantic analysis
     // ---------------------------------------------------------------------
     pub fn analyze(&mut self) {
-        // Start walking down the tree
         assert!(self.tree.len() > 0);
-        let mut node = self.tree[0].left_child;
-
-        while let Some(idx) = node {
-            self.handle_statement(idx);
-            node = self.tree[idx].right_sibling;
-        }
+        self.handle_statement(0);
     }
 
     // ---------------------------------------------------------------------
@@ -34,48 +27,122 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn handle_statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Declaration {
-                identifier,
-                symbol_type,
-                expression,
-            } => {
-                let ref identifier =
-                    identifier.expect("Declaration is missing an identifier token.");
-                self.handle_declaration(identifier, symbol_type, expression);
+            NodeType::Program(data) => {
+                // Subroutines are under optional idx, main block under idx
+                if let Some(idx) = data.opt_idx {
+                    self.handle_statement(idx);
+                }
+                self.handle_statement(data.idx);
             }
-            NodeType::Assignment {
-                identifier,
-                expression,
-            } => {
-                let ref identifier =
-                    identifier.expect("Assignment is missing an identifier token.");
-                self.handle_assignment(identifier, expression);
+            NodeType::Block(idx) => {
+                // Idx points to first statement
+                self.handle_statement(idx);
+                let mut next = idx;
+                while let Some(idx) = self.tree[next].right_sibling {
+                    self.handle_statement(idx);
+                    next = idx;
+                }
             }
-            NodeType::For {
-                identifier,
-                start_expression,
-                end_expression,
-                first_statement,
-            } => {
-                let ref identifier = identifier.expect("For loop is missing an identifier token.");
-                self.handle_for(
-                    identifier,
-                    start_expression,
-                    end_expression,
-                    first_statement,
-                );
+            NodeType::Subroutines(idx) => {
+                // Idx points to first subroutine
+                self.handle_statement(idx);
+                let mut next = idx;
+                while let Some(idx) = self.tree[next].right_sibling {
+                    self.handle_statement(idx);
+                    next = idx;
+                }
             }
-            NodeType::Read { identifier } => {
-                let ref identifier = identifier.expect("Read is missing an identifier token.");
-                self.handle_read(identifier);
+            NodeType::Function(data) => {
+                // TokenIdxOptIdxOptIdx
+                // Token is identifier
+                // Idx is block
+                // opt_idx1 is first parameter
+                // opt_idx2 is return type
             }
-            NodeType::Print { token, expression } => {
-                let ref token = token.expect("Print is missing a token.");
-                self.handle_print(token, expression);
+            NodeType::ParamList(idx) => {
+                // Idx points to first parameter
+                self.handle_statement(idx);
+                let mut next = idx;
+                while let Some(idx) = self.tree[next].right_sibling {
+                    self.handle_statement(idx);
+                    next = idx;
+                }
             }
-            NodeType::Assert { token, expression } => {
-                let ref token = token.expect("Assert is missing a token.");
-                self.handle_assert(token, expression);
+            NodeType::Parameter(data) => {
+                // token is name (alias) of identifier
+                // idx points to variable type
+                // bool says if reference
+            }
+            NodeType::VariableType(symbol_type) => {
+                // type is type
+            }
+            NodeType::Identifier(token) => {
+                // token is identifier
+            }
+            NodeType::Assert(idx) => {
+                // idx points to boolean expression
+            }
+            NodeType::Assignment(data) => {
+                // token is identifier
+                // idx is expression
+                // opt_idx is array indexing expression
+            }
+            NodeType::Call(data) => {
+                // token is identifier
+                // idx is first expression
+            }
+            NodeType::Declaration(data) => {
+                // idx1 is first identifier
+                // idx2 is type
+            }
+            NodeType::Return(idx) => {
+                // idx is expression
+            }
+            NodeType::Read(idx) => {
+                // idx is first variable node
+            }
+            NodeType::Write(idx) => {
+                // idx is first expression
+            }
+            NodeType::If(data) => {
+                // idx1 is boolean expr
+                // idx2 is if statement
+                // opt_idx is else statement
+            }
+            NodeType::While(data) => {
+                // idx1 is boolean expression
+                // idx2 is statement
+            }
+            NodeType::Expression(data) => {
+                // token is rel op
+                // idx1 is first simple expr
+                // idx2 is second simple expr
+            }
+            NodeType::SimpleExpression(idx) => {
+                // idx is first term
+            }
+            NodeType::Term(data) => {
+                // token is sign/operator
+                // idx is factor
+            }
+            NodeType::Factor(data) => {
+                // token is operator or None for first factor
+                // idx is the concrete factor node
+            }
+            NodeType::Variable(data) => {
+                // token is identifier
+                // opt_idx is possible array indexing expression
+            }
+            NodeType::Literal(token) => {
+                // token is the literal data
+            }
+            NodeType::Not(data) => {
+                // token is the not operator
+                // idx is the factor
+            }
+            NodeType::ArraySize(data) => {
+                // token is the .size operator
+                // idx is the factor
             }
             _ => {
                 assert!(false, "Unhandled node type.");
@@ -84,7 +151,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         };
     }
 
-    fn check_expression(&mut self, idx: usize) -> SymbolType {
+    /*fn check_expression(&mut self, idx: usize) -> SymbolType {
         match self.tree[idx].data {
             NodeType::Operand { token, symbol_type } => {
                 match symbol_type {
@@ -240,6 +307,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 SymbolType::Undefined
             }
         }
+    }*/
+
+    fn check_expression(&mut self, idx: usize) -> SymbolType {
+        SymbolType::Undefined
     }
 
     fn handle_declaration(
@@ -272,76 +343,18 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn handle_assignment(&mut self, identifier: &TokenData<'a>, expression: usize) {
-        if self.blocked_identifiers.contains(identifier.value) {
-            self.logger
-                .add_error(ErrorType::AssignmentToBlockedVariable(*identifier));
-        } else {
-            match self.symbols.get(identifier.value) {
-                Some(st) => {
-                    let st = *st;
-                    let expr_type = self.check_expression(expression);
-                    // Don't flag error, if the expression type is undefined, because something is
-                    // wrong with the expression and errors about that have already been flagged.
-                    // This prevents unnecessary error propagation.
-                    if expr_type != st && SymbolType::Undefined != expr_type {
-                        self.logger.add_error(ErrorType::AssignMismatchedType(
-                            *identifier,
-                            st,
-                            expr_type,
-                        ));
-                    }
-                }
-                None => {
-                    self.logger
-                        .add_error(ErrorType::UndeclaredIdentifier(*identifier));
-                }
-            }
-        }
-    }
-
-    fn handle_for(
-        &mut self,
-        identifier: &TokenData<'a>,
-        start_expr: usize,
-        end_expr: usize,
-        first_statement: Option<usize>,
-    ) {
         match self.symbols.get(identifier.value) {
             Some(st) => {
-                if SymbolType::Int == *st {
-                    let expr_type = self.check_expression(start_expr);
-                    if SymbolType::Int == expr_type {
-                        let expr_type = self.check_expression(end_expr);
-                        if SymbolType::Int == expr_type {
-                            self.blocked_identifiers.insert(identifier.value);
-                            let mut next_statement = first_statement;
-                            while let Some(rs) = next_statement {
-                                self.handle_statement(rs);
-                                next_statement = self.tree[rs].right_sibling;
-                            }
-                            self.blocked_identifiers.remove(identifier.value);
-                        } else if SymbolType::Undefined != expr_type {
-                            self.logger.add_error(ErrorType::ForMismatchedType(
-                                *identifier,
-                                None,
-                                None,
-                                Some(expr_type),
-                            ));
-                        }
-                    } else if SymbolType::Undefined != expr_type {
-                        self.logger.add_error(ErrorType::ForMismatchedType(
-                            *identifier,
-                            None,
-                            Some(expr_type),
-                            None,
-                        ));
-                    }
-                } else {
-                    self.logger.add_error(ErrorType::ForMismatchedType(
+                let st = *st;
+                let expr_type = self.check_expression(expression);
+                // Don't flag error, if the expression type is undefined, because something is
+                // wrong with the expression and errors about that have already been flagged.
+                // This prevents unnecessary error propagation.
+                if expr_type != st && SymbolType::Undefined != expr_type {
+                    self.logger.add_error(ErrorType::AssignMismatchedType(
                         *identifier,
-                        Some(*st),
-                        None,
-                        None,
+                        st,
+                        expr_type,
                     ));
                 }
             }
@@ -395,7 +408,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             tree: tree,
             symbols: HashMap::new(),
             logger: logger,
-            blocked_identifiers: HashSet::new(),
         }
     }
 }
