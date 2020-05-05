@@ -339,7 +339,8 @@ impl<'a> Scanner<'a> {
                 }
                 None => {
                     // Out of characters, repeat the last token
-                    token = self.next_token;
+                    token.token_type = TokenType::EOF;
+                    token.value = "EOF";
                 }
             }
 

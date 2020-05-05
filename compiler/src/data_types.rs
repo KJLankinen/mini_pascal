@@ -124,6 +124,7 @@ pub enum TokenType {
     LiteralString,
     LiteralReal,
     EndOfProgram,
+    EOF,
     Undefined,
 }
 
@@ -177,6 +178,7 @@ impl fmt::Display for TokenType {
             TokenType::LiteralString => write!(f, "a literal string"),
             TokenType::LiteralReal => write!(f, "a literal real"),
             TokenType::EndOfProgram => write!(f, "."),
+            TokenType::EOF => write!(f, "EOF"),
             TokenType::Undefined => write!(f, "an undefined token"),
         }
     }

@@ -92,11 +92,11 @@ impl<'a, 'b> Parser<'a, 'b> {
             }
             self.scanner.next();
 
-            // There should always be at least one recovery token, and that is the EndOfProgram.
+            // There should always be at least one recovery token, and that is the EOF.
             // If there is not, a wild bug has appeared.
             assert!(
-                TokenType::EndOfProgram != tt,
-                "EndOfProgram should be a recovery token. {:#?}",
+                TokenType::EOF != tt,
+                "EOF should be a recovery token. {:#?}",
                 self.recovery_tokens
             );
         }
@@ -169,7 +169,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     // Recursive processing functions
     // ---------------------------------------------------------------------
-    fn program(&mut self) -> ParseResult<()> {
+    fn program(&mut self, _: usize) -> ParseResult<()> {
         let my_idx = self.tree.add_child(None);
         let mut node_data = TokenIdxOptIdx {
             token: None,
@@ -1796,7 +1796,8 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     pub fn parse(&mut self, out_file: Option<&'a str>) {
         // Parse the program
-        match self.program() {
+        let mut recovery_token = None;
+        match self.process(Parser::program, 0, &[TokenType::EOF], &mut recovery_token) {
             Ok(_) => (),
             Err(_) => {
                 assert!(false, "Unhandled error at parse.");
