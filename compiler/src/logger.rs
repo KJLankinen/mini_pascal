@@ -109,6 +109,66 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
+                ErrorType::IndexTypeMismatch(token, expression_type) => {
+                    eprint!(
+                        "Indexing expression must be of type \"{}\", ",
+                        SymbolType::Int
+                    );
+                    eprintln!("expression was of type \"{}\".", expression_type);
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::IllegalIndexing(token, symbol_type) => {
+                    eprint!(
+                        "Indexing can only be used with types \"{}\", \"{}\", \"{}\", \"{}\", ",
+                        SymbolType::ArrayBool(0),
+                        SymbolType::ArrayInt(0),
+                        SymbolType::ArrayReal(0),
+                        SymbolType::ArrayString(0),
+                    );
+                    eprintln!("while identifier was of type \"{}\".", symbol_type);
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::TooFewArguments(
+                    function_token,
+                    parameter_types,
+                    call_token,
+                    argument_types,
+                )
+                | ErrorType::TooManyArguments(
+                    function_token,
+                    parameter_types,
+                    call_token,
+                    argument_types,
+                )
+                | ErrorType::MismatchedArgumentTypes(
+                    function_token,
+                    parameter_types,
+                    call_token,
+                    argument_types,
+                ) => {
+                    eprint!(
+                        "Function takes {} arguments with types ",
+                        parameter_types.len()
+                    );
+                    for pt in parameter_types {
+                        eprint!("{}, ", pt);
+                    }
+                    eprintln!("at");
+                    self.print_line(function_token.line as usize, function_token.column as usize);
+
+                    eprint!(
+                        "Caller supplied {} arguments with types ",
+                        argument_types.len()
+                    );
+                    for at in argument_types {
+                        eprint!("{}, ", at);
+                    }
+                    eprintln!("at");
+                    line = call_token.line;
+                    column = call_token.column;
+                }
             }
             self.print_line(line as usize, column as usize);
         }

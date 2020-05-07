@@ -1,6 +1,6 @@
 use super::data_types::{
-    ErrorType, IdxIdx, IdxIdxOptIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool,
-    TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
+    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
+    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -843,28 +843,16 @@ impl<'a, 'b> Parser<'a, 'b> {
             )?
             .unwrap_or_else(|| !0);
 
-        match self.scanner.peek().token_type {
-            TokenType::ListSeparator => {
-                self.match_token(&[TokenType::ListSeparator])?;
-            }
-            TokenType::OperatorPlus
-            | TokenType::OperatorMinus
-            | TokenType::OperatorNot
-            | TokenType::LParen
-            | TokenType::Identifier
-            | TokenType::LiteralInt
-            | TokenType::LiteralBoolean
-            | TokenType::LiteralReal
-            | TokenType::LiteralString => {
-                // Mising list separator
-                self.logger.add_error(ErrorType::SyntaxError(
-                    *self.scanner.peek(),
-                    vec![TokenType::ListSeparator],
-                ));
-            }
-            _ => {
-                return Ok(expr_idx);
-            }
+        if self.expression_follows() {
+            // Mising list separator
+            self.logger.add_error(ErrorType::SyntaxError(
+                *self.scanner.peek(),
+                vec![TokenType::ListSeparator],
+            ));
+        } else if TokenType::ListSeparator == self.scanner.peek().token_type {
+            self.match_token(&[TokenType::ListSeparator])?;
+        } else {
+            return Ok(expr_idx);
         }
 
         self.argument_list(parent)?;
@@ -1198,10 +1186,18 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn return_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        self.tree[my_idx].data = NodeType::Return(TokenIdx {
+        let mut node_data = TokenOptIdx {
             token: Some(self.match_token(&[TokenType::KeywordReturn])?),
-            idx: self.expression(my_idx)?,
-        });
+            opt_idx: None,
+        };
+
+        node_data.opt_idx = if self.expression_follows() {
+            Some(self.expression(my_idx)?)
+        } else {
+            None
+        };
+
+        self.tree[my_idx].data = NodeType::Return(node_data);
         Ok(my_idx)
     }
 
@@ -1408,16 +1404,16 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn call(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdx {
+        let mut node_data = TokenOptIdx {
             token: None,
-            idx: !0,
+            opt_idx: None,
         };
 
         fn parse_call<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenIdx<'a>,
+            node_data: &mut TokenOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
@@ -1441,14 +1437,14 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    node_data.idx = parser
-                        .process(
+                    if parser.expression_follows() {
+                        node_data.opt_idx = parser.process(
                             Parser::argument_list,
                             my_idx,
                             &[TokenType::RParen],
                             &mut recovery_token,
-                        )?
-                        .unwrap_or_else(|| !0);
+                        )?;
+                    }
                     TokenType::RParen
                 }
                 TokenType::RParen => {
@@ -1475,91 +1471,20 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn assignment(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxOptIdx {
-            token: None,
-            idx: !0,
-            opt_idx: None,
-        };
+        let mut node_data = IdxIdx { idx: !0, idx2: !0 };
 
-        fn parse_assignment<'a, 'b>(
-            parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
-            my_idx: usize,
-            node_data: &mut TokenIdxOptIdx<'a>,
-        ) -> ParseResult<()> {
-            let mut recovery_token = None;
-            let tt = match tt {
-                TokenType::Identifier => {
-                    node_data.token = parser.process(
-                        Parser::match_token,
-                        &[TokenType::Identifier],
-                        &[
-                            TokenType::LBracket,
-                            TokenType::RBracket,
-                            TokenType::Assignment,
-                        ],
-                        &mut recovery_token,
-                    )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LBracket)
-                }
-                TokenType::LBracket => {
-                    if TokenType::LBracket == parser.scanner.peek().token_type {
-                        parser.process(
-                            Parser::match_token,
-                            &[TokenType::LBracket],
-                            &[TokenType::RBracket, TokenType::Assignment],
-                            &mut recovery_token,
-                        )?;
-                        recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
-                    } else {
-                        TokenType::Assignment
-                    }
-                }
-                TokenType::LiteralInt => {
-                    // Label for array expression
-                    node_data.opt_idx = Some(
-                        parser
-                            .process(
-                                Parser::expression,
-                                my_idx,
-                                &[TokenType::RBracket, TokenType::Assignment],
-                                &mut recovery_token,
-                            )?
-                            .unwrap_or_else(|| !0),
-                    );
-                    recovery_token.unwrap_or_else(|| TokenType::RBracket)
-                }
-                TokenType::RBracket => {
-                    parser.process(
-                        Parser::match_token,
-                        &[TokenType::RBracket],
-                        &[TokenType::Assignment],
-                        &mut recovery_token,
-                    )?;
-                    TokenType::Assignment
-                }
-                TokenType::Assignment => {
-                    parser.match_token(&[TokenType::Assignment])?;
-                    TokenType::LiteralString
-                }
-                TokenType::LiteralString => {
-                    // Label for expression
-                    node_data.idx = parser.expression(my_idx)?;
-                    TokenType::Undefined
-                }
-                _ => {
-                    assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
-                }
-            };
+        let mut recovery_token = None;
+        node_data.idx = self
+            .process(
+                Parser::variable,
+                my_idx,
+                &[TokenType::Assignment],
+                &mut recovery_token,
+            )?
+            .unwrap_or_else(|| !0);
+        self.match_token(&[TokenType::Assignment])?;
+        node_data.idx2 = self.expression(my_idx)?;
 
-            if TokenType::Undefined != tt {
-                parse_assignment(parser, tt, my_idx, node_data)?;
-            }
-            Ok(())
-        }
-
-        parse_assignment(self, TokenType::Identifier, my_idx, &mut node_data)?;
         self.tree[my_idx].data = NodeType::Assignment(node_data);
         Ok(my_idx)
     }
@@ -1794,7 +1719,25 @@ impl<'a, 'b> Parser<'a, 'b> {
     }
 
     // ---------------------------------------------------------------------
-    // Public utility functions
+    // Other functions
+    // ---------------------------------------------------------------------
+    fn expression_follows(&mut self) -> bool {
+        match self.scanner.peek().token_type {
+            TokenType::OperatorPlus
+            | TokenType::OperatorMinus
+            | TokenType::OperatorNot
+            | TokenType::LParen
+            | TokenType::Identifier
+            | TokenType::LiteralInt
+            | TokenType::LiteralBoolean
+            | TokenType::LiteralReal
+            | TokenType::LiteralString => true,
+            _ => false,
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Public functions
     // ---------------------------------------------------------------------
     pub fn new(
         source_str: &'a str,

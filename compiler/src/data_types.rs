@@ -11,14 +11,14 @@ use std::fmt;
 // ---------------------------------------------------------------------
 #[derive(Debug, PartialEq, Clone, Copy, Hash, Serialize, Eq)]
 pub enum SymbolType {
-    Int,
-    String,
     Bool,
+    Int,
     Real,
-    ArrayInt(usize),
-    ArrayString(usize),
+    String,
     ArrayBool(usize),
+    ArrayInt(usize),
     ArrayReal(usize),
+    ArrayString(usize),
     Undefined,
 }
 
@@ -53,6 +53,26 @@ pub enum ErrorType<'a> {
     AssignMismatchedType(TokenData<'a>, SymbolType, SymbolType),
     IOMismatchedType(TokenData<'a>, SymbolType),
     AssertMismatchedType(TokenData<'a>, SymbolType),
+    IndexTypeMismatch(TokenData<'a>, SymbolType),
+    IllegalIndexing(TokenData<'a>, SymbolType),
+    TooFewArguments(
+        TokenData<'a>,
+        Vec<SymbolType>,
+        TokenData<'a>,
+        Vec<SymbolType>,
+    ),
+    TooManyArguments(
+        TokenData<'a>,
+        Vec<SymbolType>,
+        TokenData<'a>,
+        Vec<SymbolType>,
+    ),
+    MismatchedArgumentTypes(
+        TokenData<'a>,
+        Vec<SymbolType>,
+        TokenData<'a>,
+        Vec<SymbolType>,
+    ),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -68,6 +88,13 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::AssignMismatchedType(_, _, _) => write!(f, "mismatched type"),
             ErrorType::IOMismatchedType(_, _) => write!(f, "mismatched type"),
             ErrorType::AssertMismatchedType(_, _) => write!(f, "mismatched type"),
+            ErrorType::IndexTypeMismatch(_, _) => write!(f, "mismatched type"),
+            ErrorType::IllegalIndexing(_, _) => write!(f, "illegal indexing"),
+            ErrorType::TooFewArguments(_, _, _, _) => write!(f, "too few arguments"),
+            ErrorType::TooManyArguments(_, _, _, _) => write!(f, "too many arguments"),
+            ErrorType::MismatchedArgumentTypes(_, _, _, _) => {
+                write!(f, "mismatched argument types")
+            }
         }
     }
 }
@@ -263,13 +290,6 @@ pub struct IdxIdx {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct IdxIdxOptIdx {
-    pub idx: usize,
-    pub idx2: usize,
-    pub opt_idx: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Undefined,
     Program(TokenIdxOptIdx<'a>),
@@ -281,10 +301,10 @@ pub enum NodeType<'a> {
     VariableType(SymbolType),
     Identifier(Option<TokenData<'a>>),
     Assert(TokenIdx<'a>),
-    Assignment(TokenIdxOptIdx<'a>),
-    Call(TokenIdx<'a>),
+    Assignment(IdxIdx),
+    Call(TokenOptIdx<'a>),
     Declaration(IdxIdx),
-    Return(TokenIdx<'a>),
+    Return(TokenOptIdx<'a>),
     Read(TokenIdx<'a>),
     Write(TokenIdx<'a>),
     If(TokenIdxIdxOptIdx<'a>),
@@ -441,16 +461,12 @@ impl<'a> Serialize for NodeType<'a> {
                 )?;
                 state.end()
             }
-            NodeType::Assignment(data) => {
-                let mut state = serializer.serialize_struct_variant(
+            NodeType::Assignment(_) => {
+                let state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
                     "Assignment",
-                    1,
-                )?;
-                state.serialize_field(
-                    "identifier",
-                    &data.token.expect("Assignment token is none.").value,
+                    0,
                 )?;
                 state.end()
             }

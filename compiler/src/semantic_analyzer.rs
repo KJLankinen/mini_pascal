@@ -1,17 +1,16 @@
-use super::data_types::{ErrorType, NodeType, SymbolType, TokenData, TokenType};
+use super::data_types::{
+    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenOptIdx,
+};
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 pub struct Analyzer<'a, 'b> {
     tree: &'b mut LcRsTree<NodeType<'a>>,
-    // scoped symbol table with a vector can be something like the following:
-    // symbols: HashMap<(&'a str, u32), SymbolType>,
-    // scope_stack: Vec<u32>,
-    // then loop over scope_stack and get the first variable with the correct name
-    symbols: HashMap<&'a str, SymbolType>,
+    symbols: HashMap<(&'a str, u32), SymbolType>,
     function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
+    scope_depth: u32,
 }
 
 struct Parameter<'a> {
@@ -23,6 +22,7 @@ struct Parameter<'a> {
 struct FunctionSignature<'a> {
     parameters: Option<Vec<Parameter<'a>>>,
     return_type: Option<SymbolType>,
+    token: TokenData<'a>,
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
@@ -45,6 +45,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 if let Some(idx) = data.opt_idx {
                     self.subroutines(idx);
                 }
+                // Clear symbols after last subroutine and before main block
+                self.symbols.clear();
                 self.block(data.idx);
             }
             _ => {
@@ -86,9 +88,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         // Block must check that:
         // - if return type = Some, there is return statements everywhere and they have the correct
         // type
-        // - else, there is no return statements, since the cfg does not allow "empty" returns.
+        // - else, all returns are empty, i.e. opt_idx is None.
         match self.tree[idx].data {
             NodeType::Block(idx) => {
+                // Increment scope so that names can be reused
+                self.scope_depth += 1;
                 // Idx points to first statement
                 self.statement(idx);
                 let mut next = idx;
@@ -96,6 +100,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     self.statement(idx);
                     next = idx;
                 }
+                assert!(
+                    self.scope_depth > 0,
+                    "Scope depth should never be zero inside a block."
+                );
+                self.scope_depth -= 1;
             }
             _ => {
                 assert!(false, "Unexpected node.");
@@ -113,6 +122,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     let mut fs = FunctionSignature {
                         parameters: None,
                         return_type: None,
+                        token: token,
                     };
 
                     // Handle parameter list
@@ -133,6 +143,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                     {
                                         st
                                     } else {
+                                        assert!(false, "Unexpected node type.");
                                         SymbolType::Undefined
                                     },
                                     id: data
@@ -178,6 +189,19 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn function_block(&mut self, idx: usize) {
         match self.tree[idx].data {
             NodeType::Function(data) => {
+                // Reset the symbol table so it'll contain only values in this scope,
+                // including the parameters of the function
+                self.symbols.clear();
+                let fs = self
+                    .function_signatures
+                    .get(data.token.expect("Function is missing a token.").value)
+                    .expect("Function signature should already be stored in the map.");
+                if let Some(params) = &fs.parameters {
+                    for param in params {
+                        self.symbols
+                            .insert((param.id, self.scope_depth), param.symbol_type);
+                    }
+                }
                 self.block(data.idx);
             }
             _ => {
@@ -188,24 +212,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Assert(data) => {
-                let et = self.check_expression(data.idx);
-                if SymbolType::Bool != et && SymbolType::Undefined != et {
-                    self.logger.add_error(ErrorType::AssertMismatchedType(
-                        data.token.expect("Assert is missing a token."),
-                        et,
-                    ));
-                }
-            }
-            NodeType::Assignment(data) => {
-                // token is identifier
-                // idx is expression
-                // opt_idx is array indexing expression
-            }
-            NodeType::Call(data) => {
-                // token is identifier
-                // idx is first expression
-            }
+            NodeType::Assert(data) => self.assert_statement(&data),
+            NodeType::Assignment(data) => self.assign_statement(&data),
+            NodeType::Call(data) => self.call_statement(&data),
             NodeType::Declaration(data) => {
                 // idx1 is first identifier
                 // idx2 is type
@@ -274,8 +283,153 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         };
     }
 
-    fn check_expression(&mut self, idx: usize) -> SymbolType {
+    fn assign_statement(&mut self, data: &IdxIdx) {
+        // idx is variable
+        // idx2 is expression
+        if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
+            let token = variable_data.token.expect("Variable is missing a token.");
+            let et = self.get_expression_type(data.idx2);
+            if let Some(vt) = self.get_variable_type(data.idx) {
+                if et != vt {
+                    self.logger
+                        .add_error(ErrorType::AssignMismatchedType(token, vt, et));
+                }
+            } else {
+                self.logger
+                    .add_error(ErrorType::UndeclaredIdentifier(token));
+            }
+        } else {
+            assert!(false, "Unexpected node type.");
+        }
+    }
+
+    fn assert_statement(&mut self, data: &TokenIdx<'a>) {
+        let et = self.get_expression_type(data.idx);
+        if SymbolType::Bool != et && SymbolType::Undefined != et {
+            self.logger.add_error(ErrorType::AssertMismatchedType(
+                data.token.expect("Assert is missing a token."),
+                et,
+            ));
+        }
+    }
+
+    fn call_statement(&mut self, data: &TokenOptIdx<'a>) {
+        // token is identifier
+        // opt_idx is first expression
+
+        // Gather argument types to vector
+        let mut argument_types = vec![];
+        if let Some(idx) = data.opt_idx {
+            argument_types.push(self.get_expression_type(idx));
+            let mut next = idx;
+            while let Some(idx) = self.tree[next].right_sibling {
+                argument_types.push(self.get_expression_type(idx));
+                next = idx;
+            }
+        }
+
+        let token = data.token.expect("Call is missing a token.");
+        if let Some(fs) = self.function_signatures.get(token.value) {
+            if let Some(params) = &fs.parameters {
+                if params.len() == argument_types.len() {
+                    for i in 0..params.len() {
+                        if params[i].symbol_type != argument_types[i] {
+                            self.logger.add_error(ErrorType::MismatchedArgumentTypes(
+                                fs.token,
+                                params.iter().map(|p| p.symbol_type).collect(),
+                                token,
+                                argument_types,
+                            ));
+                            break;
+                        }
+                    }
+                } else if params.len() > argument_types.len() {
+                    self.logger.add_error(ErrorType::TooFewArguments(
+                        fs.token,
+                        params.iter().map(|p| p.symbol_type).collect(),
+                        token,
+                        argument_types,
+                    ));
+                } else {
+                    self.logger.add_error(ErrorType::TooManyArguments(
+                        fs.token,
+                        params.iter().map(|p| p.symbol_type).collect(),
+                        token,
+                        argument_types,
+                    ));
+                }
+            } else {
+                if false == argument_types.is_empty() {
+                    self.logger.add_error(ErrorType::TooManyArguments(
+                        fs.token,
+                        vec![],
+                        token,
+                        argument_types,
+                    ));
+                }
+            }
+        } else {
+            self.logger
+                .add_error(ErrorType::UndeclaredIdentifier(token));
+        }
+    }
+
+    fn get_expression_type(&mut self, idx: usize) -> SymbolType {
         SymbolType::Undefined
+    }
+
+    fn get_variable_type(&mut self, idx: usize) -> Option<SymbolType> {
+        match self.tree[idx].data {
+            NodeType::Variable(data) => {
+                let mut symbol_type = None;
+                let token = data.token.expect("Variable is missing a token.");
+
+                // Go upwards in scope and match to the first identifier that is found
+                for i in self.scope_depth..0 {
+                    if let Some(&st) = self.symbols.get(&(token.value, i)) {
+                        // If variable contains an array indexing expression
+                        // i.e. opt_idx = Some(idx), check that
+                        // 1. The expression results in an integer
+                        // 2. The identifier is of type array
+                        let st = if let Some(expr_idx) = data.opt_idx {
+                            let et = self.get_expression_type(expr_idx);
+                            if SymbolType::Int != et {
+                                self.logger
+                                    .add_error(ErrorType::IndexTypeMismatch(token, et));
+                            }
+                            match st {
+                                st @ SymbolType::Int
+                                | st @ SymbolType::String
+                                | st @ SymbolType::Bool
+                                | st @ SymbolType::Real => {
+                                    self.logger.add_error(ErrorType::IllegalIndexing(token, st));
+                                    st
+                                }
+                                SymbolType::ArrayInt(_) => SymbolType::Int,
+                                SymbolType::ArrayString(_) => SymbolType::String,
+                                SymbolType::ArrayBool(_) => SymbolType::Bool,
+                                SymbolType::ArrayReal(_) => SymbolType::Real,
+                                SymbolType::Undefined => SymbolType::Undefined,
+                            }
+                        } else {
+                            st
+                        };
+
+                        assert!(
+                            SymbolType::Undefined != st,
+                            "Symbol type from symbol table should never be undefined."
+                        );
+                        symbol_type = Some(st);
+                        break;
+                    }
+                }
+                symbol_type
+            }
+            _ => {
+                assert!(false, "Unexpected node type.");
+                None
+            }
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -287,6 +441,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             symbols: HashMap::new(),
             function_signatures: HashMap::new(),
             logger: logger,
+            scope_depth: 0,
         }
     }
 }
