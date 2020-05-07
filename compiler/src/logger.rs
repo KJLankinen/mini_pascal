@@ -155,26 +155,34 @@ impl<'a> Logger<'a> {
                     for pt in parameter_types {
                         eprint!("{}, ", pt);
                     }
-                    eprintln!("at");
-                    self.print_line(function_token.line as usize, function_token.column as usize);
+                    eprint!("\n");
+                    self.print_error(function_token.line as usize, function_token.column as usize);
 
                     eprint!(
-                        "Caller supplied {} arguments with types ",
+                        "but caller supplied {} arguments with types ",
                         argument_types.len()
                     );
                     for at in argument_types {
                         eprint!("{}, ", at);
                     }
-                    eprintln!("at");
+                    eprint!("\n");
                     line = call_token.line;
                     column = call_token.column;
                 }
             }
-            self.print_line(line as usize, column as usize);
+            self.print_error(line as usize, column as usize);
         }
     }
 
-    fn print_line(&self, line: usize, column: usize) {
+    fn print_line(&self, line: usize) {
+        assert!(line > 0);
+        // Lines start from '1' in editors but vector indexing starts from '0'
+        let line = line - 1;
+        assert!(line < self.lines.len(), "Line number is too large.");
+        eprint!("{}", self.lines[line]);
+    }
+
+    fn print_error(&self, line: usize, column: usize) {
         // A debug functions for printing a specific line of source code.
         assert!(line > 0);
         // Lines start from '1' in editors but vector indexing starts from '0'
@@ -186,12 +194,12 @@ impl<'a> Logger<'a> {
             vec![' '; column - 1].into_iter().collect::<String>(),
         );
 
-        println!("error @ {}:{}", line + 1, column);
+        //eprintln!("error @ {}:{}", line + 1, column);
         if 0 < line {
-            println!("  {}\t|\t{}", line, self.lines[line - 1]);
+            eprintln!("  {}\t|\t{}", line, self.lines[line - 1]);
         }
-        println!("  {}\t|\t{}", line + 1, self.lines[line]);
-        println!("\t|\t{}", expl_string);
+        eprintln!("  {}\t|\t{}", line + 1, self.lines[line]);
+        eprintln!("\t|\t{}", expl_string);
     }
 
     pub fn get_line(&self, line: usize) -> &'a str {

@@ -30,6 +30,17 @@ pub struct Parser<'a, 'b> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a, 'b> Parser<'a, 'b> {
+    const EXPRESSION_FIRST: &'static [TokenType] = &[
+        TokenType::OperatorPlus,
+        TokenType::OperatorMinus,
+        TokenType::OperatorNot,
+        TokenType::LParen,
+        TokenType::Identifier,
+        TokenType::LiteralInt,
+        TokenType::LiteralBoolean,
+        TokenType::LiteralReal,
+        TokenType::LiteralString,
+    ];
     // ---------------------------------------------------------------------
     // fn match_token() and fn process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
@@ -797,7 +808,6 @@ impl<'a, 'b> Parser<'a, 'b> {
             _ => {
                 // Unknown start of statement. Match to nothing, yielding a syntax error. Empty
                 // statements and lexical errors lead to here.
-                println!("test");
                 self.match_token(&[])?;
                 Ok(!0)
             }
@@ -1444,6 +1454,15 @@ impl<'a, 'b> Parser<'a, 'b> {
                             &[TokenType::RParen],
                             &mut recovery_token,
                         )?;
+                        println!(
+                            "lc: {:#?}",
+                            parser.tree[parser.tree[my_idx].left_child.unwrap()]
+                        );
+                        println!("opt: {:#?}", parser.tree[node_data.opt_idx.unwrap()]);
+                        assert!(
+                            node_data.opt_idx.unwrap() == parser.tree[my_idx].left_child.unwrap(),
+                            "Funky shit yo."
+                        );
                     }
                     TokenType::RParen
                 }
@@ -1494,246 +1513,283 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     fn expression(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
+        let mut node_data = TokenIdxOptIdx {
+            token: None,
+            idx: !0,
+            opt_idx: None,
+        };
+
+        let operators = [
+            TokenType::OperatorEqual,
+            TokenType::OperatorNotEqual,
+            TokenType::OperatorGreaterEqual,
+            TokenType::OperatorGreater,
+            TokenType::OperatorLessEqual,
+            TokenType::OperatorLess,
+        ];
         let mut recovery_token = None;
-        let first_expr = self
+        node_data.idx = self
             .process(
                 Parser::simple_expression,
                 my_idx,
-                &[
-                    TokenType::OperatorEqual,
-                    TokenType::OperatorNotEqual,
-                    TokenType::OperatorGreaterEqual,
-                    TokenType::OperatorGreater,
-                    TokenType::OperatorLessEqual,
-                    TokenType::OperatorLess,
-                ],
+                &operators,
                 &mut recovery_token,
             )?
             .unwrap_or_else(|| !0);
 
-        match self.scanner.peek().token_type {
-            TokenType::OperatorEqual
-            | TokenType::OperatorNotEqual
-            | TokenType::OperatorGreaterEqual
-            | TokenType::OperatorGreater
-            | TokenType::OperatorLessEqual
-            | TokenType::OperatorLess => {
-                let token = self.match_token(&[
-                    TokenType::OperatorEqual,
-                    TokenType::OperatorNotEqual,
-                    TokenType::OperatorGreaterEqual,
-                    TokenType::OperatorGreater,
-                    TokenType::OperatorLessEqual,
-                    TokenType::OperatorLess,
-                ])?;
-                let second_expr = self.simple_expression(my_idx)?;
-                self.tree[my_idx].data = NodeType::Expression(TokenIdxIdx {
-                    token: Some(token),
-                    idx: first_expr,
-                    idx2: second_expr,
-                });
-            }
-            _ => {
-                // Remove this node as there was only one simple expression
-                self.tree.remove_node(my_idx);
-                return Ok(first_expr);
-            }
+        if let Some(tt) = operators
+            .iter()
+            .find(|&&op| op == self.scanner.peek().token_type)
+        {
+            recovery_token = None;
+            node_data.token = self.process(
+                Parser::match_token,
+                &operators,
+                Parser::EXPRESSION_FIRST,
+                &mut recovery_token,
+            )?;
+
+            node_data.opt_idx = Some(self.simple_expression(my_idx)?);
+            self.tree[my_idx].data = NodeType::RelOp(node_data);
+            Ok(my_idx)
+        } else {
+            self.tree.remove_node(my_idx);
+            Ok(node_data.idx)
         }
-        Ok(my_idx)
     }
 
     fn simple_expression(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
+        let mut node_data = TokenIdxOptIdx {
+            token: None,
+            idx: !0,
+            opt_idx: None,
+        };
 
-        fn parse_term<'a, 'b>(
-            parser: &mut Parser<'a, 'b>,
-            parent: usize,
-            is_head: bool,
-        ) -> ParseResult<Option<usize>> {
-            let token = match parser.scanner.peek().token_type {
-                TokenType::OperatorPlus | TokenType::OperatorMinus => {
-                    Some(parser.match_token(&[TokenType::OperatorPlus, TokenType::OperatorMinus])?)
-                }
-                TokenType::OperatorOr => {
-                    if is_head {
-                        None
-                    } else {
-                        Some(parser.match_token(&[TokenType::OperatorOr])?)
-                    }
-                }
-                _ => None,
-            };
+        let mut recovery_token = None;
+        let operators = [
+            TokenType::OperatorPlus,
+            TokenType::OperatorMinus,
+            TokenType::OperatorOr,
+        ];
 
-            if is_head || token.is_some() {
-                let my_idx = parser.tree.add_child(Some(parent));
-                let mut node_data = TokenIdx {
-                    token: token,
-                    idx: !0,
-                };
-
-                let mut recovery_token = None;
-                node_data.idx = parser
-                    .process(
-                        Parser::term,
-                        my_idx,
-                        &[
-                            TokenType::OperatorPlus,
-                            TokenType::OperatorMinus,
-                            TokenType::OperatorOr,
-                        ],
-                        &mut recovery_token,
-                    )?
+        let return_idx = match self.scanner.peek().token_type {
+            // First term may have a sign in front
+            tt @ TokenType::OperatorPlus | tt @ TokenType::OperatorMinus => {
+                node_data.token = self.process(
+                    Parser::match_token,
+                    &[tt],
+                    Parser::EXPRESSION_FIRST,
+                    &mut recovery_token,
+                )?;
+                node_data.idx = self.simple_expression(my_idx)?;
+                my_idx
+            }
+            _ => {
+                node_data.idx = self
+                    .process(Parser::term, my_idx, &operators, &mut recovery_token)?
                     .unwrap_or_else(|| !0);
 
-                if 1 == parser.tree.count_children(my_idx) && token.is_none() {
-                    parser.tree.remove_node(my_idx);
+                if let Some(tt) = operators
+                    .iter()
+                    .find(|&&op| op == self.scanner.peek().token_type)
+                {
+                    recovery_token = None;
+                    node_data.token = self.process(
+                        Parser::match_token,
+                        &operators,
+                        Parser::EXPRESSION_FIRST,
+                        &mut recovery_token,
+                    )?;
+
+                    node_data.opt_idx = Some(self.simple_expression(my_idx)?);
+                    my_idx
                 } else {
-                    parser.tree[my_idx].data = NodeType::Term(node_data);
+                    node_data.idx
                 }
-                parse_term(parser, parent, false)?;
-
-                Ok(Some(my_idx))
-            } else {
-                Ok(None)
             }
+        };
+
+        if return_idx == my_idx {
+            self.tree[my_idx].data = NodeType::AddOp(node_data);
+        } else {
+            self.tree.remove_node(my_idx);
         }
 
-        let idx = parse_term(self, my_idx, true)?.unwrap_or_else(|| !0);
-        if 1 == self.tree.count_children(my_idx) {
-            self.tree.remove_node(my_idx);
-        } else {
-            self.tree[my_idx].data = NodeType::SimpleExpression(idx);
-        }
-        Ok(my_idx)
+        Ok(return_idx)
     }
 
     fn term(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdx {
+        let mut node_data = TokenIdxOptIdx {
             token: None,
             idx: !0,
+            opt_idx: None,
         };
 
+        let mut recovery_token = None;
         let operators = [
             TokenType::OperatorMultiply,
             TokenType::OperatorDivide,
             TokenType::OperatorModulo,
             TokenType::OperatorAnd,
         ];
-        let mut recovery_token = None;
+
         node_data.idx = self
             .process(Parser::factor, my_idx, &operators, &mut recovery_token)?
             .unwrap_or_else(|| !0);
 
-        fn parse_factor<'a, 'b>(
-            parser: &mut Parser<'a, 'b>,
-            parent: usize,
-            operators: &[TokenType],
-        ) -> ParseResult<()> {
-            // If the next token is one of the given operators, parse factor
-            if let Some(tt) = operators
-                .iter()
-                .find(|&&op| op == parser.scanner.peek().token_type)
-            {
-                let my_idx = parser.tree.add_child(Some(parent));
-                let mut node_data = TokenIdx {
-                    token: Some(parser.match_token(&[*tt])?),
-                    idx: !0,
-                };
+        let return_idx = if let Some(tt) = operators
+            .iter()
+            .find(|&&op| op == self.scanner.peek().token_type)
+        {
+            recovery_token = None;
+            node_data.token = self.process(
+                Parser::match_token,
+                &operators,
+                Parser::EXPRESSION_FIRST,
+                &mut recovery_token,
+            )?;
 
-                let mut recovery_token = None;
-                node_data.idx = parser
-                    .process(Parser::factor, my_idx, operators, &mut recovery_token)?
-                    .unwrap_or_else(|| !0);
-
-                parser.tree[my_idx].data = NodeType::Factor(node_data);
-                parse_factor(parser, parent, operators)?;
-            }
-            Ok(())
-        }
-
-        if 1 == self.tree.count_children(my_idx) {
-            self.tree.remove_node(my_idx);
+            node_data.opt_idx = Some(self.term(my_idx)?);
+            my_idx
         } else {
-            self.tree[my_idx].data = NodeType::Factor(node_data);
-        }
-        parse_factor(self, parent, &operators)?;
+            node_data.idx
+        };
 
-        Ok(my_idx)
+        if return_idx == my_idx {
+            self.tree[my_idx].data = NodeType::MulOp(node_data);
+        } else {
+            self.tree.remove_node(my_idx);
+        }
+
+        Ok(return_idx)
     }
 
     fn factor(&mut self, parent: usize) -> ParseResult<usize> {
-        let parent = self.tree.add_child(Some(parent));
-        let child_idx = match self.scanner.peek().token_type {
+        // Add a possible parent node for the .size operator,
+        // which may follow another factor
+        let size_idx = self.tree.add_child(Some(parent));
+
+        let my_idx = self.tree.add_child(Some(size_idx));
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
+
+        let mut recovery_token = None;
+        node_data.idx = match self.scanner.peek().token_type {
             TokenType::Identifier => {
-                if TokenType::LParen == self.scanner.peek_at(1).token_type {
-                    Some(self.call(parent)?)
+                let func = if TokenType::LParen == self.scanner.peek_at(1).token_type {
+                    Parser::call
                 } else {
-                    Some(self.variable(parent)?)
-                }
+                    Parser::variable
+                };
+                self.process(
+                    func,
+                    my_idx,
+                    &[TokenType::OperatorSize],
+                    &mut recovery_token,
+                )?
+                .unwrap_or_else(|| !0)
             }
             tt @ TokenType::LiteralBoolean
             | tt @ TokenType::LiteralInt
             | tt @ TokenType::LiteralReal
             | tt @ TokenType::LiteralString => {
-                let my_idx = self.tree.add_child(Some(parent));
-                self.tree[my_idx].data = NodeType::Literal(Some(self.match_token(&[tt])?));
-                Some(my_idx)
+                let lit_idx = self.tree.add_child(Some(my_idx));
+                let token = self.process(
+                    Parser::match_token,
+                    &[tt],
+                    &[TokenType::OperatorSize],
+                    &mut recovery_token,
+                )?;
+                self.tree[lit_idx].data = NodeType::Literal(token);
+                lit_idx
             }
             TokenType::LParen => {
-                let mut recovery_token = None;
-                self.match_token(&[TokenType::LParen])?;
-                let my_idx = self
+                self.process(
+                    Parser::match_token,
+                    &[TokenType::LParen],
+                    Parser::EXPRESSION_FIRST,
+                    &mut recovery_token,
+                )?;
+
+                recovery_token = None;
+                let expr_idx = self
                     .process(
                         Parser::expression,
-                        parent,
+                        my_idx,
                         &[TokenType::RParen],
                         &mut recovery_token,
                     )?
                     .unwrap_or_else(|| !0);
-                self.match_token(&[TokenType::RParen])?;
-                Some(my_idx)
+
+                recovery_token = None;
+                self.process(
+                    Parser::match_token,
+                    &[TokenType::RParen],
+                    &[TokenType::OperatorSize],
+                    &mut recovery_token,
+                )?;
+
+                expr_idx
             }
             TokenType::OperatorNot => {
-                let my_idx = self.tree.add_child(Some(parent));
-                self.tree[my_idx].data = NodeType::Not(TokenIdx {
-                    token: Some(self.match_token(&[TokenType::OperatorNot])?),
-                    idx: self.factor(my_idx)?,
-                });
-                Some(my_idx)
+                node_data.token = self.process(
+                    Parser::match_token,
+                    &[TokenType::OperatorNot],
+                    Parser::EXPRESSION_FIRST,
+                    &mut recovery_token,
+                )?;
+
+                recovery_token = None;
+                self.process(
+                    Parser::factor,
+                    my_idx,
+                    &[TokenType::OperatorSize],
+                    &mut recovery_token,
+                )?
+                .unwrap_or_else(|| !0)
             }
-            _ => None,
+            _ => {
+                self.match_token(&[])?;
+                !0
+            }
         };
 
-        if TokenType::OperatorSize == self.scanner.peek().token_type {
-            let my_idx = parent;
-            self.tree[my_idx].data = NodeType::ArraySize(TokenIdx {
-                token: Some(self.match_token(&[TokenType::OperatorSize])?),
-                idx: child_idx.unwrap_or_else(|| !0),
-            });
-            Ok(my_idx)
+        // This factor is a useless node, if it has no token
+        let return_idx = if node_data.token.is_none() {
+            self.tree.remove_node(my_idx);
+            node_data.idx
         } else {
-            self.tree.remove_node(parent);
-            Ok(child_idx.unwrap_or_else(|| !0))
-        }
+            self.tree[my_idx].data = NodeType::Factor(node_data);
+            my_idx
+        };
+
+        // Remove the "parent" factor node that was created at start, if there is no size operator
+        let return_idx = if TokenType::OperatorSize == self.scanner.peek().token_type {
+            self.tree[size_idx].data = NodeType::Factor(TokenIdx {
+                token: Some(self.match_token(&[TokenType::OperatorSize])?),
+                idx: return_idx,
+            });
+            size_idx
+        } else {
+            self.tree.remove_node(size_idx);
+            return_idx
+        };
+
+        Ok(return_idx)
     }
 
     // ---------------------------------------------------------------------
     // Other functions
     // ---------------------------------------------------------------------
     fn expression_follows(&mut self) -> bool {
-        match self.scanner.peek().token_type {
-            TokenType::OperatorPlus
-            | TokenType::OperatorMinus
-            | TokenType::OperatorNot
-            | TokenType::LParen
-            | TokenType::Identifier
-            | TokenType::LiteralInt
-            | TokenType::LiteralBoolean
-            | TokenType::LiteralReal
-            | TokenType::LiteralString => true,
-            _ => false,
-        }
+        Parser::EXPRESSION_FIRST
+            .iter()
+            .find(|&&op| op == self.scanner.peek().token_type)
+            .is_some()
     }
 
     // ---------------------------------------------------------------------

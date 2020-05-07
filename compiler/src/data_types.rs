@@ -309,9 +309,9 @@ pub enum NodeType<'a> {
     Write(TokenIdx<'a>),
     If(TokenIdxIdxOptIdx<'a>),
     While(TokenIdxIdx<'a>),
-    Expression(TokenIdxIdx<'a>),
-    SimpleExpression(usize),
-    Term(TokenIdx<'a>),
+    RelOp(TokenIdxOptIdx<'a>),
+    AddOp(TokenIdxOptIdx<'a>),
+    MulOp(TokenIdxOptIdx<'a>),
     Factor(TokenIdx<'a>),
     Variable(TokenOptIdx<'a>),
     Literal(Option<TokenData<'a>>),
@@ -346,9 +346,9 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::Write(_) => 15,
             NodeType::If(_) => 16,
             NodeType::While(_) => 17,
-            NodeType::Expression(_) => 18,
-            NodeType::SimpleExpression(_) => 19,
-            NodeType::Term(_) => 20,
+            NodeType::RelOp(_) => 18,
+            NodeType::AddOp(_) => 19,
+            NodeType::MulOp(_) => 20,
             NodeType::Factor(_) => 21,
             NodeType::Variable(_) => 22,
             NodeType::Literal(_) => 23,
@@ -529,11 +529,11 @@ impl<'a> Serialize for NodeType<'a> {
                 )?;
                 state.end()
             }
-            NodeType::Expression(data) => {
+            NodeType::RelOp(data) => {
                 let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
-                    "Expression",
+                    "Relation operator",
                     1,
                 )?;
                 state.serialize_field(
@@ -542,18 +542,26 @@ impl<'a> Serialize for NodeType<'a> {
                 )?;
                 state.end()
             }
-            NodeType::SimpleExpression(_) => {
-                let state = serializer.serialize_struct_variant(
+            NodeType::AddOp(data) => {
+                let mut state = serializer.serialize_struct_variant(
                     "NodeType",
                     u32::from(*self),
-                    "Simple expression",
-                    0,
+                    "Add operation",
+                    1,
+                )?;
+                state.serialize_field(
+                    "operator",
+                    &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,
                 )?;
                 state.end()
             }
-            NodeType::Term(data) => {
-                let mut state =
-                    serializer.serialize_struct_variant("NodeType", u32::from(*self), "Term", 1)?;
+            NodeType::MulOp(data) => {
+                let mut state = serializer.serialize_struct_variant(
+                    "NodeType",
+                    u32::from(*self),
+                    "Multiply operation",
+                    1,
+                )?;
                 state.serialize_field(
                     "operator",
                     &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,

@@ -214,7 +214,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         match self.tree[idx].data {
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
-            NodeType::Call(data) => self.call_statement(&data),
+            NodeType::Call(data) => {
+                self.call_statement(&data);
+            }
             NodeType::Declaration(data) => {
                 // idx1 is first identifier
                 // idx2 is type
@@ -245,17 +247,20 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // idx1 is boolean expression
                 // idx2 is statement
             }
-            NodeType::Expression(data) => {
+            NodeType::RelOp(data) => {
                 // token is rel op
-                // idx1 is first simple expr
-                // idx2 is second simple expr
+                // idx is left add op
+                // opt_idx is right add op
             }
-            NodeType::SimpleExpression(idx) => {
-                // idx is first term
+            NodeType::AddOp(data) => {
+                // token is op
+                // idx is mul op
+                // opt_idx is add op
             }
-            NodeType::Term(data) => {
-                // token is sign/operator
+            NodeType::MulOp(data) => {
+                // token is mulop
                 // idx is factor
+                // opt_idx is mul op
             }
             NodeType::Factor(data) => {
                 // token is operator or None for first factor
@@ -313,10 +318,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn call_statement(&mut self, data: &TokenOptIdx<'a>) {
-        // token is identifier
-        // opt_idx is first expression
-
+    fn call_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<SymbolType> {
         // Gather argument types to vector
         let mut argument_types = vec![];
         if let Some(idx) = data.opt_idx {
@@ -368,9 +370,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     ));
                 }
             }
+
+            fs.return_type
         } else {
             self.logger
                 .add_error(ErrorType::UndeclaredIdentifier(token));
+            None
         }
     }
 
