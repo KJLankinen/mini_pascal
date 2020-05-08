@@ -43,15 +43,6 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::MismatchedTypes(token, type1, type2) => {
-                    eprint!("Types used with operator \"{}\" don't match. ", token.value);
-                    eprintln!(
-                        "Left side is of type \"{}\", right side of type \"{}\".",
-                        type1, type2
-                    );
-                    line = token.line;
-                    column = token.column;
-                }
                 ErrorType::UndeclaredIdentifier(token) => {
                     eprintln!("Identifier \"{}\" is used before declaration.", token.value);
                     line = token.line;
@@ -222,7 +213,7 @@ impl<'a> Logger<'a> {
         eprintln!("\t|\t{}", expl_string);
     }
 
-    pub fn get_line(&self, line: usize) -> &'a str {
+    pub fn _get_line(&self, line: usize) -> &'a str {
         assert!(line <= self.lines.len());
         self.lines[line - 1]
     }

@@ -45,7 +45,6 @@ impl fmt::Display for SymbolType {
 pub enum ErrorType<'a> {
     LexicalError(TokenData<'a>),
     SyntaxError(TokenData<'a>, Vec<TokenType>),
-    MismatchedTypes(TokenData<'a>, SymbolType, SymbolType),
     UndeclaredIdentifier(TokenData<'a>),
     IllegalOperation(TokenData<'a>, Vec<SymbolType>),
     UnmatchedComment(u32, u32),
@@ -84,7 +83,6 @@ impl<'a> fmt::Display for ErrorType<'a> {
         match self {
             ErrorType::LexicalError(_) => write!(f, "lexical error"),
             ErrorType::SyntaxError(_, _) => write!(f, "syntax error"),
-            ErrorType::MismatchedTypes(_, _, _) => write!(f, "mismatched types"),
             ErrorType::UndeclaredIdentifier(_) => write!(f, "undeclared identifier"),
             ErrorType::IllegalOperation(_, _) => write!(f, "illegal operation"),
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),

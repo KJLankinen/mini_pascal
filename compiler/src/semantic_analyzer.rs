@@ -93,7 +93,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         while let Some(idx) = next {
                             if let NodeType::Parameter(data) = self.tree[idx].data {
                                 param_vec.push(Parameter {
-                                    is_ref: data.b,
+                                    _is_ref: data.b,
                                     symbol_type: self.check_type(data.idx),
                                     id: data
                                         .token
@@ -761,7 +761,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 // Auxiliary structs used during the semantic analysis
 // ---------------------------------------------------------------------
 struct Parameter<'a> {
-    is_ref: bool,
+    _is_ref: bool,
     symbol_type: SymbolType,
     id: &'a str,
 }
@@ -828,161 +828,3 @@ impl<'a> Scope<'a> {
         self.depth -= 1;
     }
 }
-
-/*fn check_expression(&mut self, idx: usize) -> SymbolType {
-    match self.tree[idx].data {
-        NodeType::Operand { token, symbol_type } => {
-            match symbol_type {
-                SymbolType::Int | SymbolType::String | SymbolType::Bool => symbol_type,
-                SymbolType::Undefined => {
-                    let ref token = token.expect("Operand is missing a token.");
-                    match self.symbols.get(token.value) {
-                        Some(st) => {
-                            assert!(SymbolType::Undefined != *st, "Symbol type of a declared identifier should never be undefined.");
-                            self.tree[idx].data = NodeType::Operand {
-                                token: Some(*token),
-                                symbol_type: *st,
-                            };
-                            *st
-                        }
-                        None => {
-                            self.logger
-                                .add_error(ErrorType::UndeclaredIdentifier(*token));
-                            SymbolType::Undefined
-                        }
-                    }
-                }
-            }
-        }
-        NodeType::Expression {
-            operator,
-            symbol_type: _,
-        } => {
-            let operator = operator.expect("Expression is missing an operator token.");
-            let lc = self.tree[idx]
-                .left_child
-                .expect("Expression is missing a child.");
-            let expr_type = self.check_expression(lc);
-
-            let et = match operator.token_type {
-                TokenType::OperatorNot => match expr_type {
-                    // If expression has type Undefined, an error has already been flagged so
-                    // stop the error propagation here.
-                    SymbolType::Bool | SymbolType::Undefined => SymbolType::Bool,
-                    _ => {
-                        self.logger
-                            .add_error(ErrorType::IllegalOperation(operator, expr_type));
-                        SymbolType::Undefined
-                    }
-                },
-                tt @ TokenType::OperatorAnd
-                | tt @ TokenType::OperatorPlus
-                | tt @ TokenType::OperatorMinus
-                | tt @ TokenType::OperatorMultiply
-                | tt @ TokenType::OperatorDivide
-                | tt @ TokenType::OperatorLessThan
-                | tt @ TokenType::OperatorEqual => {
-                    let expr_type2 = self.check_expression(
-                        self.tree[lc]
-                            .right_sibling
-                            .expect("Expression is missing its second child."),
-                    );
-
-                    let same_type = expr_type == expr_type2;
-                    let has_undefined = SymbolType::Undefined == expr_type
-                        || SymbolType::Undefined == expr_type2;
-
-                    if same_type && has_undefined {
-                        // Both are Undefined, don't check anything, because we have no
-                        // information, making any analysis just guessing.
-                        return SymbolType::Undefined;
-                    } else if same_type || has_undefined {
-                        let correct_type = if SymbolType::Undefined == expr_type {
-                            expr_type2
-                        } else {
-                            expr_type
-                        };
-
-                        match correct_type {
-                            SymbolType::Int => match tt {
-                                TokenType::OperatorPlus
-                                | TokenType::OperatorMinus
-                                | TokenType::OperatorMultiply
-                                | TokenType::OperatorDivide => correct_type,
-                                TokenType::OperatorAnd => SymbolType::Undefined,
-                                TokenType::OperatorLessThan | TokenType::OperatorEqual => {
-                                    SymbolType::Bool
-                                }
-                                _ => {
-                                    assert!(false, "Illegal token type for an operator.");
-                                    SymbolType::Undefined
-                                }
-                            },
-                            SymbolType::String => match tt {
-                                TokenType::OperatorPlus => correct_type,
-                                TokenType::OperatorAnd
-                                | TokenType::OperatorMinus
-                                | TokenType::OperatorMultiply
-                                | TokenType::OperatorDivide => SymbolType::Undefined,
-                                TokenType::OperatorLessThan | TokenType::OperatorEqual => {
-                                    SymbolType::Bool
-                                }
-                                _ => {
-                                    assert!(false, "Illegal token type for an operator.");
-                                    SymbolType::Undefined
-                                }
-                            },
-                            SymbolType::Bool => match tt {
-                                TokenType::OperatorPlus
-                                | TokenType::OperatorMinus
-                                | TokenType::OperatorMultiply
-                                | TokenType::OperatorDivide => SymbolType::Undefined,
-                                TokenType::OperatorAnd
-                                | TokenType::OperatorLessThan
-                                | TokenType::OperatorEqual => SymbolType::Bool,
-                                _ => {
-                                    assert!(false, "Illegal token type for an operator.");
-                                    SymbolType::Undefined
-                                }
-                            },
-                            SymbolType::Undefined => {
-                                assert!(false, "This should never happen.");
-                                SymbolType::Undefined
-                            }
-                        }
-                    } else {
-                        // Neither is undefined, but types are different. This is a new error.
-                        self.logger.add_error(ErrorType::MismatchedTypes(
-                            operator, expr_type, expr_type2,
-                        ));
-
-                        return SymbolType::Undefined;
-                    }
-                }
-                _ => {
-                    assert!(false, "Expression token has an illegal type.");
-                    SymbolType::Undefined
-                }
-            };
-
-            if SymbolType::Undefined == et {
-                self.logger
-                    .add_error(ErrorType::IllegalOperation(operator, expr_type));
-            } else {
-                self.tree[idx].data = NodeType::Expression {
-                    operator: Some(operator),
-                    symbol_type: et,
-                };
-            }
-
-            et
-        }
-        _ => {
-            assert!(
-                false,
-                "Tree does not contain neither an expression nor an operand at given index."
-            );
-            SymbolType::Undefined
-        }
-    }
-}*/

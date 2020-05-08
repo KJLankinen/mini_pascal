@@ -68,7 +68,7 @@ where
         }
     }
 
-    pub fn count_children(&self, id: usize) -> usize {
+    pub fn _count_children(&self, id: usize) -> usize {
         let mut num_children = 0;
         if id < self.nodes.len() {
             if let Some(id) = self.nodes[id].left_child {
