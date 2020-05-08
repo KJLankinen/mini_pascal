@@ -1,14 +1,10 @@
-- parserin testaaminen, eli useiden eri pascal ohjelmien kirjoittaminen
-- semantic analyserin funktioiden muuttaminen vastaamaan mini pascalin cfg:tä
-- semantic errorien läpikäyminen ja esim. selvittäminen, milloin pitää backtrackata scannerissa
-- semnatic analyzeriin constant evaluation
-- interpreter pois
+- testaaminen, eli useiden eri pascal ohjelmien kirjoittaminen
 - koodin emitter
 - webassembly:
     - arrayt/stringit: miten toimii?    --> lineaarista muistia, johon raakaa bytedataa
     - print ja read?                    --> käytetään wasin fd_read ja fd_write apunfunktiota.
     - "main block" tai entry point      --> start osoittaa funktioon, joka on main block
-    - lexical nesting?                  --> 
+    - lexical nesting?                  --> blockit toimii samoin kuin pascalissa, ei ole nestattuja funkkareita
     - var, eli pass-by-reference        --> 
     - rekursio?                         --> onnistuu
     - assert, eli onko "goto exit"?     --> unreachable tuottaa trapin, joka toimii sopivasti
@@ -18,3 +14,4 @@
     - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.
 
 - serialisoidun puurakenteen parantelu: helpompaa nähdä, jos jokin on vialla
+- predefined identifiers miettiminen ja lisääminen

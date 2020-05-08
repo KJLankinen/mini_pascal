@@ -8,11 +8,10 @@ use std::collections::HashMap;
 
 pub struct Analyzer<'a, 'b> {
     tree: &'b mut LcRsTree<NodeType<'a>>,
-    symbols: HashMap<(&'a str, u32), SymbolType>,
     function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
-    scope_depth: u32,
     current_return_type: Option<SymbolType>,
+    scope: Scope<'a>,
 }
 
 struct Parameter<'a> {
@@ -25,6 +24,63 @@ struct FunctionSignature<'a> {
     parameters: Option<Vec<Parameter<'a>>>,
     return_type: Option<SymbolType>,
     token: TokenData<'a>,
+}
+
+pub struct Scope<'a> {
+    depth: usize,
+    pub symbols: HashMap<usize, HashMap<&'a str, SymbolType>>,
+}
+
+impl<'a> Scope<'a> {
+    pub fn new() -> Self {
+        Scope {
+            depth: 0,
+            symbols: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: &'a str, st: SymbolType) {
+        self.symbols
+            .get_mut(&self.depth)
+            .expect("Scope should have a map at current depth.")
+            .insert(key, st);
+    }
+
+    pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
+        self.symbols
+            .get(&self.depth)
+            .expect("Scope should have a map at current depth.")
+            .get(key)
+    }
+
+    pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
+        for i in (0..=self.depth).rev() {
+            if let Some(hm) = self.symbols.get(&i) {
+                if let Some(st) = hm.get(key) {
+                    return Some(st);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn step_in(&mut self) {
+        self.depth += 1;
+        if self.symbols.get(&self.depth).is_none() {
+            self.symbols.insert(self.depth, HashMap::new());
+        }
+    }
+
+    pub fn step_out(&mut self) {
+        if let Some(hm) = self.symbols.get_mut(&self.depth) {
+            hm.clear();
+        }
+        assert!(
+            self.depth > 0,
+            "Scope depth should never be 0 before stepping out."
+        );
+        self.depth -= 1;
+    }
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
@@ -46,8 +102,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 if let Some(idx) = data.opt_idx {
                     self.subroutines(idx);
                 }
-                // Clear symbols after last subroutine and before main block
-                self.symbols.clear();
                 self.block(data.idx);
             }
             _ => {
@@ -91,8 +145,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         // will return.
         match self.tree[idx].data {
             NodeType::Block(idx) => {
-                // Increment scope so that names can be reused
-                self.scope_depth += 1;
+                self.scope.step_in();
                 // Idx points to first statement
                 self.statement(idx);
                 let mut next = idx;
@@ -100,11 +153,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     self.statement(idx);
                     next = idx;
                 }
-                assert!(
-                    self.scope_depth > 0,
-                    "Scope depth should never be zero inside a block."
-                );
-                self.scope_depth -= 1;
+                self.scope.step_out();
             }
             _ => {
                 assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -179,9 +228,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn function_block(&mut self, idx: usize) {
         match self.tree[idx].data {
             NodeType::Function(data) => {
-                // Reset the symbol table so it'll contain only values in this scope,
-                // including the parameters of the function
-                self.symbols.clear();
                 let fs = self
                     .function_signatures
                     .get(data.token.expect("Function is missing a token.").value)
@@ -192,8 +238,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
                 if let Some(params) = &fs.parameters {
                     for param in params {
-                        self.symbols
-                            .insert((param.id, self.scope_depth), param.symbol_type);
+                        self.scope.insert(param.id, param.symbol_type);
                     }
                 }
                 self.block(data.idx);
@@ -366,10 +411,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         while let Some(idx) = next {
             if let NodeType::Identifier(token) = self.tree[idx].data {
                 let token = token.expect("Identifier is missing a token.");
-                if let Some(_) = self.symbols.get(&(token.value, self.scope_depth)) {
+                if let Some(_) = self.scope.get(token.value) {
                     self.logger.add_error(ErrorType::Redeclaration(token));
                 } else {
-                    self.symbols.insert((token.value, self.scope_depth), st);
+                    self.scope.insert(token.value, st);
                 }
             } else {
                 break;
@@ -450,6 +495,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
+        //assert!(
+        //    false,
+        //    "Must increment scope, if the only statement is not a new block"
+        //);
         self.statement(data.idx2);
         if let Some(idx) = data.opt_idx {
             self.statement(idx);
@@ -465,6 +514,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 et,
             ));
         }
+        //assert!(
+        //    false,
+        //    "Must increment scope, if the only statement is not a new block"
+        //);
         self.statement(data.idx2);
     }
 
@@ -512,44 +565,40 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 let mut symbol_type = None;
                 let token = data.token.expect("Variable is missing a token.");
 
-                // Go upwards in scope and match to the first identifier that is found
-                for i in (0..=self.scope_depth).rev() {
-                    if let Some(&st) = self.symbols.get(&(token.value, i)) {
-                        // If variable contains an array indexing expression
-                        // i.e. opt_idx = Some(idx), check that
-                        // 1. The expression results in an integer
-                        // 2. The identifier is of type array
-                        let st = if let Some(expr_idx) = data.opt_idx {
-                            let et = self.get_expression_type(expr_idx);
-                            if SymbolType::Int != et {
-                                self.logger
-                                    .add_error(ErrorType::IndexTypeMismatch(token, et));
+                if let Some(&st) = self.scope.find(token.value) {
+                    // If variable contains an array indexing expression
+                    // i.e. opt_idx = Some(idx), check that
+                    // 1. The expression results in an integer
+                    // 2. The identifier is of type array
+                    let st = if let Some(expr_idx) = data.opt_idx {
+                        let et = self.get_expression_type(expr_idx);
+                        if SymbolType::Int != et {
+                            self.logger
+                                .add_error(ErrorType::IndexTypeMismatch(token, et));
+                        }
+                        match st {
+                            st @ SymbolType::Int
+                            | st @ SymbolType::String
+                            | st @ SymbolType::Bool
+                            | st @ SymbolType::Real => {
+                                self.logger.add_error(ErrorType::IllegalIndexing(token, st));
+                                st
                             }
-                            match st {
-                                st @ SymbolType::Int
-                                | st @ SymbolType::String
-                                | st @ SymbolType::Bool
-                                | st @ SymbolType::Real => {
-                                    self.logger.add_error(ErrorType::IllegalIndexing(token, st));
-                                    st
-                                }
-                                SymbolType::ArrayInt(_) => SymbolType::Int,
-                                SymbolType::ArrayString(_) => SymbolType::String,
-                                SymbolType::ArrayBool(_) => SymbolType::Bool,
-                                SymbolType::ArrayReal(_) => SymbolType::Real,
-                                SymbolType::Undefined => SymbolType::Undefined,
-                            }
-                        } else {
-                            st
-                        };
+                            SymbolType::ArrayInt(_) => SymbolType::Int,
+                            SymbolType::ArrayString(_) => SymbolType::String,
+                            SymbolType::ArrayBool(_) => SymbolType::Bool,
+                            SymbolType::ArrayReal(_) => SymbolType::Real,
+                            SymbolType::Undefined => SymbolType::Undefined,
+                        }
+                    } else {
+                        st
+                    };
 
-                        assert!(
-                            SymbolType::Undefined != st,
-                            "Symbol type from symbol table should never be undefined."
-                        );
-                        symbol_type = Some(st);
-                        break;
-                    }
+                    assert!(
+                        SymbolType::Undefined != st,
+                        "Symbol type from symbol table should never be undefined."
+                    );
+                    symbol_type = Some(st);
                 }
                 symbol_type
             }
@@ -566,11 +615,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     pub fn new(tree: &'b mut LcRsTree<NodeType<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Analyzer {
             tree: tree,
-            symbols: HashMap::new(),
             function_signatures: HashMap::new(),
             logger: logger,
-            scope_depth: 0,
             current_return_type: None,
+            scope: Scope::new(),
         }
     }
 }
