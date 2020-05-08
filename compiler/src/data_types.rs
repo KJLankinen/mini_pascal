@@ -75,6 +75,7 @@ pub enum ErrorType<'a> {
     MismatchedReturnType(TokenData<'a>, Option<SymbolType>, Option<SymbolType>),
     ReadMismatchedType(TokenData<'a>, SymbolType),
     ExprTypeMismatch(TokenData<'a>, SymbolType, SymbolType),
+    MissingReturnStatements(TokenData<'a>),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -99,6 +100,7 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::MismatchedReturnType(_, _, _) => write!(f, "mismatched return type"),
             ErrorType::ReadMismatchedType(_, _) => write!(f, "mismatched read type"),
             ErrorType::ExprTypeMismatch(_, _, _) => write!(f, "mismatched expression type"),
+            ErrorType::MissingReturnStatements(_) => write!(f, "missing return statements"),
         }
     }
 }

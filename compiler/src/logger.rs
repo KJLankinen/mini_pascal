@@ -180,6 +180,11 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
+                ErrorType::MissingReturnStatements(token) => {
+                    eprintln!("Function does not return from every possible branch.");
+                    line = token.line;
+                    column = token.column;
+                }
             }
             self.print_error(line as usize, column as usize);
         }

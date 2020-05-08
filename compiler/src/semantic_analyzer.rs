@@ -59,25 +59,18 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn block(&mut self, idx: usize) -> Option<SymbolType> {
-        //assert!(false, "Block not yet done");
-        // Correct type is checked by return. Need to check that those that must return, always
-        // will return.
+    fn block(&mut self, idx: usize) {
         if let NodeType::Block(idx) = self.tree[idx].data {
             self.scope.step_in();
-
-            self.statement(idx);
-            let mut next = idx;
-            while let Some(idx) = self.tree[next].right_sibling {
+            let mut next = Some(idx);
+            while let Some(idx) = next {
                 self.statement(idx);
-                next = idx;
+                next = self.tree[idx].right_sibling;
             }
-
             self.scope.step_out();
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
-        None
     }
 
     fn function_signature(&mut self, idx: usize) {
@@ -132,15 +125,33 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn function_block(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
-            let fs = self
-                .function_signatures
-                .get(data.token.expect("Function is missing a token.").value)
-                .expect("Function signature should already be stored in the map.");
+            let token = data.token.expect("Function is missing a token.");
 
-            // Set return type and step into new scope and add parameters as symbols
-            self.current_return_type = fs.return_type;
+            // Set return type
+            self.current_return_type = self
+                .function_signatures
+                .get(token.value)
+                .expect("Function signature should already be stored in the map.")
+                .return_type;
+
+            if self.current_return_type.is_some() {
+                // Make a preliminary pass that makes sure the function returns
+                // at least something from every possible branch.
+                // The correctness of the return type is checked during actual analysis
+                if false == self.block_returns(data.idx) {
+                    self.logger
+                        .add_error(ErrorType::MissingReturnStatements(token));
+                }
+            }
+
+            // Step into new scope and declare function parameters inside the scope
             self.scope.step_in();
-            if let Some(params) = &fs.parameters {
+            if let Some(params) = &self
+                .function_signatures
+                .get(token.value)
+                .expect("Function signature should already be stored in the map.")
+                .parameters
+            {
                 for param in params {
                     self.scope.insert(param.id, param.symbol_type);
                 }
@@ -162,9 +173,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(_) => {
-                self.block(idx);
-            }
+            NodeType::Block(_) => self.block(idx),
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(data) => {
@@ -220,13 +229,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn assign_statement(&mut self, data: &IdxIdx) {
-        // idx is variable
-        // idx2 is expression
         if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
             let token = variable_data.token.expect("Variable is missing a token.");
             let et = self.get_expression_type(data.idx2);
             if let Some(vt) = self.get_variable_type(data.idx) {
-                if et != vt {
+                if et != vt && SymbolType::Undefined != et {
                     self.logger
                         .add_error(ErrorType::AssignMismatchedType(token, vt, et));
                 }
@@ -250,15 +257,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn call_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<SymbolType> {
-        // Gather argument types to vector
         let mut argument_types = vec![];
-        if let Some(idx) = data.opt_idx {
+        let mut next = data.opt_idx;
+        while let Some(idx) = next {
             argument_types.push(self.get_expression_type(idx));
-            let mut next = idx;
-            while let Some(idx) = self.tree[next].right_sibling {
-                argument_types.push(self.get_expression_type(idx));
-                next = idx;
-            }
+            next = self.tree[idx].right_sibling;
         }
 
         let token = data.token.expect("Call is missing a token.");
@@ -266,7 +269,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let Some(params) = &fs.parameters {
                 if params.len() == argument_types.len() {
                     for i in 0..params.len() {
-                        if params[i].symbol_type != argument_types[i] {
+                        if params[i].symbol_type != argument_types[i]
+                            && SymbolType::Undefined != argument_types[i]
+                        {
                             self.logger.add_error(ErrorType::MismatchedArgumentTypes(
                                 fs.token,
                                 params.iter().map(|p| p.symbol_type).collect(),
@@ -336,7 +341,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             None
         };
 
-        if rt != self.current_return_type {
+        if self.current_return_type != rt && Some(SymbolType::Undefined) != rt {
             self.logger.add_error(ErrorType::MismatchedReturnType(
                 data.token.expect("Return is missing a token."),
                 rt,
@@ -392,7 +397,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn if_statement(&mut self, data: &TokenIdxIdxOptIdx<'a>) {
         let et = self.get_expression_type(data.idx);
-        if SymbolType::Bool != et {
+        if SymbolType::Bool != et && SymbolType::Undefined != et {
             self.logger.add_error(ErrorType::ExprTypeMismatch(
                 data.token.expect("If is missing a token."),
                 SymbolType::Bool,
@@ -412,7 +417,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn while_statement(&mut self, data: &TokenIdxIdx<'a>) {
         let et = self.get_expression_type(data.idx);
-        if SymbolType::Bool != et {
+        if SymbolType::Bool != et && SymbolType::Undefined != et {
             self.logger.add_error(ErrorType::ExprTypeMismatch(
                 data.token.expect("While is missing a token."),
                 SymbolType::Bool,
@@ -436,7 +441,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 | SymbolType::ArrayBool(expr_idx)
                 | SymbolType::ArrayReal(expr_idx) => {
                     let et = self.get_expression_type(expr_idx);
-                    if SymbolType::Int != et {
+                    if SymbolType::Int != et && SymbolType::Undefined != et {
                         self.logger.add_error(ErrorType::IndexTypeMismatch(
                             data.token.expect("Type is missing a token."),
                             et,
@@ -472,7 +477,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // 2. The identifier is of type array
                 let st = if let Some(expr_idx) = data.opt_idx {
                     let et = self.get_expression_type(expr_idx);
-                    if SymbolType::Int != et {
+                    if SymbolType::Int != et && SymbolType::Undefined != et {
                         self.logger
                             .add_error(ErrorType::IndexTypeMismatch(token, et));
                     }
@@ -519,10 +524,71 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             scope: Scope::new(),
         }
     }
+
+    fn block_returns(&mut self, idx: usize) -> bool {
+        // This function checks if a block returns something.
+        // Block returns, if at least one of the following holds:
+        // - one of the statements of the block is a return statement
+        // - the block contains an unconditional block that returns
+        // - there is an if-then-else clause, where both if and else returns
+        fn if_returns<'a, 'b>(analyzer: &mut Analyzer<'a, 'b>, idx: usize) -> bool {
+            // This function checks whether or not both the if and the else clauses return
+            if let NodeType::If(data) = analyzer.tree[idx].data {
+                // There must exist an else clause for both to return
+                if let Some(else_idx) = data.opt_idx {
+                    // Check whether the if returns
+                    if match analyzer.tree[data.idx2].data {
+                        NodeType::Return(_) => true,
+                        NodeType::Block(_) => analyzer.block_returns(data.idx2),
+                        NodeType::If(_) => if_returns(analyzer, data.idx2),
+                        _ => false,
+                    } {
+                        // Check whether the else returns
+                        match analyzer.tree[else_idx].data {
+                            NodeType::Return(_) => true,
+                            NodeType::Block(_) => analyzer.block_returns(else_idx),
+                            NodeType::If(_) => if_returns(analyzer, else_idx),
+                            _ => false,
+                        }
+                    } else {
+                        // If didn't return
+                        false
+                    }
+                } else {
+                    // There is no else
+                    false
+                }
+            } else {
+                assert!(false, "Unexpected node {:#?}.", analyzer.tree[idx]);
+                false
+            }
+        }
+
+        let mut every_branch_returns = false;
+        if let NodeType::Block(idx) = self.tree[idx].data {
+            let mut next = Some(idx);
+            while let Some(idx) = next {
+                every_branch_returns = match self.tree[idx].data {
+                    NodeType::Return(_) => true,
+                    NodeType::If(_) => if_returns(self, idx),
+                    NodeType::Block(_) => self.block_returns(idx),
+                    _ => false,
+                };
+
+                if every_branch_returns {
+                    break;
+                }
+                next = self.tree[idx].right_sibling;
+            }
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+        }
+        every_branch_returns
+    }
 }
 
 // ---------------------------------------------------------------------
-// Auxiliary types used during the semantic analysis
+// Auxiliary structs used during the semantic analysis
 // ---------------------------------------------------------------------
 struct Parameter<'a> {
     is_ref: bool,
