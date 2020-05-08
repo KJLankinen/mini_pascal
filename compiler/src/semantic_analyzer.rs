@@ -1,6 +1,6 @@
 use super::data_types::{
     ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
-    TokenOptIdx,
+    TokenOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -180,51 +180,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 self.call_statement(&data);
             }
             NodeType::Declaration(data) => self.declaration_statement(&data),
-            NodeType::Return(data) => {
-                self.return_statement(&data);
-            }
+            NodeType::Return(data) => self.return_statement(&data),
             NodeType::Read(idx) => self.read_statement(idx),
             NodeType::Write(idx) => self.write_statement(idx),
             NodeType::If(data) => self.if_statement(&data),
             NodeType::While(data) => self.while_statement(&data),
-            NodeType::RelOp(_) => {
-                // token is rel op
-                // idx is left add op
-                // opt_idx is right add op
-            }
-            NodeType::AddOp(_) => {
-                // token is op
-                // idx is mul op
-                // opt_idx is add op
-            }
-            NodeType::MulOp(_) => {
-                // token is mulop
-                // idx is factor
-                // opt_idx is mul op
-            }
-            NodeType::Factor(_) => {
-                // token is operator or None for first factor
-                // idx is the concrete factor node
-            }
-            NodeType::Variable(_) => {
-                // token is identifier
-                // opt_idx is possible array indexing expression
-            }
-            NodeType::Literal(_) => {
-                // token is the literal data
-            }
-            NodeType::Not(_) => {
-                // token is the not operator
-                // idx is the factor
-            }
-            NodeType::ArraySize(_) => {
-                // token is the .size operator
-                // idx is the factor
-            }
-            _ => {
-                assert!(false, "Unhandled node type.");
-                ()
-            }
+            _ => assert!(false, "Unexpected node {:#?}.", self.tree[idx]),
         };
     }
 
@@ -334,7 +295,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn return_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<SymbolType> {
+    fn return_statement(&mut self, data: &TokenOptIdx<'a>) {
         let rt = if let Some(idx) = data.opt_idx {
             Some(self.get_expression_type(idx))
         } else {
@@ -348,8 +309,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 self.current_return_type,
             ));
         }
-
-        rt
     }
 
     fn read_statement(&mut self, idx: usize) {
@@ -461,10 +420,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn get_expression_type(&mut self, _idx: usize) -> SymbolType {
-        SymbolType::Undefined
-    }
-
     fn get_variable_type(&mut self, idx: usize) -> Option<SymbolType> {
         if let NodeType::Variable(data) = self.tree[idx].data {
             let mut symbol_type = None;
@@ -509,6 +464,218 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
             None
+        }
+    }
+
+    fn match_operands(
+        &mut self,
+        type1: SymbolType,
+        type2: SymbolType,
+        accepted_types: &Vec<SymbolType>,
+        token: &TokenData<'a>,
+    ) -> SymbolType {
+        // This is a helper function that figures out what is the return type, given two types as
+        // input and a vector of allowed types for the operator, e.g. [ST::Int, ST::Bool, ...]
+        let type1_accepted = accepted_types.iter().find(|&&t| t == type1).is_some();
+        let type2_accepted = accepted_types.iter().find(|&&t| t == type2).is_some();
+        let mut log_error = false;
+
+        let rt = if type1 == type2 {
+            if SymbolType::Undefined == type1 || type1_accepted {
+                type1
+            } else {
+                log_error = true;
+                SymbolType::Undefined
+            }
+        } else if SymbolType::Undefined == type1 || SymbolType::Undefined == type2 {
+            let (defined_type, defined_type_accepted) = if SymbolType::Undefined == type1 {
+                (type2, type2_accepted)
+            } else {
+                (type1, type1_accepted)
+            };
+
+            if defined_type_accepted {
+                defined_type
+            } else {
+                log_error = true;
+                SymbolType::Undefined
+            }
+        } else {
+            if type1_accepted && type2_accepted {
+                log_error = true;
+                SymbolType::Undefined
+            } else if type1_accepted {
+                log_error = true;
+                type1
+            } else if type2_accepted {
+                log_error = true;
+                type2
+            } else {
+                log_error = true;
+                SymbolType::Undefined
+            }
+        };
+
+        if log_error {
+            self.logger
+                .add_error(ErrorType::IllegalOperation(*token, vec![type1, type2]));
+        }
+
+        rt
+    }
+
+    fn get_expression_type(&mut self, idx: usize) -> SymbolType {
+        match self.tree[idx].data {
+            NodeType::RelOp(data) => {
+                let token = data.token.expect("Relation operator is missing a token.");
+                let type1 = self.get_expression_type(data.idx);
+                let type2 = self.get_expression_type(data.idx2);
+
+                match token.token_type {
+                    TokenType::OperatorEqual
+                    | TokenType::OperatorNotEqual
+                    | TokenType::OperatorGreater
+                    | TokenType::OperatorGreaterEqual
+                    | TokenType::OperatorLess
+                    | TokenType::OperatorLessEqual => {
+                        if SymbolType::Undefined
+                            == self.match_operands(
+                                type1,
+                                type2,
+                                &vec![
+                                    SymbolType::Bool,
+                                    SymbolType::Int,
+                                    SymbolType::Real,
+                                    SymbolType::String,
+                                ],
+                                &token,
+                            )
+                        {
+                            SymbolType::Undefined
+                        } else {
+                            SymbolType::Bool
+                        }
+                    }
+                    _ => {
+                        assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                        SymbolType::Undefined
+                    }
+                }
+            }
+            NodeType::AddOp(data) => {
+                let token = data.token.expect("Add operator is missing a token.");
+                if let Some(idx) = data.opt_idx {
+                    let type1 = self.get_expression_type(data.idx);
+                    let type2 = self.get_expression_type(idx);
+
+                    match token.token_type {
+                        TokenType::OperatorPlus => self.match_operands(
+                            type1,
+                            type2,
+                            &vec![SymbolType::Int, SymbolType::Real, SymbolType::String],
+                            &token,
+                        ),
+                        TokenType::OperatorMinus => self.match_operands(
+                            type1,
+                            type2,
+                            &vec![SymbolType::Int, SymbolType::Real],
+                            &token,
+                        ),
+                        TokenType::OperatorOr => {
+                            self.match_operands(type1, type2, &vec![SymbolType::Bool], &token)
+                        }
+                        _ => {
+                            assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                            SymbolType::Undefined
+                        }
+                    }
+                } else {
+                    // Operator is sign, and idx is add_op
+                    let type1 = self.get_expression_type(data.idx);
+                    match type1 {
+                        SymbolType::Int | SymbolType::Real => type1,
+                        _ => {
+                            self.logger
+                                .add_error(ErrorType::IllegalOperation(token, vec![type1]));
+                            SymbolType::Undefined
+                        }
+                    }
+                }
+            }
+            NodeType::MulOp(data) => {
+                let token = data.token.expect("Multiply operator is missing a token.");
+                let type1 = self.get_expression_type(data.idx);
+                let type2 = self.get_expression_type(data.idx2);
+
+                match token.token_type {
+                    TokenType::OperatorMultiply | TokenType::OperatorDivide => self.match_operands(
+                        type1,
+                        type2,
+                        &vec![SymbolType::Int, SymbolType::Real],
+                        &token,
+                    ),
+                    TokenType::OperatorModulo => {
+                        self.match_operands(type1, type2, &vec![SymbolType::Int], &token)
+                    }
+                    TokenType::OperatorAnd => {
+                        self.match_operands(type1, type2, &vec![SymbolType::Bool], &token)
+                    }
+                    _ => {
+                        assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                        SymbolType::Undefined
+                    }
+                }
+            }
+            NodeType::Variable(data) => {
+                if let Some(vt) = self.get_variable_type(idx) {
+                    vt
+                } else {
+                    self.logger.add_error(ErrorType::UndeclaredIdentifier(
+                        data.token.expect("Variable is missing a token."),
+                    ));
+                    SymbolType::Undefined
+                }
+            }
+            NodeType::Literal(token) => {
+                match token.expect("Literal is missing a token.").token_type {
+                    TokenType::LiteralBoolean => SymbolType::Bool,
+                    TokenType::LiteralInt => SymbolType::Int,
+                    TokenType::LiteralReal => SymbolType::Real,
+                    TokenType::LiteralString => SymbolType::String,
+                    _ => SymbolType::Undefined,
+                }
+            }
+            NodeType::Not(data) => {
+                let ft = self.get_expression_type(data.idx);
+                match ft {
+                    SymbolType::Bool | SymbolType::Undefined => {}
+                    _ => {
+                        self.logger.add_error(ErrorType::ExprTypeMismatch(
+                            data.token.expect("Array size operator is missing a token."),
+                            SymbolType::Bool,
+                            ft,
+                        ));
+                    }
+                }
+                SymbolType::Bool
+            }
+            NodeType::ArraySize(data) => {
+                let ft = self.get_expression_type(data.idx);
+                match ft {
+                    SymbolType::Bool | SymbolType::Int | SymbolType::Real | SymbolType::String => {
+                        self.logger.add_error(ErrorType::ArraySizeTypeMismatch(
+                            data.token.expect("Array size operator is missing a token."),
+                            ft,
+                        ));
+                    }
+                    _ => {}
+                }
+                SymbolType::Int
+            }
+            _ => {
+                assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+                SymbolType::Undefined
+            }
         }
     }
 

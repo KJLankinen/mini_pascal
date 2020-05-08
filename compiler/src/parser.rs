@@ -1506,10 +1506,10 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     fn expression(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxOptIdx {
+        let mut node_data = TokenIdxIdx {
             token: None,
             idx: !0,
-            opt_idx: None,
+            idx2: !0,
         };
 
         let operators = [
@@ -1542,7 +1542,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 &mut recovery_token,
             )?;
 
-            node_data.opt_idx = Some(self.simple_expression(my_idx)?);
+            node_data.idx2 = self.simple_expression(my_idx)?;
             self.tree[my_idx].data = NodeType::RelOp(node_data);
             Ok(my_idx)
         } else {
@@ -1614,10 +1614,10 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn term(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxOptIdx {
+        let mut node_data = TokenIdxIdx {
             token: None,
             idx: !0,
-            opt_idx: None,
+            idx2: !0,
         };
 
         let mut recovery_token = None;
@@ -1644,7 +1644,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 &mut recovery_token,
             )?;
 
-            node_data.opt_idx = Some(self.term(my_idx)?);
+            node_data.idx2 = self.term(my_idx)?;
             my_idx
         } else {
             node_data.idx
@@ -1756,13 +1756,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.remove_node(my_idx);
             node_data.idx
         } else {
-            self.tree[my_idx].data = NodeType::Factor(node_data);
+            self.tree[my_idx].data = NodeType::Not(node_data);
             my_idx
         };
 
         // Remove the "parent" factor node that was created at start, if there is no size operator
         let return_idx = if TokenType::OperatorSize == self.scanner.peek().token_type {
-            self.tree[size_idx].data = NodeType::Factor(TokenIdx {
+            self.tree[size_idx].data = NodeType::ArraySize(TokenIdx {
                 token: Some(self.match_token(&[TokenType::OperatorSize])?),
                 idx: return_idx,
             });

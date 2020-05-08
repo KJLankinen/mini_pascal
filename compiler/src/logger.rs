@@ -57,11 +57,15 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IllegalOperation(token, symbol) => {
-                    eprintln!(
-                        "Operator \"{}\" can't be used in an expression with type \"{}\".",
-                        token.value, symbol
+                ErrorType::IllegalOperation(token, symbols) => {
+                    eprint!(
+                        "Operator \"{}\" can't be used in an expression with type(s) ",
+                        token.value
                     );
+                    for st in symbols {
+                        eprint!("\"{}\", ", st);
+                    }
+                    eprintln!("");
                     line = token.line;
                     column = token.column;
                 }
@@ -182,6 +186,14 @@ impl<'a> Logger<'a> {
                 }
                 ErrorType::MissingReturnStatements(token) => {
                     eprintln!("Function does not return from every possible branch.");
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::ArraySizeTypeMismatch(token, factor_type) => {
+                    eprintln!(
+                        ".size operator is not defined for type \"{}\".",
+                        factor_type
+                    );
                     line = token.line;
                     column = token.column;
                 }

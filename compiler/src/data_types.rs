@@ -47,7 +47,7 @@ pub enum ErrorType<'a> {
     SyntaxError(TokenData<'a>, Vec<TokenType>),
     MismatchedTypes(TokenData<'a>, SymbolType, SymbolType),
     UndeclaredIdentifier(TokenData<'a>),
-    IllegalOperation(TokenData<'a>, SymbolType),
+    IllegalOperation(TokenData<'a>, Vec<SymbolType>),
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
     AssignMismatchedType(TokenData<'a>, SymbolType, SymbolType),
@@ -76,6 +76,7 @@ pub enum ErrorType<'a> {
     ReadMismatchedType(TokenData<'a>, SymbolType),
     ExprTypeMismatch(TokenData<'a>, SymbolType, SymbolType),
     MissingReturnStatements(TokenData<'a>),
+    ArraySizeTypeMismatch(TokenData<'a>, SymbolType),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -101,6 +102,9 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::ReadMismatchedType(_, _) => write!(f, "mismatched read type"),
             ErrorType::ExprTypeMismatch(_, _, _) => write!(f, "mismatched expression type"),
             ErrorType::MissingReturnStatements(_) => write!(f, "missing return statements"),
+            ErrorType::ArraySizeTypeMismatch(_, _) => {
+                write!(f, "array size operator type mismatch")
+            }
         }
     }
 }
@@ -321,10 +325,9 @@ pub enum NodeType<'a> {
     Write(usize),
     If(TokenIdxIdxOptIdx<'a>),
     While(TokenIdxIdx<'a>),
-    RelOp(TokenIdxOptIdx<'a>),
+    RelOp(TokenIdxIdx<'a>),
     AddOp(TokenIdxOptIdx<'a>),
-    MulOp(TokenIdxOptIdx<'a>),
-    Factor(TokenIdx<'a>),
+    MulOp(TokenIdxIdx<'a>),
     Variable(TokenOptIdx<'a>),
     Literal(Option<TokenData<'a>>),
     Not(TokenIdx<'a>),
@@ -361,11 +364,10 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::RelOp(_) => 18,
             NodeType::AddOp(_) => 19,
             NodeType::MulOp(_) => 20,
-            NodeType::Factor(_) => 21,
-            NodeType::Variable(_) => 22,
-            NodeType::Literal(_) => 23,
-            NodeType::Not(_) => 24,
-            NodeType::ArraySize(_) => 25,
+            NodeType::Variable(_) => 21,
+            NodeType::Literal(_) => 22,
+            NodeType::Not(_) => 23,
+            NodeType::ArraySize(_) => 24,
         }
     }
 }
@@ -572,19 +574,6 @@ impl<'a> Serialize for NodeType<'a> {
                     "NodeType",
                     u32::from(*self),
                     "Multiply operation",
-                    1,
-                )?;
-                state.serialize_field(
-                    "operator",
-                    &data.token.unwrap_or_else(|| EMPTY_TOKEN).value,
-                )?;
-                state.end()
-            }
-            NodeType::Factor(data) => {
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Factor",
                     1,
                 )?;
                 state.serialize_field(
