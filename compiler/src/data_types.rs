@@ -51,7 +51,6 @@ pub enum ErrorType<'a> {
     UnmatchedComment(u32, u32),
     Redeclaration(TokenData<'a>),
     AssignMismatchedType(TokenData<'a>, SymbolType, SymbolType),
-    IOMismatchedType(TokenData<'a>, SymbolType),
     AssertMismatchedType(TokenData<'a>, SymbolType),
     IndexTypeMismatch(TokenData<'a>, SymbolType),
     IllegalIndexing(TokenData<'a>, SymbolType),
@@ -75,6 +74,7 @@ pub enum ErrorType<'a> {
     ),
     MismatchedReturnType(TokenData<'a>, Option<SymbolType>, Option<SymbolType>),
     ReadMismatchedType(TokenData<'a>, SymbolType),
+    ExprTypeMismatch(TokenData<'a>, SymbolType, SymbolType),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -88,7 +88,6 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::UnmatchedComment(_, _) => write!(f, "unmatched comment"),
             ErrorType::Redeclaration(_) => write!(f, "redeclaration"),
             ErrorType::AssignMismatchedType(_, _, _) => write!(f, "mismatched type"),
-            ErrorType::IOMismatchedType(_, _) => write!(f, "mismatched type"),
             ErrorType::AssertMismatchedType(_, _) => write!(f, "mismatched type"),
             ErrorType::IndexTypeMismatch(_, _) => write!(f, "mismatched type"),
             ErrorType::IllegalIndexing(_, _) => write!(f, "illegal indexing"),
@@ -99,6 +98,7 @@ impl<'a> fmt::Display for ErrorType<'a> {
             }
             ErrorType::MismatchedReturnType(_, _, _) => write!(f, "mismatched return type"),
             ErrorType::ReadMismatchedType(_, _) => write!(f, "mismatched read type"),
+            ErrorType::ExprTypeMismatch(_, _, _) => write!(f, "mismatched expression type"),
         }
     }
 }
@@ -316,7 +316,7 @@ pub enum NodeType<'a> {
     Declaration(IdxIdx),
     Return(TokenOptIdx<'a>),
     Read(usize),
-    Write(TokenIdx<'a>),
+    Write(usize),
     If(TokenIdxIdxOptIdx<'a>),
     While(TokenIdxIdx<'a>),
     RelOp(TokenIdxOptIdx<'a>),

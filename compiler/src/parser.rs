@@ -1221,21 +1221,18 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn write_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdx {
-            token: None,
-            idx: !0,
-        };
+        let mut arg = !0;
 
         fn parse_write<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenIdx<'a>,
+            arg: &mut usize,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordWrite => {
-                    node_data.token = parser.process(
+                    parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordWrite],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1254,7 +1251,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    node_data.idx = parser
+                    *arg = parser
                         .process(
                             Parser::argument_list,
                             my_idx,
@@ -1275,13 +1272,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_write(parser, tt, my_idx, node_data)?;
+                parse_write(parser, tt, my_idx, arg)?;
             }
             Ok(())
         }
 
-        parse_write(self, TokenType::KeywordWrite, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Write(node_data);
+        parse_write(self, TokenType::KeywordWrite, my_idx, &mut arg)?;
+        self.tree[my_idx].data = NodeType::Write(arg);
 
         Ok(my_idx)
     }
@@ -1533,7 +1530,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             )?
             .unwrap_or_else(|| !0);
 
-        if let Some(tt) = operators
+        if let Some(_) = operators
             .iter()
             .find(|&&op| op == self.scanner.peek().token_type)
         {
@@ -1586,7 +1583,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                     .process(Parser::term, my_idx, &operators, &mut recovery_token)?
                     .unwrap_or_else(|| !0);
 
-                if let Some(tt) = operators
+                if let Some(_) = operators
                     .iter()
                     .find(|&&op| op == self.scanner.peek().token_type)
                 {
@@ -1635,7 +1632,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             .process(Parser::factor, my_idx, &operators, &mut recovery_token)?
             .unwrap_or_else(|| !0);
 
-        let return_idx = if let Some(tt) = operators
+        let return_idx = if let Some(_) = operators
             .iter()
             .find(|&&op| op == self.scanner.peek().token_type)
         {

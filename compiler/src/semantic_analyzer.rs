@@ -1,5 +1,6 @@
 use super::data_types::{
-    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenOptIdx,
+    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
+    TokenOptIdx,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -85,7 +86,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn block(&mut self, idx: usize) -> Option<SymbolType> {
-        assert!(false, "Block not yet done");
+        //assert!(false, "Block not yet done");
         // Correct type is checked by return. Need to check that those that must return, always
         // will return.
         match self.tree[idx].data {
@@ -106,7 +107,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 self.scope_depth -= 1;
             }
             _ => {
-                assert!(false, "Unexpected node.");
+                assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
             }
         }
         None
@@ -211,7 +212,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(idx) => {
+            NodeType::Block(_) => {
                 self.block(idx);
             }
             NodeType::Assert(data) => self.assert_statement(&data),
@@ -224,52 +225,40 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 self.return_statement(&data);
             }
             NodeType::Read(idx) => self.read_statement(idx),
-            NodeType::Write(data) => {
-                // token is "write" token
-                // idx is first expression
-            }
-            NodeType::If(data) => {
-                // token is "if" token
-                // idx1 is boolean expr
-                // idx2 is if statement
-                // opt_idx is else statement
-            }
-            NodeType::While(data) => {
-                // token is "while" token
-                // idx1 is boolean expression
-                // idx2 is statement
-            }
-            NodeType::RelOp(data) => {
+            NodeType::Write(idx) => self.write_statement(idx),
+            NodeType::If(data) => self.if_statement(&data),
+            NodeType::While(data) => self.while_statement(&data),
+            NodeType::RelOp(_) => {
                 // token is rel op
                 // idx is left add op
                 // opt_idx is right add op
             }
-            NodeType::AddOp(data) => {
+            NodeType::AddOp(_) => {
                 // token is op
                 // idx is mul op
                 // opt_idx is add op
             }
-            NodeType::MulOp(data) => {
+            NodeType::MulOp(_) => {
                 // token is mulop
                 // idx is factor
                 // opt_idx is mul op
             }
-            NodeType::Factor(data) => {
+            NodeType::Factor(_) => {
                 // token is operator or None for first factor
                 // idx is the concrete factor node
             }
-            NodeType::Variable(data) => {
+            NodeType::Variable(_) => {
                 // token is identifier
                 // opt_idx is possible array indexing expression
             }
-            NodeType::Literal(token) => {
+            NodeType::Literal(_) => {
                 // token is the literal data
             }
-            NodeType::Not(data) => {
+            NodeType::Not(_) => {
                 // token is the not operator
                 // idx is the factor
             }
-            NodeType::ArraySize(data) => {
+            NodeType::ArraySize(_) => {
                 // token is the .size operator
                 // idx is the factor
             }
@@ -442,6 +431,43 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
+    fn write_statement(&mut self, idx: usize) {
+        let mut next = Some(idx);
+        while let Some(idx) = next {
+            // Should these be stored somewhere or just check here?
+            self.get_expression_type(idx);
+            next = self.tree[idx].right_sibling;
+        }
+    }
+
+    fn if_statement(&mut self, data: &TokenIdxIdxOptIdx<'a>) {
+        let et = self.get_expression_type(data.idx);
+        if SymbolType::Bool != et {
+            self.logger.add_error(ErrorType::ExprTypeMismatch(
+                data.token.expect("If is missing a token."),
+                SymbolType::Bool,
+                et,
+            ));
+        }
+
+        self.statement(data.idx2);
+        if let Some(idx) = data.opt_idx {
+            self.statement(idx);
+        }
+    }
+
+    fn while_statement(&mut self, data: &TokenIdxIdx<'a>) {
+        let et = self.get_expression_type(data.idx);
+        if SymbolType::Bool != et {
+            self.logger.add_error(ErrorType::ExprTypeMismatch(
+                data.token.expect("While is missing a token."),
+                SymbolType::Bool,
+                et,
+            ));
+        }
+        self.statement(data.idx2);
+    }
+
     // ---------------------------------------------------------------------
     // Type checking
     // ---------------------------------------------------------------------
@@ -476,7 +502,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn get_expression_type(&mut self, idx: usize) -> SymbolType {
+    fn get_expression_type(&mut self, _idx: usize) -> SymbolType {
         SymbolType::Undefined
     }
 

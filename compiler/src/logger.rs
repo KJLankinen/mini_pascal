@@ -90,16 +90,6 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IOMismatchedType(token, expression_type) => {
-                    eprint!(
-                        "Read and print can only be used with types \"{}\" and \"{}\", ",
-                        SymbolType::Int,
-                        SymbolType::String
-                    );
-                    eprintln!("not with the given type of \"{}\".", expression_type);
-                    line = token.line;
-                    column = token.column;
-                }
                 ErrorType::AssertMismatchedType(token, expression_type) => {
                     eprint!(
                         "Assert can only be used with type \"{}\", ",
@@ -182,17 +172,17 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
+                ErrorType::ExprTypeMismatch(token, expected_type, given_type) => {
+                    eprintln!(
+                        "Expression type is expected to be \"{}\", but instead it is \"{}\".",
+                        expected_type, given_type
+                    );
+                    line = token.line;
+                    column = token.column;
+                }
             }
             self.print_error(line as usize, column as usize);
         }
-    }
-
-    fn print_line(&self, line: usize) {
-        assert!(line > 0);
-        // Lines start from '1' in editors but vector indexing starts from '0'
-        let line = line - 1;
-        assert!(line < self.lines.len(), "Line number is too large.");
-        eprint!("{}", self.lines[line]);
     }
 
     fn print_error(&self, line: usize, column: usize) {
