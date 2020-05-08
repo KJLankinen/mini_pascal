@@ -11,6 +11,7 @@ pub struct Analyzer<'a, 'b> {
     function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
     scope_depth: u32,
+    current_return_type: Option<SymbolType>,
 }
 
 struct Parameter<'a> {
@@ -37,7 +38,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     // Functions that handle the semantic constraints
     // ---------------------------------------------------------------------
-
     fn program(&mut self, idx: usize) {
         match self.tree[idx].data {
             NodeType::Program(data) => {
@@ -84,11 +84,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn block(&mut self, idx: usize) {
-        // Block must check that:
-        // - if return type = Some, there is return statements everywhere and they have the correct
-        // type
-        // - else, all returns are empty, i.e. opt_idx is None.
+    fn block(&mut self, idx: usize) -> Option<SymbolType> {
+        assert!(false, "Block not yet done");
+        // Correct type is checked by return. Need to check that those that must return, always
+        // will return.
         match self.tree[idx].data {
             NodeType::Block(idx) => {
                 // Increment scope so that names can be reused
@@ -110,6 +109,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 assert!(false, "Unexpected node.");
             }
         }
+        None
     }
 
     fn function_signature(&mut self, idx: usize) {
@@ -138,14 +138,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                                 // bool says if reference
                                 param_vec.push(Parameter {
                                     is_ref: data.b,
-                                    symbol_type: if let NodeType::VariableType(st) =
-                                        analyzer.tree[data.idx].data
-                                    {
-                                        st
-                                    } else {
-                                        assert!(false, "Unexpected node type.");
-                                        SymbolType::Undefined
-                                    },
+                                    symbol_type: analyzer.check_type(data.idx),
                                     id: data
                                         .token
                                         .expect("Parameter has no identifier token.")
@@ -170,11 +163,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
                     // Handle return type
                     if let Some(idx) = data.opt_idx2 {
-                        fs.return_type = if let NodeType::VariableType(st) = self.tree[idx].data {
-                            Some(st)
-                        } else {
-                            None
-                        };
+                        fs.return_type = Some(self.check_type(idx));
                     }
 
                     self.function_signatures.insert(token.value, fs);
@@ -196,6 +185,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     .function_signatures
                     .get(data.token.expect("Function is missing a token.").value)
                     .expect("Function signature should already be stored in the map.");
+
+                // Set the current return type to the return type of the function
+                self.current_return_type = fs.return_type;
+
                 if let Some(params) = &fs.parameters {
                     for param in params {
                         self.symbols
@@ -208,30 +201,29 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 assert!(false, "Unexpected node.");
             }
         }
+
+        // Reset to None, which is the return type of main block
+        self.current_return_type = None;
     }
 
+    // ---------------------------------------------------------------------
+    // Statements
+    // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
+            NodeType::Block(idx) => {
+                self.block(idx);
+            }
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(data) => {
                 self.call_statement(&data);
             }
-            NodeType::Declaration(data) => {
-                // idx1 is first identifier
-                // idx2 is type
-                //NodeType::Identifier(token) => {
-                // token is identifier
-                //}
-            }
+            NodeType::Declaration(data) => self.declaration_statement(&data),
             NodeType::Return(data) => {
-                // token is "return" token
-                // idx is expression
+                self.return_statement(&data);
             }
-            NodeType::Read(data) => {
-                // token is "read" token
-                // idx is first variable node
-            }
+            NodeType::Read(idx) => self.read_statement(idx),
             NodeType::Write(data) => {
                 // token is "write" token
                 // idx is first expression
@@ -379,6 +371,111 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
+    fn declaration_statement(&mut self, data: &IdxIdx) {
+        let st = self.check_type(data.idx2);
+        let mut next = Some(data.idx);
+        while let Some(idx) = next {
+            if let NodeType::Identifier(token) = self.tree[idx].data {
+                let token = token.expect("Identifier is missing a token.");
+                if let Some(_) = self.symbols.get(&(token.value, self.scope_depth)) {
+                    self.logger.add_error(ErrorType::Redeclaration(token));
+                } else {
+                    self.symbols.insert((token.value, self.scope_depth), st);
+                }
+            } else {
+                break;
+            }
+
+            next = self.tree[idx].right_sibling;
+        }
+    }
+
+    fn return_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<SymbolType> {
+        let rt = if let Some(idx) = data.opt_idx {
+            Some(self.get_expression_type(idx))
+        } else {
+            None
+        };
+
+        if rt != self.current_return_type {
+            self.logger.add_error(ErrorType::MismatchedReturnType(
+                data.token.expect("Return is missing a token."),
+                rt,
+                self.current_return_type,
+            ));
+        }
+
+        rt
+    }
+
+    fn read_statement(&mut self, idx: usize) {
+        let mut next = Some(idx);
+        while let Some(idx) = next {
+            if let NodeType::Variable(variable_data) = self.tree[idx].data {
+                let token = variable_data.token.expect("Variable is missing a token.");
+                if let Some(st) = self.get_variable_type(idx) {
+                    // Should we save the variable types somewhere for emitter?
+                    // Maybe do some map with (line, col) of first variable as key, and vector of
+                    // types as value, which can then be fetched easily
+                    match st {
+                        SymbolType::ArrayBool(_)
+                        | SymbolType::ArrayInt(_)
+                        | SymbolType::ArrayReal(_)
+                        | SymbolType::ArrayString(_) => {
+                            self.logger
+                                .add_error(ErrorType::ReadMismatchedType(token, st));
+                        }
+                        SymbolType::Undefined => {
+                            assert!(false, "Variable type should never be undefined.");
+                        }
+                        _ => {}
+                    }
+                } else {
+                    self.logger
+                        .add_error(ErrorType::UndeclaredIdentifier(token));
+                }
+            } else {
+                break;
+            }
+
+            next = self.tree[idx].right_sibling;
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Type checking
+    // ---------------------------------------------------------------------
+    fn check_type(&mut self, idx: usize) -> SymbolType {
+        match self.tree[idx].data {
+            NodeType::VariableType(data) => {
+                match data.st {
+                    SymbolType::ArrayInt(expr_idx)
+                    | SymbolType::ArrayString(expr_idx)
+                    | SymbolType::ArrayBool(expr_idx)
+                    | SymbolType::ArrayReal(expr_idx) => {
+                        let et = self.get_expression_type(expr_idx);
+                        if SymbolType::Int != et {
+                            self.logger.add_error(ErrorType::IndexTypeMismatch(
+                                data.token.expect("Type is missing a token."),
+                                et,
+                            ));
+                        }
+                    }
+                    SymbolType::Undefined
+                    | SymbolType::Int
+                    | SymbolType::String
+                    | SymbolType::Bool
+                    | SymbolType::Real => {}
+                };
+                data.st
+            }
+            _ => {
+                assert!(false, "Unexpected node type.");
+                SymbolType::Undefined
+            }
+        }
+    }
+
     fn get_expression_type(&mut self, idx: usize) -> SymbolType {
         SymbolType::Undefined
     }
@@ -390,7 +487,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 let token = data.token.expect("Variable is missing a token.");
 
                 // Go upwards in scope and match to the first identifier that is found
-                for i in self.scope_depth..0 {
+                for i in (0..=self.scope_depth).rev() {
                     if let Some(&st) = self.symbols.get(&(token.value, i)) {
                         // If variable contains an array indexing expression
                         // i.e. opt_idx = Some(idx), check that
@@ -447,6 +544,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             function_signatures: HashMap::new(),
             logger: logger,
             scope_depth: 0,
+            current_return_type: None,
         }
     }
 }

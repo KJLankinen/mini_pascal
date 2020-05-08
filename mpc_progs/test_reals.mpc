@@ -47,4 +47,6 @@ begin
     writeln(add(a, mul(a, a)));
     writeln(a + mul(a, a));
     writeln(add(a, a * a));
+
+    return a
 end.

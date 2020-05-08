@@ -73,6 +73,8 @@ pub enum ErrorType<'a> {
         TokenData<'a>,
         Vec<SymbolType>,
     ),
+    MismatchedReturnType(TokenData<'a>, Option<SymbolType>, Option<SymbolType>),
+    ReadMismatchedType(TokenData<'a>, SymbolType),
 }
 
 impl<'a> fmt::Display for ErrorType<'a> {
@@ -95,6 +97,8 @@ impl<'a> fmt::Display for ErrorType<'a> {
             ErrorType::MismatchedArgumentTypes(_, _, _, _) => {
                 write!(f, "mismatched argument types")
             }
+            ErrorType::MismatchedReturnType(_, _, _) => write!(f, "mismatched return type"),
+            ErrorType::ReadMismatchedType(_, _) => write!(f, "mismatched read type"),
         }
     }
 }
@@ -290,6 +294,12 @@ pub struct IdxIdx {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenSymbolType<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub st: SymbolType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Undefined,
     Program(TokenIdxOptIdx<'a>),
@@ -298,14 +308,14 @@ pub enum NodeType<'a> {
     Function(TokenIdxOptIdxOptIdx<'a>),
     ParamList(usize),
     Parameter(TokenIdxBool<'a>),
-    VariableType(SymbolType),
+    VariableType(TokenSymbolType<'a>),
     Identifier(Option<TokenData<'a>>),
     Assert(TokenIdx<'a>),
     Assignment(IdxIdx),
     Call(TokenOptIdx<'a>),
     Declaration(IdxIdx),
     Return(TokenOptIdx<'a>),
-    Read(TokenIdx<'a>),
+    Read(usize),
     Write(TokenIdx<'a>),
     If(TokenIdxIdxOptIdx<'a>),
     While(TokenIdxIdx<'a>),
@@ -436,7 +446,7 @@ impl<'a> Serialize for NodeType<'a> {
             NodeType::VariableType(data) => {
                 let mut state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Type", 1)?;
-                state.serialize_field("type", &data)?;
+                state.serialize_field("type", &data.st)?;
                 state.end()
             }
             NodeType::Identifier(data) => {

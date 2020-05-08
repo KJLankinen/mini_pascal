@@ -84,7 +84,7 @@ impl<'a> Logger<'a> {
                 ErrorType::AssignMismatchedType(token, identifier_type, expression_type) => {
                     eprint!("Mismatched types in assignment. Identifier is of type ");
                     eprintln!(
-                        "\"{}\', expression of type \"{}\".",
+                        "\"{}\", expression of type \"{}\".",
                         identifier_type, expression_type
                     );
                     line = token.line;
@@ -168,6 +168,19 @@ impl<'a> Logger<'a> {
                     eprint!("\n");
                     line = call_token.line;
                     column = call_token.column;
+                }
+                ErrorType::MismatchedReturnType(token, return_type, expected_return_type) => {
+                    eprintln!("Mismatched return type. Return expression is of type \"{}\", while expected type is \"{}\".",
+                        return_type.map(|t| format!("{}", t)).unwrap_or_else(|| "void".to_string()),
+                        expected_return_type.map(|t| format!("{}", t)).unwrap_or_else(|| "void".to_string())
+                    );
+                    line = token.line;
+                    column = token.column;
+                }
+                ErrorType::ReadMismatchedType(token, variable_type) => {
+                    eprintln!("Read is not defined for type \"{}\".", variable_type);
+                    line = token.line;
+                    column = token.column;
                 }
             }
             self.print_error(line as usize, column as usize);

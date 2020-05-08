@@ -32,9 +32,9 @@
 <variable>              <id>        [ "[" <integer_expr> "]" ]
 
 <structured_statement>  <block> | <if_statement> | <while_statement>
-<if_statement>          "if" <boolean_expr> "then" <statement_list> <if_statement_tail>
-<if_statement_tail>     "else" <statement_list> | <empty>
-<while_statement>       "while" <boolean_expr> "do" <statement_list>
+<if_statement>          "if" <boolean_expr> "then" <statement> <if_statement_tail>
+<if_statement_tail>     "else" <statement> | <empty>
+<while_statement>       "while" <boolean_expr> "do" <statement>
 
 <id_list>               <id> <id_list_tail>
 <id_list_tail>          "," <id> <id_list_tail> | <empty>

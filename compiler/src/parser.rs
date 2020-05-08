@@ -1,6 +1,7 @@
 use super::data_types::{
     ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
-    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenType,
+    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolType,
+    TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -596,14 +597,17 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn var_type(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut symbol_type = SymbolType::Undefined;
+        let mut node_data = TokenSymbolType {
+            token: None,
+            st: SymbolType::Undefined,
+        };
         let mut expr_idx = None;
 
         fn parse_type<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            symbol_type: &mut SymbolType,
+            node_data: &mut TokenSymbolType<'a>,
             expr_idx: &mut Option<usize>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
@@ -638,6 +642,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 TokenType::LiteralInt => {
                     // LiteralInt might not actually be the next token. We're only using this as a
                     // label for this arm, which we get to from LBracket.
+                    node_data.token = Some(*parser.scanner.peek());
                     *expr_idx = parser.process(
                         Parser::simple_expression,
                         my_idx,
@@ -665,17 +670,20 @@ impl<'a, 'b> Parser<'a, 'b> {
                     TokenType::Type
                 }
                 TokenType::Type => {
-                    let type_str = parser.match_token(&[TokenType::Type])?.value;
+                    let token = parser.match_token(&[TokenType::Type])?;
+                    if node_data.token.is_none() {
+                        node_data.token = Some(token);
+                    }
 
-                    *symbol_type = match expr_idx {
-                        Some(idx) => match type_str {
+                    node_data.st = match expr_idx {
+                        Some(idx) => match token.value {
                             "Boolean" => SymbolType::ArrayBool(*idx),
                             "integer" => SymbolType::ArrayInt(*idx),
                             "real" => SymbolType::ArrayReal(*idx),
                             "string" => SymbolType::ArrayString(*idx),
                             _ => SymbolType::Undefined,
                         },
-                        None => match type_str {
+                        None => match token.value {
                             "Boolean" => SymbolType::Bool,
                             "integer" => SymbolType::Int,
                             "real" => SymbolType::Real,
@@ -692,7 +700,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_type(parser, tt, my_idx, symbol_type, expr_idx)?;
+                parse_type(parser, tt, my_idx, node_data, expr_idx)?;
             }
             Ok(())
         }
@@ -701,10 +709,10 @@ impl<'a, 'b> Parser<'a, 'b> {
             self,
             TokenType::KeywordArray,
             my_idx,
-            &mut symbol_type,
+            &mut node_data,
             &mut expr_idx,
         )?;
-        self.tree[my_idx].data = NodeType::VariableType(symbol_type);
+        self.tree[my_idx].data = NodeType::VariableType(node_data);
         Ok(my_idx)
     }
 
@@ -1280,21 +1288,18 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn read_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdx {
-            token: None,
-            idx: !0,
-        };
+        let mut arg = !0;
 
         fn parse_read<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenIdx<'a>,
+            arg: &mut usize,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordRead => {
-                    node_data.token = parser.process(
+                    parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordRead],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1313,7 +1318,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    node_data.idx = parser
+                    *arg = parser
                         .process(
                             Parser::variable_list,
                             my_idx,
@@ -1334,13 +1339,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_read(parser, tt, my_idx, node_data)?;
+                parse_read(parser, tt, my_idx, arg)?;
             }
             Ok(())
         }
 
-        parse_read(self, TokenType::KeywordRead, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Read(node_data);
+        parse_read(self, TokenType::KeywordRead, my_idx, &mut arg)?;
+        self.tree[my_idx].data = NodeType::Read(arg);
 
         Ok(my_idx)
     }
@@ -1454,15 +1459,6 @@ impl<'a, 'b> Parser<'a, 'b> {
                             &[TokenType::RParen],
                             &mut recovery_token,
                         )?;
-                        println!(
-                            "lc: {:#?}",
-                            parser.tree[parser.tree[my_idx].left_child.unwrap()]
-                        );
-                        println!("opt: {:#?}", parser.tree[node_data.opt_idx.unwrap()]);
-                        assert!(
-                            node_data.opt_idx.unwrap() == parser.tree[my_idx].left_child.unwrap(),
-                            "Funky shit yo."
-                        );
                     }
                     TokenType::RParen
                 }
