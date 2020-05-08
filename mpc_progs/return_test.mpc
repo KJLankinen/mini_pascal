@@ -1,0 +1,38 @@
+program return_test;
+
+function f1(): integer;
+begin
+    var i: integer;
+    return i;
+end;
+
+function f2(): integer;
+begin
+    var i, j: integer;
+    if true then
+    begin
+        writeln("Yup");
+    end
+    else
+        if false then
+        begin
+            var i: integer;
+        end
+        else
+        begin
+            var i, j: integer;
+            return j;
+        end;
+
+    return j;
+end;
+
+procedure p1();
+begin
+    var i: integer;
+end;
+
+begin
+    f1();
+    f2();
+end.

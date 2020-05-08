@@ -37,16 +37,11 @@ begin
     writeln(a, " * ", b, " = ", mul(a, b));
     writeln(a, " / ", b, " = ", div(a, b));
 
-    div();
-    div(a);
-    div(a, a, a, a, a);
-    div(i);
-
     writeln("The next four are different ways to calculate ", a, " * ", a, " + ", a);
     writeln(mad(a, a, a));
     writeln(add(a, mul(a, a)));
     writeln(a + mul(a, a));
     writeln(add(a, a * a));
 
-    return a
+    return 
 end.

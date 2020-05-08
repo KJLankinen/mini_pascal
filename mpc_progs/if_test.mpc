@@ -1,0 +1,8 @@
+program if_test;
+begin
+    var i: integer;
+    i := 0;
+    if true then
+        var i: integer;
+    return
+end.

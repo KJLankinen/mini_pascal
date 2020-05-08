@@ -672,6 +672,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 }
                 SymbolType::Int
             }
+            NodeType::Call(data) => self
+                .call_statement(&data)
+                .unwrap_or_else(|| SymbolType::Undefined),
             _ => {
                 assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
                 SymbolType::Undefined

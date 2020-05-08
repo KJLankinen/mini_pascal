@@ -1,0 +1,28 @@
+program block_test;
+
+procedure p1();
+begin
+    var x, y: integer;
+    begin
+        var x, y: integer;
+    end;
+
+    begin
+        var x, y: integer;
+    end;
+end;
+
+begin
+    var x, y: integer;
+
+    begin
+        var x, y: integer;
+    end;
+
+    if true then
+        var x, y: integer
+    else
+    begin
+        var x, y: integer;
+    end;
+end.

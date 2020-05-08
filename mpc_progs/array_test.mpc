@@ -1,0 +1,27 @@
+program arraytest;
+
+begin
+    var i, j, k: integer;
+    i := 5;
+    j := 6;
+    k := 0;
+    
+    var arr: array[i + j / i] of integer;
+    assert(arr.size = 6);
+    arr[5] := 5;
+
+    read(arr[2]);
+
+    while k < arr.size do
+    begin
+        arr[k] := k;
+        k := k + 1;
+    end;
+
+    k := 0;
+    while k < arr.size do
+    begin
+        writeln(arr[k]);
+        k := k + 1;
+    end;
+end.

@@ -1,0 +1,8 @@
+program joo;
+begin
+    var a, b: integer;
+    a := 0;
+    b := 1;
+    a := -b;
+    writeln(a, b)
+end.

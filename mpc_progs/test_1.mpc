@@ -1,0 +1,16 @@
+program test1;
+begin
+    var a, b, c : real;
+    a := 1.0;
+    b := 2.0;
+    c := 3.0;
+    a := b + c * c + a / c - b + c * a;
+
+    begin
+        var a: integer;
+        a := 1;
+        a := 1 + a;
+    end;
+
+    writeln("a: ", a)
+end.
