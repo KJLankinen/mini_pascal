@@ -14,75 +14,6 @@ pub struct Analyzer<'a, 'b> {
     scope: Scope<'a>,
 }
 
-struct Parameter<'a> {
-    is_ref: bool,
-    symbol_type: SymbolType,
-    id: &'a str,
-}
-
-struct FunctionSignature<'a> {
-    parameters: Option<Vec<Parameter<'a>>>,
-    return_type: Option<SymbolType>,
-    token: TokenData<'a>,
-}
-
-pub struct Scope<'a> {
-    depth: usize,
-    pub symbols: HashMap<usize, HashMap<&'a str, SymbolType>>,
-}
-
-impl<'a> Scope<'a> {
-    pub fn new() -> Self {
-        Scope {
-            depth: 0,
-            symbols: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, key: &'a str, st: SymbolType) {
-        self.symbols
-            .get_mut(&self.depth)
-            .expect("Scope should have a map at current depth.")
-            .insert(key, st);
-    }
-
-    pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
-        self.symbols
-            .get(&self.depth)
-            .expect("Scope should have a map at current depth.")
-            .get(key)
-    }
-
-    pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
-        for i in (0..=self.depth).rev() {
-            if let Some(hm) = self.symbols.get(&i) {
-                if let Some(st) = hm.get(key) {
-                    return Some(st);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn step_in(&mut self) {
-        self.depth += 1;
-        if self.symbols.get(&self.depth).is_none() {
-            self.symbols.insert(self.depth, HashMap::new());
-        }
-    }
-
-    pub fn step_out(&mut self) {
-        if let Some(hm) = self.symbols.get_mut(&self.depth) {
-            hm.clear();
-        }
-        assert!(
-            self.depth > 0,
-            "Scope depth should never be 0 before stepping out."
-        );
-        self.depth -= 1;
-    }
-}
-
 impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     // Called to start the semantic analysis
@@ -96,46 +27,35 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // Functions that handle the semantic constraints
     // ---------------------------------------------------------------------
     fn program(&mut self, idx: usize) {
-        match self.tree[idx].data {
-            NodeType::Program(data) => {
-                // Subroutines are under optional idx, main block under idx
-                if let Some(idx) = data.opt_idx {
-                    self.subroutines(idx);
-                }
-                self.block(data.idx);
+        if let NodeType::Program(data) = self.tree[idx].data {
+            if let Some(idx) = data.opt_idx {
+                self.subroutines(idx);
             }
-            _ => {
-                assert!(false, "Program must start with program node.");
-            }
+            self.block(data.idx);
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
     fn subroutines(&mut self, idx: usize) {
-        // Process the functions in two passes:
-        // - first: process all function signatures and add them to map
-        // - second: process the blocks of the functions
-        // This way (mutually) recursive functions calls can be matched to known signatures.
-        match self.tree[idx].data {
-            NodeType::Subroutines(idx) => {
-                // Process signatures
+        if let NodeType::Subroutines(idx) = self.tree[idx].data {
+            // Process the functions in two passes:
+            // First: process all function signatures and add them to map
+            let mut next = Some(idx);
+            while let Some(idx) = next {
                 self.function_signature(idx);
-                let mut next = idx;
-                while let Some(idx) = self.tree[next].right_sibling {
-                    self.function_signature(idx);
-                    next = idx;
-                }
+                next = self.tree[idx].right_sibling;
+            }
 
-                // Process blocks
+            // Second: process the blocks of the functions
+            // This way (mutually) recursive functions calls can be matched to known signatures.
+            let mut next = Some(idx);
+            while let Some(idx) = next {
                 self.function_block(idx);
-                let mut next = idx;
-                while let Some(idx) = self.tree[next].right_sibling {
-                    self.function_block(idx);
-                    next = idx;
-                }
+                next = self.tree[idx].right_sibling;
             }
-            _ => {
-                assert!(false, "Unexpected node.");
-            }
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
@@ -143,113 +63,98 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         //assert!(false, "Block not yet done");
         // Correct type is checked by return. Need to check that those that must return, always
         // will return.
-        match self.tree[idx].data {
-            NodeType::Block(idx) => {
-                self.scope.step_in();
-                // Idx points to first statement
+        if let NodeType::Block(idx) = self.tree[idx].data {
+            self.scope.step_in();
+
+            self.statement(idx);
+            let mut next = idx;
+            while let Some(idx) = self.tree[next].right_sibling {
                 self.statement(idx);
-                let mut next = idx;
-                while let Some(idx) = self.tree[next].right_sibling {
-                    self.statement(idx);
-                    next = idx;
-                }
-                self.scope.step_out();
+                next = idx;
             }
-            _ => {
-                assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
-            }
+
+            self.scope.step_out();
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
         None
     }
 
     fn function_signature(&mut self, idx: usize) {
-        match self.tree[idx].data {
-            NodeType::Function(data) => {
-                let token = data.token.expect("Function has no identifier token.");
-                if let Some(_) = self.function_signatures.get(token.value) {
-                    self.logger.add_error(ErrorType::Redeclaration(token));
-                } else {
-                    let mut fs = FunctionSignature {
-                        parameters: None,
-                        return_type: None,
-                        token: token,
-                    };
+        if let NodeType::Function(data) = self.tree[idx].data {
+            let token = data.token.expect("Function has no identifier token.");
+            if let Some(_) = self.function_signatures.get(token.value) {
+                self.logger.add_error(ErrorType::Redeclaration(token));
+            } else {
+                let mut fs = FunctionSignature {
+                    parameters: None,
+                    return_type: None,
+                    token: token,
+                };
 
-                    // Handle parameter list
-                    if let Some(idx) = data.opt_idx {
-                        fn parameter<'a, 'b>(
-                            analyzer: &mut Analyzer<'a, 'b>,
-                            idx: usize,
-                            param_vec: &mut Vec<Parameter<'a>>,
-                        ) {
-                            if let NodeType::Parameter(data) = analyzer.tree[idx].data {
-                                // token is name (alias) of identifier
-                                // idx points to variable type
-                                // bool says if reference
+                // Handle parameter list
+                if let Some(idx) = data.opt_idx {
+                    let mut param_vec = Vec::new();
+                    if let NodeType::ParamList(idx) = self.tree[idx].data {
+                        let mut next = Some(idx);
+                        while let Some(idx) = next {
+                            if let NodeType::Parameter(data) = self.tree[idx].data {
                                 param_vec.push(Parameter {
                                     is_ref: data.b,
-                                    symbol_type: analyzer.check_type(data.idx),
+                                    symbol_type: self.check_type(data.idx),
                                     id: data
                                         .token
                                         .expect("Parameter has no identifier token.")
                                         .value,
                                 });
                             } else {
-                                assert!(false, "Unexpected node.");
+                                assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
                             }
+                            next = self.tree[idx].right_sibling;
                         }
-
-                        let mut param_vec = Vec::new();
-                        if let NodeType::ParamList(idx) = self.tree[idx].data {
-                            parameter(self, idx, &mut param_vec);
-                            let mut next = idx;
-                            while let Some(idx) = self.tree[next].right_sibling {
-                                parameter(self, idx, &mut param_vec);
-                                next = idx;
-                            }
-                        }
-                        fs.parameters = Some(param_vec);
+                    } else {
+                        assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
                     }
-
-                    // Handle return type
-                    if let Some(idx) = data.opt_idx2 {
-                        fs.return_type = Some(self.check_type(idx));
-                    }
-
-                    self.function_signatures.insert(token.value, fs);
+                    fs.parameters = Some(param_vec);
                 }
+
+                // Handle return type
+                if let Some(idx) = data.opt_idx2 {
+                    fs.return_type = Some(self.check_type(idx));
+                }
+
+                self.function_signatures.insert(token.value, fs);
             }
-            _ => {
-                assert!(false, "Unexpected node.");
-            }
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
     fn function_block(&mut self, idx: usize) {
-        match self.tree[idx].data {
-            NodeType::Function(data) => {
-                let fs = self
-                    .function_signatures
-                    .get(data.token.expect("Function is missing a token.").value)
-                    .expect("Function signature should already be stored in the map.");
+        if let NodeType::Function(data) = self.tree[idx].data {
+            let fs = self
+                .function_signatures
+                .get(data.token.expect("Function is missing a token.").value)
+                .expect("Function signature should already be stored in the map.");
 
-                // Set the current return type to the return type of the function
-                self.current_return_type = fs.return_type;
-
-                if let Some(params) = &fs.parameters {
-                    for param in params {
-                        self.scope.insert(param.id, param.symbol_type);
-                    }
+            // Set return type and step into new scope and add parameters as symbols
+            self.current_return_type = fs.return_type;
+            self.scope.step_in();
+            if let Some(params) = &fs.parameters {
+                for param in params {
+                    self.scope.insert(param.id, param.symbol_type);
                 }
-                self.block(data.idx);
             }
-            _ => {
-                assert!(false, "Unexpected node.");
-            }
-        }
 
-        // Reset to None, which is the return type of main block
-        self.current_return_type = None;
+            // Analyze the function block
+            self.block(data.idx);
+
+            // Step out and reset return type
+            self.scope.step_out();
+            self.current_return_type = None;
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -330,7 +235,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     .add_error(ErrorType::UndeclaredIdentifier(token));
             }
         } else {
-            assert!(false, "Unexpected node type.");
+            assert!(false, "Unexpected node {:#?}.", self.tree[data.idx]);
         }
     }
 
@@ -495,13 +400,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
-        //assert!(
-        //    false,
-        //    "Must increment scope, if the only statement is not a new block"
-        //);
+        self.scope.step_in();
         self.statement(data.idx2);
+        self.scope.step_out();
         if let Some(idx) = data.opt_idx {
+            self.scope.step_in();
             self.statement(idx);
+            self.scope.step_out();
         }
     }
 
@@ -514,44 +419,40 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 et,
             ));
         }
-        //assert!(
-        //    false,
-        //    "Must increment scope, if the only statement is not a new block"
-        //);
+
+        self.scope.step_in();
         self.statement(data.idx2);
+        self.scope.step_out();
     }
 
     // ---------------------------------------------------------------------
     // Type checking
     // ---------------------------------------------------------------------
     fn check_type(&mut self, idx: usize) -> SymbolType {
-        match self.tree[idx].data {
-            NodeType::VariableType(data) => {
-                match data.st {
-                    SymbolType::ArrayInt(expr_idx)
-                    | SymbolType::ArrayString(expr_idx)
-                    | SymbolType::ArrayBool(expr_idx)
-                    | SymbolType::ArrayReal(expr_idx) => {
-                        let et = self.get_expression_type(expr_idx);
-                        if SymbolType::Int != et {
-                            self.logger.add_error(ErrorType::IndexTypeMismatch(
-                                data.token.expect("Type is missing a token."),
-                                et,
-                            ));
-                        }
+        if let NodeType::VariableType(data) = self.tree[idx].data {
+            match data.st {
+                SymbolType::ArrayInt(expr_idx)
+                | SymbolType::ArrayString(expr_idx)
+                | SymbolType::ArrayBool(expr_idx)
+                | SymbolType::ArrayReal(expr_idx) => {
+                    let et = self.get_expression_type(expr_idx);
+                    if SymbolType::Int != et {
+                        self.logger.add_error(ErrorType::IndexTypeMismatch(
+                            data.token.expect("Type is missing a token."),
+                            et,
+                        ));
                     }
-                    SymbolType::Undefined
-                    | SymbolType::Int
-                    | SymbolType::String
-                    | SymbolType::Bool
-                    | SymbolType::Real => {}
-                };
-                data.st
-            }
-            _ => {
-                assert!(false, "Unexpected node type.");
+                }
                 SymbolType::Undefined
-            }
+                | SymbolType::Int
+                | SymbolType::String
+                | SymbolType::Bool
+                | SymbolType::Real => {}
+            };
+            data.st
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+            SymbolType::Undefined
         }
     }
 
@@ -560,52 +461,49 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn get_variable_type(&mut self, idx: usize) -> Option<SymbolType> {
-        match self.tree[idx].data {
-            NodeType::Variable(data) => {
-                let mut symbol_type = None;
-                let token = data.token.expect("Variable is missing a token.");
+        if let NodeType::Variable(data) = self.tree[idx].data {
+            let mut symbol_type = None;
+            let token = data.token.expect("Variable is missing a token.");
 
-                if let Some(&st) = self.scope.find(token.value) {
-                    // If variable contains an array indexing expression
-                    // i.e. opt_idx = Some(idx), check that
-                    // 1. The expression results in an integer
-                    // 2. The identifier is of type array
-                    let st = if let Some(expr_idx) = data.opt_idx {
-                        let et = self.get_expression_type(expr_idx);
-                        if SymbolType::Int != et {
-                            self.logger
-                                .add_error(ErrorType::IndexTypeMismatch(token, et));
+            if let Some(&st) = self.scope.find(token.value) {
+                // If variable contains an array indexing expression
+                // i.e. opt_idx = Some(idx), check that
+                // 1. The expression results in an integer
+                // 2. The identifier is of type array
+                let st = if let Some(expr_idx) = data.opt_idx {
+                    let et = self.get_expression_type(expr_idx);
+                    if SymbolType::Int != et {
+                        self.logger
+                            .add_error(ErrorType::IndexTypeMismatch(token, et));
+                    }
+                    match st {
+                        st @ SymbolType::Int
+                        | st @ SymbolType::String
+                        | st @ SymbolType::Bool
+                        | st @ SymbolType::Real => {
+                            self.logger.add_error(ErrorType::IllegalIndexing(token, st));
+                            st
                         }
-                        match st {
-                            st @ SymbolType::Int
-                            | st @ SymbolType::String
-                            | st @ SymbolType::Bool
-                            | st @ SymbolType::Real => {
-                                self.logger.add_error(ErrorType::IllegalIndexing(token, st));
-                                st
-                            }
-                            SymbolType::ArrayInt(_) => SymbolType::Int,
-                            SymbolType::ArrayString(_) => SymbolType::String,
-                            SymbolType::ArrayBool(_) => SymbolType::Bool,
-                            SymbolType::ArrayReal(_) => SymbolType::Real,
-                            SymbolType::Undefined => SymbolType::Undefined,
-                        }
-                    } else {
-                        st
-                    };
+                        SymbolType::ArrayInt(_) => SymbolType::Int,
+                        SymbolType::ArrayString(_) => SymbolType::String,
+                        SymbolType::ArrayBool(_) => SymbolType::Bool,
+                        SymbolType::ArrayReal(_) => SymbolType::Real,
+                        SymbolType::Undefined => SymbolType::Undefined,
+                    }
+                } else {
+                    st
+                };
 
-                    assert!(
-                        SymbolType::Undefined != st,
-                        "Symbol type from symbol table should never be undefined."
-                    );
-                    symbol_type = Some(st);
-                }
-                symbol_type
+                assert!(
+                    SymbolType::Undefined != st,
+                    "Symbol type from symbol table should never be undefined."
+                );
+                symbol_type = Some(st);
             }
-            _ => {
-                assert!(false, "Unexpected node type.");
-                None
-            }
+            symbol_type
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+            None
         }
     }
 
@@ -622,6 +520,79 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 }
+
+// ---------------------------------------------------------------------
+// Auxiliary types used during the semantic analysis
+// ---------------------------------------------------------------------
+struct Parameter<'a> {
+    is_ref: bool,
+    symbol_type: SymbolType,
+    id: &'a str,
+}
+
+struct FunctionSignature<'a> {
+    parameters: Option<Vec<Parameter<'a>>>,
+    return_type: Option<SymbolType>,
+    token: TokenData<'a>,
+}
+
+pub struct Scope<'a> {
+    depth: usize,
+    pub symbols: HashMap<usize, HashMap<&'a str, SymbolType>>,
+}
+
+impl<'a> Scope<'a> {
+    pub fn new() -> Self {
+        Scope {
+            depth: 0,
+            symbols: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: &'a str, st: SymbolType) {
+        self.symbols
+            .get_mut(&self.depth)
+            .expect("Scope should have a map at current depth.")
+            .insert(key, st);
+    }
+
+    pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
+        self.symbols
+            .get(&self.depth)
+            .expect("Scope should have a map at current depth.")
+            .get(key)
+    }
+
+    pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
+        for i in (0..=self.depth).rev() {
+            if let Some(hm) = self.symbols.get(&i) {
+                if let Some(st) = hm.get(key) {
+                    return Some(st);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn step_in(&mut self) {
+        self.depth += 1;
+        if self.symbols.get(&self.depth).is_none() {
+            self.symbols.insert(self.depth, HashMap::new());
+        }
+    }
+
+    pub fn step_out(&mut self) {
+        if let Some(hm) = self.symbols.get_mut(&self.depth) {
+            hm.clear();
+        }
+        assert!(
+            self.depth > 0,
+            "Scope depth should never be 0 before stepping out."
+        );
+        self.depth -= 1;
+    }
+}
+
 /*fn check_expression(&mut self, idx: usize) -> SymbolType {
     match self.tree[idx].data {
         NodeType::Operand { token, symbol_type } => {
