@@ -1,0 +1,26 @@
+program string_tests;
+
+begin
+    var s, t, u, v: string;
+    s := "Voi Tur";
+    t := "skan p";
+    u := "erkee";
+    v := "t!";
+
+    writeln(s, t, u, v);
+    writeln(s + t + u + v);
+    {*
+    writeln(s - t);
+    writeln(t / u);
+    writeln(u * v);
+    writeln(s % t);
+    *}
+    s := t;
+    u := v;
+    writeln(s = t, s = u);
+    writeln(u <> v, u <> s);
+    writeln(t >= u, s >= v);
+    writeln(u > v);
+    writeln(t <= u);
+    writeln(u < v);
+end.
