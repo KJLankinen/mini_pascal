@@ -10,4 +10,5 @@
 30.4.   & 1,5h      & implementing parser
 5.5.    & 8h        & implementing semantic analyzer
 7.5.	& 11,5h	    & implementing semantic analyzer and refactoring expression parsing
-8.5.	& 0930	    & implementing semantic analyzer
+8.5.	& 13h	    & implementing semantic analyzer
+13.5.   & 7h + 19-->& implementing intermediate stack language translator
