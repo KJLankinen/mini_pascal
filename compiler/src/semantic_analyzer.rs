@@ -4,6 +4,7 @@ use super::data_types::{
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
+use super::symbol_table::SymbolTable;
 use std::collections::HashMap;
 
 pub struct Analyzer<'a, 'b> {
@@ -11,7 +12,7 @@ pub struct Analyzer<'a, 'b> {
     function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
     current_return_type: Option<SymbolType>,
-    scope: Scope<'a>,
+    symbol_table: SymbolTable<'a>,
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
@@ -61,13 +62,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn block(&mut self, idx: usize) {
         if let NodeType::Block(idx) = self.tree[idx].data {
-            self.scope.step_in();
+            self.symbol_table.step_in();
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
                 next = self.tree[idx].right_sibling;
             }
-            self.scope.step_out();
+            self.symbol_table.step_out();
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -144,8 +145,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 }
             }
 
-            // Step into new scope and declare function parameters inside the scope
-            self.scope.step_in();
+            // Step into new symbol_table and declare function parameters inside the scope
+            self.symbol_table.step_in();
             if let Some(params) = &self
                 .function_signatures
                 .get(token.value)
@@ -153,7 +154,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 .parameters
             {
                 for param in params {
-                    self.scope.insert(param.id, param.symbol_type);
+                    self.symbol_table.insert(param.id, param.symbol_type);
                 }
             }
 
@@ -161,7 +162,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             self.block(data.idx);
 
             // Step out and reset return type
-            self.scope.step_out();
+            self.symbol_table.step_out();
             self.current_return_type = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -282,10 +283,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         while let Some(idx) = next {
             if let NodeType::Identifier(token) = self.tree[idx].data {
                 let token = token.expect("Identifier is missing a token.");
-                if let Some(_) = self.scope.get(token.value) {
+                if let Some(_) = self.symbol_table.get(token.value) {
                     self.logger.add_error(ErrorType::Redeclaration(token));
                 } else {
-                    self.scope.insert(token.value, st);
+                    self.symbol_table.insert(token.value, st);
                 }
             } else {
                 break;
@@ -364,13 +365,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
-        self.scope.step_in();
+        self.symbol_table.step_in();
         self.statement(data.idx2);
-        self.scope.step_out();
+        self.symbol_table.step_out();
         if let Some(idx) = data.opt_idx {
-            self.scope.step_in();
+            self.symbol_table.step_in();
             self.statement(idx);
-            self.scope.step_out();
+            self.symbol_table.step_out();
         }
     }
 
@@ -384,9 +385,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
-        self.scope.step_in();
+        self.symbol_table.step_in();
         self.statement(data.idx2);
-        self.scope.step_out();
+        self.symbol_table.step_out();
     }
 
     // ---------------------------------------------------------------------
@@ -425,7 +426,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let mut symbol_type = None;
             let token = data.token.expect("Variable is missing a token.");
 
-            if let Some(&st) = self.scope.find(token.value) {
+            if let Some(&st) = self.symbol_table.find(token.value) {
                 // If variable contains an array indexing expression
                 // i.e. opt_idx = Some(idx), check that
                 // 1. The expression results in an integer
@@ -691,7 +692,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             function_signatures: HashMap::new(),
             logger: logger,
             current_return_type: None,
-            scope: Scope::new(),
+            symbol_table: SymbolTable::new(),
         }
     }
 
@@ -770,61 +771,4 @@ struct FunctionSignature<'a> {
     parameters: Option<Vec<Parameter<'a>>>,
     return_type: Option<SymbolType>,
     token: TokenData<'a>,
-}
-
-pub struct Scope<'a> {
-    depth: usize,
-    pub symbols: HashMap<usize, HashMap<&'a str, SymbolType>>,
-}
-
-impl<'a> Scope<'a> {
-    pub fn new() -> Self {
-        Scope {
-            depth: 0,
-            symbols: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, key: &'a str, st: SymbolType) {
-        self.symbols
-            .get_mut(&self.depth)
-            .expect("Scope should have a map at current depth.")
-            .insert(key, st);
-    }
-
-    pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
-        self.symbols
-            .get(&self.depth)
-            .expect("Scope should have a map at current depth.")
-            .get(key)
-    }
-
-    pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
-        for i in (0..=self.depth).rev() {
-            if let Some(hm) = self.symbols.get(&i) {
-                if let Some(st) = hm.get(key) {
-                    return Some(st);
-                }
-            }
-        }
-        None
-    }
-
-    pub fn step_in(&mut self) {
-        self.depth += 1;
-        if self.symbols.get(&self.depth).is_none() {
-            self.symbols.insert(self.depth, HashMap::new());
-        }
-    }
-
-    pub fn step_out(&mut self) {
-        if let Some(hm) = self.symbols.get_mut(&self.depth) {
-            hm.clear();
-        }
-        assert!(
-            self.depth > 0,
-            "Scope depth should never be 0 before stepping out."
-        );
-        self.depth -= 1;
-    }
 }

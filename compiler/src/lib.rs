@@ -1,12 +1,11 @@
 mod data_types;
-//mod interpreter;
 mod lcrs_tree;
 mod logger;
 mod parser;
 mod scanner;
 mod semantic_analyzer;
+mod symbol_table;
 
-//use interpreter::Interpreter;
 use lcrs_tree::LcRsTree;
 use logger::Logger;
 use parser::Parser;
@@ -62,13 +61,6 @@ pub fn run() {
                         } else {
                             Analyzer::new(&mut tree, &mut logger).analyze();
                         }
-
-                        //if logger.errors_encountered() {
-                        //    logger.print_errors();
-                        //    process::exit(1);
-                        //} else {
-                        //    Interpreter::new(&tree, &mut logger).interpret();
-                        //}
 
                         if logger.errors_encountered() {
                             logger.print_errors();
