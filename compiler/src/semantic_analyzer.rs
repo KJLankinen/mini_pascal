@@ -32,7 +32,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
-            self.block(data.idx);
+            self.symbol_table.step_in();
+            self.block(data.idx, false);
+            self.symbol_table.step_out();
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -60,15 +62,20 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn block(&mut self, idx: usize) {
+    fn block(&mut self, idx: usize, increment_scope: bool) {
         if let NodeType::Block(idx) = self.tree[idx].data {
-            self.symbol_table.step_in();
+            if increment_scope {
+                self.symbol_table.step_in();
+            }
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
                 next = self.tree[idx].right_sibling;
             }
-            self.symbol_table.step_out();
+
+            if increment_scope {
+                self.symbol_table.step_out();
+            }
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -145,7 +152,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 }
             }
 
-            // Step into new symbol_table and declare function parameters inside the scope
+            // Step into new scope and declare function parameters inside the scope
             self.symbol_table.step_in();
             if let Some(params) = &self
                 .function_signatures
@@ -159,7 +166,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             }
 
             // Analyze the function block
-            self.block(data.idx);
+            self.block(data.idx, false);
 
             // Step out and reset return type
             self.symbol_table.step_out();
@@ -174,7 +181,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(_) => self.block(idx),
+            NodeType::Block(_) => self.block(idx, true),
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(data) => {
@@ -365,13 +372,22 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
-        self.symbol_table.step_in();
-        self.statement(data.idx2);
-        self.symbol_table.step_out();
-        if let Some(idx) = data.opt_idx {
+        if let NodeType::Block(_) = self.tree[data.idx2].data {
+            self.statement(data.idx2);
+        } else {
             self.symbol_table.step_in();
-            self.statement(idx);
+            self.statement(data.idx2);
             self.symbol_table.step_out();
+        }
+
+        if let Some(idx) = data.opt_idx {
+            if let NodeType::Block(_) = self.tree[idx].data {
+                self.statement(idx);
+            } else {
+                self.symbol_table.step_in();
+                self.statement(idx);
+                self.symbol_table.step_out();
+            }
         }
     }
 
@@ -385,9 +401,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             ));
         }
 
-        self.symbol_table.step_in();
-        self.statement(data.idx2);
-        self.symbol_table.step_out();
+        if let NodeType::Block(_) = self.tree[data.idx2].data {
+            self.statement(data.idx2);
+        } else {
+            self.symbol_table.step_in();
+            self.statement(data.idx2);
+            self.symbol_table.step_out();
+        }
     }
 
     // ---------------------------------------------------------------------

@@ -3,37 +3,34 @@ use std::collections::HashMap;
 
 pub struct SymbolTable<'a> {
     depth: usize,
-    pub symbols: HashMap<usize, HashMap<&'a str, SymbolType>>,
+    symbols_in_scope: HashMap<usize, HashMap<&'a str, SymbolType>>,
 }
 
 impl<'a> SymbolTable<'a> {
     pub fn new() -> Self {
         SymbolTable {
             depth: 0,
-            symbols: HashMap::new(),
+            symbols_in_scope: HashMap::new(),
         }
     }
 
     pub fn insert(&mut self, key: &'a str, st: SymbolType) {
-        self.symbols
-            .get_mut(&self.depth)
-            .expect("SymbolTable should have a map at current depth.")
+        self.symbols_in_scope
+            .entry(self.depth)
+            .or_insert(HashMap::new())
             .insert(key, st);
     }
 
     pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
-        self.symbols
+        self.symbols_in_scope
             .get(&self.depth)
-            .expect("SymbolTable should have a map at current depth.")
-            .get(key)
+            .and_then(|m| m.get(key))
     }
 
     pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
         for i in (0..=self.depth).rev() {
-            if let Some(hm) = self.symbols.get(&i) {
-                if let Some(st) = hm.get(key) {
-                    return Some(st);
-                }
+            if let Some(st) = self.symbols_in_scope.get(&i).and_then(|m| m.get(key)) {
+                return Some(st);
             }
         }
         None
@@ -41,13 +38,10 @@ impl<'a> SymbolTable<'a> {
 
     pub fn step_in(&mut self) {
         self.depth += 1;
-        if self.symbols.get(&self.depth).is_none() {
-            self.symbols.insert(self.depth, HashMap::new());
-        }
     }
 
     pub fn step_out(&mut self) {
-        if let Some(hm) = self.symbols.get_mut(&self.depth) {
+        if let Some(hm) = self.symbols_in_scope.get_mut(&self.depth) {
             hm.clear();
         }
         assert!(
