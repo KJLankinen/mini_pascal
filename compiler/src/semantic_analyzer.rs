@@ -10,7 +10,7 @@ pub struct Analyzer<'a, 'b> {
     tree: &'b mut LcRsTree<NodeType<'a>>,
     logger: &'b mut Logger<'a>,
     current_return_type: Option<SymbolType>,
-    symbol_table: SymbolTable<'a>,
+    symbol_table: &'b mut SymbolTable<'a>,
 }
 
 impl<'a, 'b> Analyzer<'a, 'b> {
@@ -98,7 +98,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             } else {
                 let mut fs = FunctionSignature {
                     parameters: vec![],
-                    return_type: None,
+                    return_type: data.opt_idx2.and_then(|idx| Some(self.check_type(idx))),
                     token: token,
                 };
 
@@ -126,11 +126,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
                     }
                     fs.parameters = param_vec;
-                }
-
-                // Handle return type
-                if let Some(idx) = data.opt_idx2 {
-                    fs.return_type = Some(self.check_type(idx));
                 }
 
                 self.symbol_table.insert_function_signature(token.value, fs);
@@ -433,7 +428,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let mut symbol_type = None;
             let token = data.token.expect("Variable is missing a token.");
 
-            if let Some(&(st, count)) = self.symbol_table.find(token.value) {
+            if let Some(&(st, count, depth)) = self.symbol_table.find(token.value) {
                 // If variable contains an array indexing expression
                 // i.e. opt_idx = Some(idx), check that
                 // 1. The expression results in an integer
@@ -462,9 +457,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     st
                 };
 
-                // Update data with the symbol type and the "ranking", i.e. the count how many
-                // variables of this symbol type have already been declared in this scope.
+                // Update data with the symbol type, the "ranking", i.e. the count how many
+                // variables of this symbol type have already been declared in this scope,
+                // and the scope depth.
                 data.idx = count;
+                data.idx2 = depth;
                 data.st = st;
                 self.tree[idx].data = NodeType::Variable(data);
 
@@ -708,12 +705,16 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     // Auxiliary functions
     // ---------------------------------------------------------------------
-    pub fn new(tree: &'b mut LcRsTree<NodeType<'a>>, logger: &'b mut Logger<'a>) -> Self {
+    pub fn new(
+        tree: &'b mut LcRsTree<NodeType<'a>>,
+        logger: &'b mut Logger<'a>,
+        symbol_table: &'b mut SymbolTable<'a>,
+    ) -> Self {
         Analyzer {
             tree: tree,
             logger: logger,
             current_return_type: None,
-            symbol_table: SymbolTable::new(),
+            symbol_table: symbol_table,
         }
     }
 

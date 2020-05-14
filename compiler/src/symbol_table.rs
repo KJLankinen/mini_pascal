@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 pub struct SymbolTable<'a> {
     depth: i32,
-    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize)>>,
+    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize, i32)>>,
     variable_counts: HashMap<SymbolType, Vec<usize>>,
     maximum_counts: HashMap<SymbolType, Vec<usize>>,
     function_data: HashMap<&'a str, FunctionData<'a>>,
@@ -12,23 +12,12 @@ pub struct SymbolTable<'a> {
 
 #[derive(Debug)]
 pub struct FunctionData<'a> {
-    pub variable_indices: HashMap<(SymbolType, usize), usize>,
+    pub variable_indices: HashMap<(SymbolType, i32), usize>,
     pub variable_counts: HashMap<SymbolType, usize>,
     pub signature: FunctionSignature<'a>,
 }
 
 impl<'a> SymbolTable<'a> {
-    pub fn new() -> Self {
-        SymbolTable {
-            depth: -1,
-            symbols_in_scope: HashMap::new(),
-            variable_counts: HashMap::new(),
-            maximum_counts: HashMap::new(),
-            function_data: HashMap::new(),
-            current_fname: None,
-        }
-    }
-
     pub fn insert_function_signature(&mut self, key: &'a str, fs: FunctionSignature<'a>) {
         self.function_data
             .entry(key)
@@ -69,16 +58,16 @@ impl<'a> SymbolTable<'a> {
         self.symbols_in_scope
             .entry(self.depth)
             .or_insert(HashMap::new())
-            .insert(key.to_lowercase(), (st, *count));
+            .insert(key.to_lowercase(), (st, *count, self.depth));
     }
 
-    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize)> {
+    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize, i32)> {
         self.symbols_in_scope
             .get(&self.depth)
             .and_then(|m| m.get(&key.to_lowercase()))
     }
 
-    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize)> {
+    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize, i32)> {
         for i in (0..=self.depth).rev() {
             if let Some(tuple) = self
                 .symbols_in_scope
@@ -175,7 +164,8 @@ impl<'a> SymbolTable<'a> {
                         .enumerate()
                     {
                         if let Some(starting_idx) = v {
-                            fd.variable_indices.insert((*st, i), starting_idx + total);
+                            fd.variable_indices
+                                .insert((*st, i as i32), starting_idx + total);
                         }
                     }
                     let sum = vec.iter().sum::<usize>();
@@ -190,14 +180,20 @@ impl<'a> SymbolTable<'a> {
         }
     }
 
-    pub fn _get_variable_index(
-        &self,
-        fname: &'a str,
-        st: SymbolType,
-        depth: usize,
-    ) -> Option<&usize> {
+    pub fn get_variable_index(&self, fname: &'a str, st: SymbolType, depth: i32) -> Option<&usize> {
         self.function_data
             .get(fname)
             .and_then(|fd| fd.variable_indices.get(&(st, depth)))
+    }
+
+    pub fn new() -> Self {
+        SymbolTable {
+            depth: -1,
+            symbols_in_scope: HashMap::new(),
+            variable_counts: HashMap::new(),
+            maximum_counts: HashMap::new(),
+            function_data: HashMap::new(),
+            current_fname: None,
+        }
     }
 }

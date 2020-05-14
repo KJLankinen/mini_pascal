@@ -4,13 +4,16 @@ mod logger;
 mod parser;
 mod scanner;
 mod semantic_analyzer;
+mod stacker;
 mod symbol_table;
 
 use lcrs_tree::LcRsTree;
 use logger::Logger;
 use parser::Parser;
 use semantic_analyzer::Analyzer;
+use stacker::Stacker;
 use std::{env, fs, process};
+use symbol_table::SymbolTable;
 
 pub fn run() {
     let args: Vec<String> = env::args().collect();
@@ -50,6 +53,7 @@ pub fn run() {
                         };
                         let mut logger = Logger::new(&source_str);
                         let mut tree = LcRsTree::new();
+                        let mut symbol_table = SymbolTable::new();
                         {
                             Parser::new(&source_str, &mut logger, &mut tree)
                                 .parse(out_file.as_ref().map(|s| &**s));
@@ -59,7 +63,14 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            Analyzer::new(&mut tree, &mut logger).analyze();
+                            Analyzer::new(&mut tree, &mut logger, &mut symbol_table).analyze();
+                        }
+
+                        if logger.errors_encountered() {
+                            logger.print_errors();
+                            process::exit(1);
+                        } else {
+                            Stacker::new(&tree, &mut symbol_table).stack_ir();
                         }
 
                         if logger.errors_encountered() {
