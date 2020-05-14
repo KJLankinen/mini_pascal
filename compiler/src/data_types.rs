@@ -304,6 +304,14 @@ pub struct TokenSymbolType<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenSymbolIdxOptIdx<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub st: SymbolType,
+    pub idx: usize,
+    pub opt_idx: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Undefined,
     Program(TokenIdxOptIdx<'a>),
@@ -326,7 +334,7 @@ pub enum NodeType<'a> {
     RelOp(TokenIdxIdx<'a>),
     AddOp(TokenIdxOptIdx<'a>),
     MulOp(TokenIdxIdx<'a>),
-    Variable(TokenOptIdx<'a>),
+    Variable(TokenSymbolIdxOptIdx<'a>),
     Literal(Option<TokenData<'a>>),
     Not(TokenIdx<'a>),
     ArraySize(TokenIdx<'a>),

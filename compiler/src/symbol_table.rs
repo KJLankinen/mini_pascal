@@ -3,9 +3,10 @@ use std::collections::HashMap;
 
 pub struct SymbolTable<'a> {
     depth: i32,
-    symbols_in_scope: HashMap<i32, HashMap<String, SymbolType>>,
-    variable_counts: HashMap<&'a str, HashMap<SymbolType, Vec<usize>>>,
+    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize)>>,
+    variable_counts: HashMap<SymbolType, Vec<usize>>,
     maximum_counts: HashMap<SymbolType, Vec<usize>>,
+    variable_indices: HashMap<(&'a str, SymbolType, usize), usize>,
     current_fname: Option<&'a str>,
 }
 
@@ -16,6 +17,7 @@ impl<'a> SymbolTable<'a> {
             symbols_in_scope: HashMap::new(),
             variable_counts: HashMap::new(),
             maximum_counts: HashMap::new(),
+            variable_indices: HashMap::new(),
             current_fname: None,
         }
     }
@@ -30,34 +32,34 @@ impl<'a> SymbolTable<'a> {
             "Current function name must be set before inserting values."
         );
 
+        let count = self
+            .variable_counts
+            .entry(st)
+            .or_insert(vec![0; self.depth as usize + 1])
+            .get_mut(self.depth as usize)
+            .unwrap();
+        *count += 1;
+
         self.symbols_in_scope
             .entry(self.depth)
             .or_insert(HashMap::new())
-            .insert(key.to_lowercase(), st);
-
-        // Increment the number of this SymbolType encountered
-        // inside the current function at the current depth
-        self.variable_counts
-            .entry(self.current_fname.unwrap())
-            .or_insert(HashMap::new())
-            .entry(st)
-            .or_insert(vec![0; self.depth as usize + 1])[self.depth as usize] += 1;
+            .insert(key.to_lowercase(), (st, *count));
     }
 
-    pub fn get(&self, key: &'a str) -> Option<&SymbolType> {
+    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize)> {
         self.symbols_in_scope
             .get(&self.depth)
             .and_then(|m| m.get(&key.to_lowercase()))
     }
 
-    pub fn find(&self, key: &'a str) -> Option<&SymbolType> {
+    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize)> {
         for i in (0..=self.depth).rev() {
-            if let Some(st) = self
+            if let Some(tuple) = self
                 .symbols_in_scope
                 .get(&i)
                 .and_then(|m| m.get(&key.to_lowercase()))
             {
-                return Some(st);
+                return Some(tuple);
             }
         }
         None
@@ -70,11 +72,7 @@ impl<'a> SymbolTable<'a> {
             self.current_fname = new_fname;
         }
 
-        // For every SymbolType that has been encountered inside the current function,
-        // add a new count of zero at this new depth.
-        self.variable_counts
-            .get_mut(self.current_fname.unwrap_or_else(|| ""))
-            .map(|m| m.values_mut().for_each(|v| v.push(0)));
+        self.variable_counts.values_mut().for_each(|v| v.push(0));
     }
 
     pub fn step_out(&mut self) {
@@ -83,51 +81,80 @@ impl<'a> SymbolTable<'a> {
             "SymbolTable depth should never be < 0 before stepping out."
         );
 
-        if let Some(hm) = self.symbols_in_scope.get_mut(&self.depth) {
-            hm.clear();
-        }
+        self.symbols_in_scope
+            .get_mut(&self.depth)
+            .map(|m| m.clear());
 
         // Update the maximum counts for each symbol type encountered inside the scope we're
         // stepping out of.
-        if let Some(fname) = self.current_fname {
-            if let Some(map) = self.variable_counts.get_mut(fname) {
-                for (st, vec) in map.iter_mut() {
-                    if 0 < vec.len() {
-                        let max_vec = self.maximum_counts.entry(*st).or_insert(vec![0; vec.len()]);
-                        while max_vec.len() < vec.len() {
-                            max_vec.push(vec[max_vec.len()]);
-                        }
-                        assert!(
-                            max_vec.len() >= vec.len(),
-                            "max vec should be same length or longer as current vec."
-                        );
-
-                        let idx = vec.len() - 1;
-                        max_vec[idx] = *[max_vec[idx], vec.pop().unwrap()].iter().max().unwrap();
-                    }
+        for (st, vec) in self.variable_counts.iter_mut() {
+            if 0 < vec.len() {
+                let max_vec = self.maximum_counts.entry(*st).or_insert(vec![0; vec.len()]);
+                while max_vec.len() < vec.len() {
+                    max_vec.push(vec[max_vec.len()]);
                 }
+                assert!(
+                    max_vec.len() >= vec.len(),
+                    "max vec should be same length or longer as current vec."
+                );
+
+                let idx = vec.len() - 1;
+                max_vec[idx] = *[max_vec[idx], vec.pop().unwrap()].iter().max().unwrap();
             }
         }
 
         self.depth -= 1;
         if -1 == self.depth {
             // We're stepping completely out of a function.
-            // Save the maximum counts of the function
+            // Calculate the indices of variables for the function to a map.
             if let Some(fname) = self.current_fname {
-                if let Some(map) = self.variable_counts.get_mut(fname) {
-                    for (st, vec) in map.iter_mut() {
-                        *vec = self
-                            .maximum_counts
-                            .get(st)
-                            .expect(
-                                "maximum_count and variable_count should contain the same keys.",
-                            )
-                            .to_vec();
+                /*
+                 * Example:
+                 * let vec =        [0,         0,          1,              0,          3,              2];
+                 * Iterators below will then calculate
+                 * first(scan)      [0,         0,          0,              1,          1,              4],
+                 * then(zip & map)  [None,      None,       Some(0),        None,       Some(1),        Some(4)],
+                 * finally(enum)    [(0, None), (1, None),  (2, Some(0)),   (3, None),  (4, Some(1)),   (5, Some(4))]
+                 *
+                 * In the final vector, the first value of the tuple is the depth,
+                 * the second is the index if there was any variables
+                 * of the given symbol type at this scope depth.
+                 */
+                let mut total = 0;
+                for (st, vec) in self.maximum_counts.iter() {
+                    for (i, v) in vec
+                        .iter()
+                        .scan(0, |state, &x| {
+                            let t = *state;
+                            *state = *state + x;
+                            Some(t)
+                        })
+                        .zip(vec)
+                        .map(|(cumsum, n)| if *n != 0 { Some(cumsum) } else { None })
+                        .enumerate()
+                    {
+                        if let Some(starting_idx) = v {
+                            self.variable_indices
+                                .insert((fname, *st, i), starting_idx + total);
+                        }
                     }
+
+                    total += vec.iter().sum::<usize>();
                 }
             }
+
+            self.variable_counts.clear();
             self.maximum_counts.clear();
             self.current_fname = None;
         }
+    }
+
+    pub fn _get_variable_index(
+        &self,
+        fname: &'a str,
+        st: SymbolType,
+        depth: usize,
+    ) -> Option<&usize> {
+        self.variable_indices.get(&(fname, st, depth))
     }
 }

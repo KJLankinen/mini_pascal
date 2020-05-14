@@ -444,11 +444,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn get_variable_type(&mut self, idx: usize) -> Option<SymbolType> {
-        if let NodeType::Variable(data) = self.tree[idx].data {
+        if let NodeType::Variable(mut data) = self.tree[idx].data {
             let mut symbol_type = None;
             let token = data.token.expect("Variable is missing a token.");
 
-            if let Some(&st) = self.symbol_table.find(token.value) {
+            if let Some(&(st, count)) = self.symbol_table.find(token.value) {
                 // If variable contains an array indexing expression
                 // i.e. opt_idx = Some(idx), check that
                 // 1. The expression results in an integer
@@ -476,6 +476,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 } else {
                     st
                 };
+
+                // Update data with the symbol type and the "ranking", i.e. the count how many
+                // variables of this symbol type have already been declared in this scope.
+                data.idx = count;
+                data.st = st;
+                self.tree[idx].data = NodeType::Variable(data);
 
                 assert!(
                     SymbolType::Undefined != st,
