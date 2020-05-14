@@ -3,12 +3,25 @@ program block_test;
 procedure p1();
 begin
     var x, y: integer;
+    var s, t, v: string;
     begin
-        var x, y: integer;
+        var x, y, z: integer;
+        x := 0;
+        X := 1;
+        writeln(x);
     end;
 
     begin
         var x, y: integer;
+
+        begin
+            var x, y, z, r, t: string;
+            var i, j, k: Boolean;
+
+            begin
+                var x: real;
+            end;
+        end;
     end;
 end;
 
@@ -20,9 +33,10 @@ begin
     end;
 
     if true then
-        var x, y: integer
+        var a, x, y: integer
     else
     begin
         var x, y: integer;
+        var a, b, c: Boolean;
     end;
 end.

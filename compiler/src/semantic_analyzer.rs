@@ -32,7 +32,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
-            self.symbol_table.step_in();
+            self.symbol_table
+                .step_in(Some(data.token.expect("Program is missing an id.").value));
             self.block(data.idx, false);
             self.symbol_table.step_out();
         } else {
@@ -65,8 +66,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn block(&mut self, idx: usize, increment_scope: bool) {
         if let NodeType::Block(idx) = self.tree[idx].data {
             if increment_scope {
-                self.symbol_table.step_in();
+                self.symbol_table.step_in(None);
             }
+
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
@@ -153,7 +155,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             }
 
             // Step into new scope and declare function parameters inside the scope
-            self.symbol_table.step_in();
+            self.symbol_table.step_in(Some(token.value));
             if let Some(params) = &self
                 .function_signatures
                 .get(token.value)
@@ -375,7 +377,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         if let NodeType::Block(_) = self.tree[data.idx2].data {
             self.statement(data.idx2);
         } else {
-            self.symbol_table.step_in();
+            self.symbol_table.step_in(None);
             self.statement(data.idx2);
             self.symbol_table.step_out();
         }
@@ -384,7 +386,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let NodeType::Block(_) = self.tree[idx].data {
                 self.statement(idx);
             } else {
-                self.symbol_table.step_in();
+                self.symbol_table.step_in(None);
                 self.statement(idx);
                 self.symbol_table.step_out();
             }
@@ -404,7 +406,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         if let NodeType::Block(_) = self.tree[data.idx2].data {
             self.statement(data.idx2);
         } else {
-            self.symbol_table.step_in();
+            self.symbol_table.step_in(None);
             self.statement(data.idx2);
             self.symbol_table.step_out();
         }

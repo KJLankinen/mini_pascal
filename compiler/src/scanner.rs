@@ -331,9 +331,8 @@ impl<'a> Scanner<'a> {
                     }
                     token.value = &self.source_str[pos..token_end];
 
-                    // Get your type here, if you're in the map. As mini pascal is a case
-                    // insensitive language, check keywords with a lowercase version.
-                    if let Some(tt) = self.token_map.get::<str>(&token.value.to_lowercase()) {
+                    // Get your type here, if you're in the map.
+                    if let Some(tt) = self.token_map.get(&token.value) {
                         token.token_type = *tt;
                     }
                 }
