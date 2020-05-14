@@ -1,4 +1,4 @@
-use super::data_types::SymbolType;
+use super::data_types::{FunctionSignature, SymbolType, EMPTY_TOKEN};
 use std::collections::HashMap;
 
 pub struct SymbolTable<'a> {
@@ -6,8 +6,15 @@ pub struct SymbolTable<'a> {
     symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize)>>,
     variable_counts: HashMap<SymbolType, Vec<usize>>,
     maximum_counts: HashMap<SymbolType, Vec<usize>>,
-    variable_indices: HashMap<(&'a str, SymbolType, usize), usize>,
+    function_data: HashMap<&'a str, FunctionData<'a>>,
     current_fname: Option<&'a str>,
+}
+
+#[derive(Debug)]
+pub struct FunctionData<'a> {
+    pub variable_indices: HashMap<(SymbolType, usize), usize>,
+    pub variable_counts: HashMap<SymbolType, usize>,
+    pub signature: FunctionSignature<'a>,
 }
 
 impl<'a> SymbolTable<'a> {
@@ -17,9 +24,28 @@ impl<'a> SymbolTable<'a> {
             symbols_in_scope: HashMap::new(),
             variable_counts: HashMap::new(),
             maximum_counts: HashMap::new(),
-            variable_indices: HashMap::new(),
+            function_data: HashMap::new(),
             current_fname: None,
         }
+    }
+
+    pub fn insert_function_signature(&mut self, key: &'a str, fs: FunctionSignature<'a>) {
+        self.function_data
+            .entry(key)
+            .or_insert(FunctionData {
+                variable_indices: HashMap::new(),
+                variable_counts: HashMap::new(),
+                signature: FunctionSignature {
+                    parameters: vec![],
+                    return_type: None,
+                    token: EMPTY_TOKEN,
+                },
+            })
+            .signature = fs;
+    }
+
+    pub fn get_function_signature(&self, key: &'a str) -> Option<&FunctionSignature<'a>> {
+        self.function_data.get(key).map(|fd| &fd.signature)
     }
 
     pub fn insert(&mut self, key: &'a str, st: SymbolType) {
@@ -70,6 +96,17 @@ impl<'a> SymbolTable<'a> {
 
         if new_fname.is_some() {
             self.current_fname = new_fname;
+            // Add parameters of this function to scope
+            for param in self
+                .function_data
+                .get(new_fname.unwrap())
+                .expect("Every function should have a signature at this point.")
+                .signature
+                .parameters
+                .to_vec()
+            {
+                self.insert(param.id, param.symbol_type);
+            }
         }
 
         self.variable_counts.values_mut().for_each(|v| v.push(0));
@@ -121,6 +158,10 @@ impl<'a> SymbolTable<'a> {
                  * of the given symbol type at this scope depth.
                  */
                 let mut total = 0;
+                let fd = self
+                    .function_data
+                    .get_mut(fname)
+                    .expect("Every function should have its data set already.");
                 for (st, vec) in self.maximum_counts.iter() {
                     for (i, v) in vec
                         .iter()
@@ -134,12 +175,12 @@ impl<'a> SymbolTable<'a> {
                         .enumerate()
                     {
                         if let Some(starting_idx) = v {
-                            self.variable_indices
-                                .insert((fname, *st, i), starting_idx + total);
+                            fd.variable_indices.insert((*st, i), starting_idx + total);
                         }
                     }
-
-                    total += vec.iter().sum::<usize>();
+                    let sum = vec.iter().sum::<usize>();
+                    fd.variable_counts.insert(*st, sum);
+                    total += sum;
                 }
             }
 
@@ -155,6 +196,8 @@ impl<'a> SymbolTable<'a> {
         st: SymbolType,
         depth: usize,
     ) -> Option<&usize> {
-        self.variable_indices.get(&(fname, st, depth))
+        self.function_data
+            .get(fname)
+            .and_then(|fd| fd.variable_indices.get(&(st, depth)))
     }
 }

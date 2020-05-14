@@ -1,15 +1,13 @@
 use super::data_types::{
-    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
-    TokenOptIdx, TokenType,
+    ErrorType, FunctionSignature, IdxIdx, NodeType, Parameter, SymbolType, TokenData, TokenIdx,
+    TokenIdxIdx, TokenIdxIdxOptIdx, TokenOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use super::symbol_table::SymbolTable;
-use std::collections::HashMap;
 
 pub struct Analyzer<'a, 'b> {
     tree: &'b mut LcRsTree<NodeType<'a>>,
-    function_signatures: HashMap<&'a str, FunctionSignature<'a>>,
     logger: &'b mut Logger<'a>,
     current_return_type: Option<SymbolType>,
     symbol_table: SymbolTable<'a>,
@@ -32,8 +30,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
-            self.symbol_table
-                .step_in(Some(data.token.expect("Program is missing an id.").value));
+            let token = data.token.expect("Program is missing an id.");
+            // Insert a dummy function signature for the main block
+            self.symbol_table.insert_function_signature(
+                token.value,
+                FunctionSignature {
+                    parameters: vec![],
+                    return_type: None,
+                    token: token,
+                },
+            );
+            self.symbol_table.step_in(Some(token.value));
             self.block(data.idx, false);
             self.symbol_table.step_out();
         } else {
@@ -86,11 +93,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn function_signature(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function has no identifier token.");
-            if let Some(_) = self.function_signatures.get(token.value) {
+            if let Some(_) = self.symbol_table.get_function_signature(token.value) {
                 self.logger.add_error(ErrorType::Redeclaration(token));
             } else {
                 let mut fs = FunctionSignature {
-                    parameters: None,
+                    parameters: vec![],
                     return_type: None,
                     token: token,
                 };
@@ -118,7 +125,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     } else {
                         assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
                     }
-                    fs.parameters = Some(param_vec);
+                    fs.parameters = param_vec;
                 }
 
                 // Handle return type
@@ -126,7 +133,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     fs.return_type = Some(self.check_type(idx));
                 }
 
-                self.function_signatures.insert(token.value, fs);
+                self.symbol_table.insert_function_signature(token.value, fs);
             }
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -139,8 +146,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
             // Set return type
             self.current_return_type = self
-                .function_signatures
-                .get(token.value)
+                .symbol_table
+                .get_function_signature(token.value)
                 .expect("Function signature should already be stored in the map.")
                 .return_type;
 
@@ -154,18 +161,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 }
             }
 
-            // Step into new scope and declare function parameters inside the scope
             self.symbol_table.step_in(Some(token.value));
-            if let Some(params) = &self
-                .function_signatures
-                .get(token.value)
-                .expect("Function signature should already be stored in the map.")
-                .parameters
-            {
-                for param in params {
-                    self.symbol_table.insert(param.id, param.symbol_type);
-                }
-            }
 
             // Analyze the function block
             self.block(data.idx, false);
@@ -236,46 +232,35 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
 
         let token = data.token.expect("Call is missing a token.");
-        if let Some(fs) = self.function_signatures.get(token.value) {
-            if let Some(params) = &fs.parameters {
-                if params.len() == argument_types.len() {
-                    for i in 0..params.len() {
-                        if params[i].symbol_type != argument_types[i]
-                            && SymbolType::Undefined != argument_types[i]
-                        {
-                            self.logger.add_error(ErrorType::MismatchedArgumentTypes(
-                                fs.token,
-                                params.iter().map(|p| p.symbol_type).collect(),
-                                token,
-                                argument_types,
-                            ));
-                            break;
-                        }
+        if let Some(fs) = self.symbol_table.get_function_signature(token.value) {
+            if fs.parameters.len() == argument_types.len() {
+                for i in 0..fs.parameters.len() {
+                    if fs.parameters[i].symbol_type != argument_types[i]
+                        && SymbolType::Undefined != argument_types[i]
+                    {
+                        self.logger.add_error(ErrorType::MismatchedArgumentTypes(
+                            fs.token,
+                            fs.parameters.iter().map(|p| p.symbol_type).collect(),
+                            token,
+                            argument_types,
+                        ));
+                        break;
                     }
-                } else if params.len() > argument_types.len() {
-                    self.logger.add_error(ErrorType::TooFewArguments(
-                        fs.token,
-                        params.iter().map(|p| p.symbol_type).collect(),
-                        token,
-                        argument_types,
-                    ));
-                } else {
-                    self.logger.add_error(ErrorType::TooManyArguments(
-                        fs.token,
-                        params.iter().map(|p| p.symbol_type).collect(),
-                        token,
-                        argument_types,
-                    ));
                 }
+            } else if fs.parameters.len() > argument_types.len() {
+                self.logger.add_error(ErrorType::TooFewArguments(
+                    fs.token,
+                    fs.parameters.iter().map(|p| p.symbol_type).collect(),
+                    token,
+                    argument_types,
+                ));
             } else {
-                if false == argument_types.is_empty() {
-                    self.logger.add_error(ErrorType::TooManyArguments(
-                        fs.token,
-                        vec![],
-                        token,
-                        argument_types,
-                    ));
-                }
+                self.logger.add_error(ErrorType::TooManyArguments(
+                    fs.token,
+                    fs.parameters.iter().map(|p| p.symbol_type).collect(),
+                    token,
+                    argument_types,
+                ));
             }
 
             fs.return_type
@@ -555,12 +540,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn get_expression_type(&mut self, idx: usize) -> SymbolType {
         match self.tree[idx].data {
-            NodeType::RelOp(data) => {
+            NodeType::RelOp(mut data) => {
                 let token = data.token.expect("Relation operator is missing a token.");
                 let type1 = self.get_expression_type(data.idx);
                 let type2 = self.get_expression_type(data.idx2);
 
-                match token.token_type {
+                let st = match token.token_type {
                     TokenType::OperatorEqual
                     | TokenType::OperatorNotEqual
                     | TokenType::OperatorGreater
@@ -589,11 +574,14 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         SymbolType::Undefined
                     }
-                }
+                };
+                data.st = st;
+                self.tree[idx].data = NodeType::RelOp(data);
+                st
             }
-            NodeType::AddOp(data) => {
+            NodeType::AddOp(mut data) => {
                 let token = data.token.expect("Add operator is missing a token.");
-                if let Some(idx) = data.opt_idx {
+                let st = if let Some(idx) = data.opt_idx {
                     let type1 = self.get_expression_type(data.idx);
                     let type2 = self.get_expression_type(idx);
 
@@ -629,14 +617,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             SymbolType::Undefined
                         }
                     }
-                }
+                };
+                data.st = st;
+                self.tree[idx].data = NodeType::AddOp(data);
+                st
             }
-            NodeType::MulOp(data) => {
+            NodeType::MulOp(mut data) => {
                 let token = data.token.expect("Multiply operator is missing a token.");
                 let type1 = self.get_expression_type(data.idx);
                 let type2 = self.get_expression_type(data.idx2);
 
-                match token.token_type {
+                let st = match token.token_type {
                     TokenType::OperatorMultiply | TokenType::OperatorDivide => self.match_operands(
                         type1,
                         type2,
@@ -653,7 +644,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         SymbolType::Undefined
                     }
-                }
+                };
+                data.st = st;
+                self.tree[idx].data = NodeType::MulOp(data);
+                st
             }
             NodeType::Variable(data) => {
                 if let Some(vt) = self.get_variable_type(idx) {
@@ -717,7 +711,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     pub fn new(tree: &'b mut LcRsTree<NodeType<'a>>, logger: &'b mut Logger<'a>) -> Self {
         Analyzer {
             tree: tree,
-            function_signatures: HashMap::new(),
             logger: logger,
             current_return_type: None,
             symbol_table: SymbolTable::new(),
@@ -789,14 +782,3 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 // ---------------------------------------------------------------------
 // Auxiliary structs used during the semantic analysis
 // ---------------------------------------------------------------------
-struct Parameter<'a> {
-    _is_ref: bool,
-    symbol_type: SymbolType,
-    id: &'a str,
-}
-
-struct FunctionSignature<'a> {
-    parameters: Option<Vec<Parameter<'a>>>,
-    return_type: Option<SymbolType>,
-    token: TokenData<'a>,
-}

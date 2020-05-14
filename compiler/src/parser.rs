@@ -1,7 +1,7 @@
 use super::data_types::{
     ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
-    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxOptIdx,
-    TokenSymbolType, TokenType,
+    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxIdx,
+    TokenSymbolIdxOptIdx, TokenSymbolType, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -1508,8 +1508,9 @@ impl<'a, 'b> Parser<'a, 'b> {
     // ---------------------------------------------------------------------
     fn expression(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxIdx {
+        let mut node_data = TokenSymbolIdxIdx {
             token: None,
+            st: SymbolType::Undefined,
             idx: !0,
             idx2: !0,
         };
@@ -1555,8 +1556,9 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn simple_expression(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxOptIdx {
+        let mut node_data = TokenSymbolIdxOptIdx {
             token: None,
+            st: SymbolType::Undefined,
             idx: !0,
             opt_idx: None,
         };
@@ -1616,8 +1618,9 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn term(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdxIdx {
+        let mut node_data = TokenSymbolIdxIdx {
             token: None,
+            st: SymbolType::Undefined,
             idx: !0,
             idx2: !0,
         };

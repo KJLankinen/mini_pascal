@@ -238,6 +238,13 @@ impl<'a> Default for TokenData<'a> {
     }
 }
 
+pub const EMPTY_TOKEN: TokenData<'static> = TokenData {
+    column: !0,
+    line: !0,
+    token_type: TokenType::Undefined,
+    value: "Empty Token",
+};
+
 // ---------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------
@@ -312,6 +319,14 @@ pub struct TokenSymbolIdxOptIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenSymbolIdxIdx<'a> {
+    pub token: Option<TokenData<'a>>,
+    pub st: SymbolType,
+    pub idx: usize,
+    pub idx2: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType<'a> {
     Undefined,
     Program(TokenIdxOptIdx<'a>),
@@ -331,9 +346,9 @@ pub enum NodeType<'a> {
     Write(usize),
     If(TokenIdxIdxOptIdx<'a>),
     While(TokenIdxIdx<'a>),
-    RelOp(TokenIdxIdx<'a>),
-    AddOp(TokenIdxOptIdx<'a>),
-    MulOp(TokenIdxIdx<'a>),
+    RelOp(TokenSymbolIdxIdx<'a>),
+    AddOp(TokenSymbolIdxOptIdx<'a>),
+    MulOp(TokenSymbolIdxIdx<'a>),
     Variable(TokenSymbolIdxOptIdx<'a>),
     Literal(Option<TokenData<'a>>),
     Not(TokenIdx<'a>),
@@ -632,9 +647,16 @@ impl<'a> Serialize for NodeType<'a> {
     }
 }
 
-const EMPTY_TOKEN: TokenData<'static> = TokenData {
-    column: !0,
-    line: !0,
-    token_type: TokenType::Undefined,
-    value: "Empty Token",
-};
+#[derive(Debug, Clone)]
+pub struct Parameter<'a> {
+    pub _is_ref: bool,
+    pub symbol_type: SymbolType,
+    pub id: &'a str,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionSignature<'a> {
+    pub parameters: Vec<Parameter<'a>>,
+    pub return_type: Option<SymbolType>,
+    pub token: TokenData<'a>,
+}
