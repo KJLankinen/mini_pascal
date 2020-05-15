@@ -359,7 +359,7 @@ pub enum NodeType<'a> {
     AddOp(TokenSymbolIdxOptIdx<'a>),
     MulOp(TokenSymbolIdxIdx<'a>),
     Variable(TokenSymbolIdxIdxOptIdx<'a>),
-    Literal(Option<TokenData<'a>>),
+    Literal(TokenOptIdx<'a>),
     Not(TokenIdx<'a>),
     ArraySize(TokenIdx<'a>),
 }
@@ -632,7 +632,8 @@ impl<'a> Serialize for NodeType<'a> {
                     "Literal",
                     1,
                 )?;
-                state.serialize_field("value", &data.expect("Literal token is none.").value)?;
+                state
+                    .serialize_field("value", &data.token.expect("Literal token is none.").value)?;
                 state.end()
             }
             NodeType::Not(data) => {

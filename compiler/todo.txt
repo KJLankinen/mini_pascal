@@ -10,8 +10,10 @@
 - kirjoitettavaa webassemblykoodia:
     - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.
     - string concatenate
-    - array access, joka tarkistaa, että access idx on pienempi kuin pituus
+    - array access & assign, jotka tarkistaa, että idx on pienempi kuin pituus
     - read reals, write reals (ehkä integeriä käyttäen).
     - read kaikki
+    - string eq, neq, leq, geq, ge, le --> vertaa stringien pituuksia
+    - get_string_litera(idx) --> palauttaa string literalin osoitteen indeksin perusteella
 
 - predefined identifiers miettiminen ja lisääminen

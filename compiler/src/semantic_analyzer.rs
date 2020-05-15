@@ -656,8 +656,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     SymbolType::Undefined
                 }
             }
-            NodeType::Literal(token) => {
-                match token.expect("Literal is missing a token.").token_type {
+            NodeType::Literal(data) => {
+                match data.token.expect("Literal is missing a token.").token_type {
                     TokenType::LiteralBoolean => SymbolType::Bool,
                     TokenType::LiteralInt => SymbolType::Int,
                     TokenType::LiteralReal => SymbolType::Real,

@@ -13,3 +13,4 @@
 8.5.	& 13h	    & implementing semantic analyzer
 13.5.   & 9h	    & implementing intermediate stack language translator
 14.5.	& 10,5h	    & implementing intermediate stack language translator and symbol table
+15.5.	& 1015-->   & 

@@ -1703,7 +1703,10 @@ impl<'a, 'b> Parser<'a, 'b> {
                     &[TokenType::OperatorSize],
                     &mut recovery_token,
                 )?;
-                self.tree[lit_idx].data = NodeType::Literal(token);
+                self.tree[lit_idx].data = NodeType::Literal(TokenOptIdx {
+                    token: token,
+                    opt_idx: None,
+                });
                 lit_idx
             }
             TokenType::LParen => {

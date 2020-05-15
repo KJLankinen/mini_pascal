@@ -1,12 +1,13 @@
 use super::data_types::{
-    IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenOptIdx, TokenType,
+    IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenOptIdx,
+    TokenSymbolIdxIdxOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
 
 pub struct Stacker<'a, 'b> {
     tree: &'b LcRsTree<NodeType<'a>>,
-    symbol_table: &'b mut SymbolTable<'a>,
+    symbol_table: &'b SymbolTable<'a>,
     fname: Option<&'a str>,
 }
 
@@ -80,7 +81,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn assign_statement(&mut self, data: &IdxIdx) {
-        if let NodeType::Variable(_variable_data) = self.tree[data.idx].data {
+        if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
+            self.expression(data.idx2);
+            let _local_idx = self.get_variable_local_idx(&variable_data);
+            if let Some(arr_idx) = variable_data.opt_idx {
+                // emit local_idx
+                self.expression(arr_idx);
+            // emit call array_assign(value, addr, idx)
+            } else {
+                // emit local set to local_idx
+            }
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[data.idx]);
         }
@@ -109,6 +119,29 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 self.expression(data.idx2);
 
                 match st {
+                    SymbolType::Bool => match token.token_type {
+                        TokenType::OperatorEqual => {
+                            // emit i32 eq
+                        }
+                        TokenType::OperatorNotEqual => {
+                            // emit i32 neq
+                        }
+                        TokenType::OperatorGreater => {
+                            // emit i32 gre
+                        }
+                        TokenType::OperatorGreaterEqual => {
+                            // emit i32 geq
+                        }
+                        TokenType::OperatorLess => {
+                            // emit i32 less
+                        }
+                        TokenType::OperatorLessEqual => {
+                            // emit i32 leq
+                        }
+                        _ => {
+                            assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                        }
+                    },
                     SymbolType::Int => match token.token_type {
                         TokenType::OperatorEqual => {
                             // emit i32 eq
@@ -150,6 +183,29 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         }
                         TokenType::OperatorLessEqual => {
                             // emit f32 leq
+                        }
+                        _ => {
+                            assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                        }
+                    },
+                    SymbolType::String => match token.token_type {
+                        TokenType::OperatorEqual => {
+                            // emit call string_eq
+                        }
+                        TokenType::OperatorNotEqual => {
+                            // emit call string_neq
+                        }
+                        TokenType::OperatorGreater => {
+                            // emit call string_grea
+                        }
+                        TokenType::OperatorGreaterEqual => {
+                            // emit call string_geq
+                        }
+                        TokenType::OperatorLess => {
+                            // emit call string_less
+                        }
+                        TokenType::OperatorLessEqual => {
+                            // emit call string_leq
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
@@ -277,34 +333,54 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 }
             }
             NodeType::Variable(data) => {
-                let _count = data.idx
-                    + self
-                        .symbol_table
-                        .get_variable_index(
-                            self.fname
-                                .expect("Function must have a name at this point."),
-                            data.st,
-                            data.idx2,
-                        )
-                        .expect("Symbol table should contain a variable index.");
-
-                match data.st {
-                    SymbolType::Bool | SymbolType::Int | SymbolType::Real | SymbolType::String => {
-                        // emit local get with count
-                    }
-                    SymbolType::ArrayBool(_)
-                    | SymbolType::ArrayInt(_)
-                    | SymbolType::ArrayReal(_)
-                    | SymbolType::ArrayString(_) => {
-                        // emit call $check_array or smthn with count
-                    }
-                    _ => {
-                        assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                    }
+                let _local_idx = self.get_variable_local_idx(&data);
+                if let Some(arr_idx) = data.opt_idx {
+                    // emit local_idx
+                    self.expression(arr_idx);
+                // emit call array_access(addr, idx)
+                } else {
+                    // emit local get with local_idx
                 }
             }
-            NodeType::Literal(_token) => {
-                // convert literal to the value
+            NodeType::Literal(data) => {
+                let token = data.token.unwrap();
+                match token.token_type {
+                    TokenType::LiteralBoolean => {
+                        if "true" == token.value {
+                            // emit i32 1
+                        } else {
+                            // emit i32 0
+                        }
+                    }
+                    TokenType::LiteralInt => {
+                        let _literal = token
+                            .value
+                            .parse::<i32>()
+                            .expect("Literal int str should be possible to parse to an integer.");
+                        // emit i32 const
+                    }
+                    TokenType::LiteralReal => {
+                        let _literal = token
+                            .value
+                            .parse::<f32>()
+                            .expect("Literal real str should be possible to parse to a float.");
+                        // emit f32 const
+                    }
+                    TokenType::LiteralString => {
+                        // The idx is the "ranking" of the string literal. In other words, if this
+                        // is the fifth literal string that is found in the program, idx is 5.
+                        // Literal strings are stored consecutively in memory and the accessing
+                        // functions uses this idx to find the address of the string literal.
+                        let _idx = data
+                            .opt_idx
+                            .expect("Literal string should have some opt_idx.");
+                        // emit _idx as i32 const
+                        // emit call $get_string_literal(idx)
+                    }
+                    _ => {
+                        assert!(false, "Unexpected token {:#?}.", data);
+                    }
+                }
             }
             NodeType::Not(data) => {
                 self.expression(data.idx);
@@ -312,7 +388,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             }
             NodeType::ArraySize(data) => {
                 self.expression(data.idx);
-                // emit call $array_size
+                // emit call $array_size(addr)
             }
             NodeType::Call(data) => self.call_statement(&data),
             _ => {
@@ -321,7 +397,20 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b mut SymbolTable<'a>) -> Self {
+    fn get_variable_local_idx(&mut self, data: &TokenSymbolIdxIdxOptIdx<'a>) -> usize {
+        data.idx
+            + self
+                .symbol_table
+                .get_variable_index(
+                    self.fname
+                        .expect("Function must have a name at this point."),
+                    data.st,
+                    data.idx2,
+                )
+                .expect("Symbol table should contain a variable index.")
+    }
+
+    pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b SymbolTable<'a>) -> Self {
         Stacker {
             tree: tree,
             symbol_table: symbol_table,
