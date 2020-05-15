@@ -1,0 +1,46 @@
+program literals;
+
+begin
+    var a, b, c: Boolean;
+    var i, j, k: integer;
+    var p, q, r: real;
+    var s, t, u: string;
+
+    begin
+        var a, b, e: integer;
+        a := 4;
+        b := 8;
+        e := 3;
+        begin
+            var i, j, k: Boolean;
+            i := false;
+            j := true;
+            k := false;
+        end;
+
+        begin
+            var x, y, z: integer;
+            x := 1;
+            y := 1;
+            z := 1;
+        end;
+    end;
+{*
+    b := true;
+    b := false;
+
+    i := -0;
+    i := 0;
+    i := 1;
+    i := 2;
+    i := -531;
+
+    r := 3.0;
+    r := 3.;
+    r := 0.1000001;
+    r := 3.1415;
+
+    s := "Hello!";
+    s := "Ciao!";
+    s := "Moi!"; *}
+end.

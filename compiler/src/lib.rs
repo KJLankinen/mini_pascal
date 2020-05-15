@@ -70,7 +70,7 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            Stacker::new(&tree, &symbol_table).stack_ir();
+                            Stacker::new(&tree, &mut symbol_table).stack_ir();
                         }
 
                         if logger.errors_encountered() {

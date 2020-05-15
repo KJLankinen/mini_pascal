@@ -656,12 +656,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     SymbolType::Undefined
                 }
             }
-            NodeType::Literal(data) => {
-                match data.token.expect("Literal is missing a token.").token_type {
+            NodeType::Literal(mut data) => {
+                let token = data.token.expect("Literal is missing a token.");
+                match token.token_type {
                     TokenType::LiteralBoolean => SymbolType::Bool,
                     TokenType::LiteralInt => SymbolType::Int,
                     TokenType::LiteralReal => SymbolType::Real,
-                    TokenType::LiteralString => SymbolType::String,
+                    TokenType::LiteralString => {
+                        data.opt_idx = Some(self.symbol_table.add_string_literal(token.value));
+                        self.tree[idx].data = NodeType::Literal(data);
+                        SymbolType::String
+                    }
                     _ => SymbolType::Undefined,
                 }
             }

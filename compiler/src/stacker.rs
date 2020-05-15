@@ -7,7 +7,7 @@ use super::symbol_table::SymbolTable;
 
 pub struct Stacker<'a, 'b> {
     tree: &'b LcRsTree<NodeType<'a>>,
-    symbol_table: &'b SymbolTable<'a>,
+    symbol_table: &'b mut SymbolTable<'a>,
     fname: Option<&'a str>,
 }
 
@@ -21,10 +21,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
     // ---------------------------------------------------------------------
     fn program(&mut self, idx: usize) {
         if let NodeType::Program(data) = self.tree[idx].data {
+            self.fname = Some(data.token.expect("Program is missing a token.").value);
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
             self.block(data.idx);
+            self.fname = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -55,7 +57,9 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn function(&mut self, idx: usize) {
-        if let NodeType::Function(_data) = self.tree[idx].data {
+        if let NodeType::Function(data) = self.tree[idx].data {
+            self.fname = Some(data.token.expect("Function is missing a token.").value);
+            self.fname = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -410,7 +414,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 .expect("Symbol table should contain a variable index.")
     }
 
-    pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b SymbolTable<'a>) -> Self {
+    pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b mut SymbolTable<'a>) -> Self {
         Stacker {
             tree: tree,
             symbol_table: symbol_table,
