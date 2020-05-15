@@ -1224,18 +1224,21 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn write_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut arg = !0;
+        let mut node_data = TokenIdx {
+            token: None,
+            idx: !0,
+        };
 
         fn parse_write<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            arg: &mut usize,
+            node_data: &mut TokenIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 TokenType::KeywordWrite => {
-                    parser.process(
+                    node_data.token = parser.process(
                         Parser::match_token,
                         &[TokenType::KeywordWrite],
                         &[TokenType::LParen, TokenType::RParen],
@@ -1254,7 +1257,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for argument list
-                    *arg = parser
+                    node_data.idx = parser
                         .process(
                             Parser::argument_list,
                             my_idx,
@@ -1275,13 +1278,13 @@ impl<'a, 'b> Parser<'a, 'b> {
             };
 
             if TokenType::Undefined != tt {
-                parse_write(parser, tt, my_idx, arg)?;
+                parse_write(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_write(self, TokenType::KeywordWrite, my_idx, &mut arg)?;
-        self.tree[my_idx].data = NodeType::Write(arg);
+        parse_write(self, TokenType::KeywordWrite, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NodeType::Write(node_data);
 
         Ok(my_idx)
     }
@@ -1352,16 +1355,17 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn assert_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenIdx {
+        let mut node_data = TokenIdxOptIdx {
             token: None,
             idx: !0,
+            opt_idx: None,
         };
 
         fn parse_assert<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenIdx<'a>,
+            node_data: &mut TokenIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {

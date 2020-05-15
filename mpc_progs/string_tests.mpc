@@ -9,6 +9,7 @@ begin
 
     writeln(s, t, u, v);
     writeln(s + t + u + v);
+    assert(s > t);
     {*
     writeln(s - t);
     writeln(t / u);

@@ -51,7 +51,7 @@ pub fn run() {
                             }
                             _ => None,
                         };
-                        let mut logger = Logger::new(&source_str);
+                        let mut logger = Logger::new(&source_str, filename);
                         let mut tree = LcRsTree::new();
                         let mut symbol_table = SymbolTable::new();
                         {

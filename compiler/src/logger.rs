@@ -3,13 +3,15 @@ use super::data_types::{ErrorType, SymbolType};
 pub struct Logger<'a> {
     errors: Vec<ErrorType<'a>>,
     lines: Vec<&'a str>,
+    pub file_name: &'a str,
 }
 
 impl<'a> Logger<'a> {
-    pub fn new(source_str: &'a str) -> Self {
+    pub fn new(source_str: &'a str, file_name: &'a str) -> Self {
         Logger {
             errors: vec![],
             lines: source_str.lines().collect(),
+            file_name: file_name,
         }
     }
 
@@ -213,7 +215,7 @@ impl<'a> Logger<'a> {
         eprintln!("\t|\t{}", expl_string);
     }
 
-    pub fn _get_line(&self, line: usize) -> &'a str {
+    pub fn get_line(&self, line: usize) -> &'a str {
         assert!(line <= self.lines.len());
         self.lines[line - 1]
     }

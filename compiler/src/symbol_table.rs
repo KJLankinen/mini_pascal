@@ -9,6 +9,7 @@ pub struct SymbolTable<'a> {
     current_fname: Option<&'a str>,
     string_literals: String,
     string_literal_bytes: Vec<(usize, usize)>,
+    write_arguments: HashMap<(u32, u32), Vec<SymbolType>>,
 }
 
 impl<'a> SymbolTable<'a> {
@@ -89,6 +90,8 @@ impl<'a> SymbolTable<'a> {
     pub fn step_in(&mut self, new_fname: Option<&'a str>) {
         self.depth += 1;
 
+        self.counts.push();
+
         if new_fname.is_some() {
             self.current_fname = new_fname;
             // Add parameters of this function to scope
@@ -103,8 +106,6 @@ impl<'a> SymbolTable<'a> {
                 self.insert(param.id, param.symbol_type);
             }
         }
-
-        self.counts.push();
     }
 
     pub fn step_out(&mut self) {
@@ -169,7 +170,7 @@ impl<'a> SymbolTable<'a> {
         })
     }
 
-    pub fn add_string_literal(&mut self, literal: &'a str) -> usize {
+    pub fn add_string_literal<'b>(&mut self, literal: &'b str) -> usize {
         // String literals are concatenated into a one big blob.
         // "start" and "length" are in bytes and relative to the start of the string blob.
         // The data will be stored in linear memory and can then be accesses with
@@ -179,6 +180,16 @@ impl<'a> SymbolTable<'a> {
         let length = self.string_literals.as_bytes().len() - start;
         self.string_literal_bytes.push((start, length));
         self.string_literal_bytes.len() - 1
+    }
+
+    pub fn add_write_arguments(&mut self, loc: (u32, u32), args: Vec<SymbolType>) {
+        self.write_arguments.insert(loc, args);
+    }
+
+    pub fn get_write_arguments(&mut self, loc: (u32, u32)) -> Vec<SymbolType> {
+        self.write_arguments
+            .remove(&loc)
+            .expect("Write arguments should be saved.")
     }
 
     pub fn _print_string_literals(&self) {
@@ -192,7 +203,7 @@ impl<'a> SymbolTable<'a> {
         let (start, len) = self.string_literal_bytes[idx];
         let mut literal = self.string_literals.split_off(start);
         let end = literal.split_off(len);
-        println!("{}, {}, {}", self.string_literals, literal, end);
+        println!("{}", literal);
         self.string_literals.push_str(literal.as_str());
         self.string_literals.push_str(end.as_str());
     }
@@ -206,6 +217,7 @@ impl<'a> SymbolTable<'a> {
             current_fname: None,
             string_literals: String::new(),
             string_literal_bytes: vec![],
+            write_arguments: HashMap::new(),
         }
     }
 }

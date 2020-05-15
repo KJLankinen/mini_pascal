@@ -175,7 +175,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
             NodeType::Block(_) => self.block(idx, true),
-            NodeType::Assert(data) => self.assert_statement(&data),
+            NodeType::Assert(_) => self.assert_statement(idx),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(data) => {
                 self.call_statement(&data);
@@ -183,7 +183,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             NodeType::Declaration(data) => self.declaration_statement(&data),
             NodeType::Return(data) => self.return_statement(&data),
             NodeType::Read(idx) => self.read_statement(idx),
-            NodeType::Write(idx) => self.write_statement(idx),
+            NodeType::Write(data) => self.write_statement(&data),
             NodeType::If(data) => self.if_statement(&data),
             NodeType::While(data) => self.while_statement(&data),
             _ => assert!(false, "Unexpected node {:#?}.", self.tree[idx]),
@@ -208,13 +208,29 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn assert_statement(&mut self, data: &TokenIdx<'a>) {
-        let et = self.get_expression_type(data.idx);
-        if SymbolType::Bool != et && SymbolType::Undefined != et {
-            self.logger.add_error(ErrorType::AssertMismatchedType(
-                data.token.expect("Assert is missing a token."),
-                et,
-            ));
+    fn assert_statement(&mut self, idx: usize) {
+        if let NodeType::Assert(mut data) = self.tree[idx].data {
+            let token = data.token.expect("Assert is missing a token.");
+            let et = self.get_expression_type(data.idx);
+            if SymbolType::Bool != et && SymbolType::Undefined != et {
+                self.logger
+                    .add_error(ErrorType::AssertMismatchedType(token, et));
+            }
+
+            data.opt_idx = Some(
+                self.symbol_table.add_string_literal(
+                    format!(
+                        "Assertion failed at {}:{}: \"{}\"",
+                        self.logger.file_name,
+                        token.line,
+                        self.logger.get_line(token.line as usize).trim()
+                    )
+                    .as_str(),
+                ),
+            );
+            self.tree[idx].data = NodeType::Assert(data);
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
@@ -307,9 +323,6 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if let NodeType::Variable(variable_data) = self.tree[idx].data {
                 let token = variable_data.token.expect("Variable is missing a token.");
                 if let Some(st) = self.get_variable_type(idx) {
-                    // Should we save the variable types somewhere for emitter?
-                    // Maybe do some map with (line, col) of first variable as key, and vector of
-                    // types as value, which can then be fetched easily
                     match st {
                         SymbolType::ArrayBool(_)
                         | SymbolType::ArrayInt(_)
@@ -335,13 +348,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn write_statement(&mut self, idx: usize) {
-        let mut next = Some(idx);
+    fn write_statement(&mut self, data: &TokenIdx<'a>) {
+        let mut arguments = vec![];
+        let mut next = Some(data.idx);
         while let Some(idx) = next {
-            // Should these be stored somewhere or just check here?
-            self.get_expression_type(idx);
+            arguments.push(self.get_expression_type(idx));
             next = self.tree[idx].right_sibling;
         }
+
+        let token = data.token.expect("Write is missing a token.");
+        self.symbol_table
+            .add_write_arguments((token.line, token.column), arguments);
     }
 
     fn if_statement(&mut self, data: &TokenIdxIdxOptIdx<'a>) {

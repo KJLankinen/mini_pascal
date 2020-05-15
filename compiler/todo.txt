@@ -1,11 +1,10 @@
-- testaaminen, eli useiden eri pascal ohjelmien kirjoittaminen
-
--stacker:
-    - funktiot, expressionit, variable yms. tarvitsevat tietoa tyypeistä.
-    - mappaus scope depthista ja variable nimestä uniikkiin indeksiin, joka vastaa local variablea
+- testaaminen, eli
+    - useiden eri pascal ohjelmien kirjoittaminen
+    - automaattisten testien kirjoittaminen
 
 - webassembly:
     - var, eli pass-by-reference: frame pointer?
+    - linear memoryyn string literalit
 
 - kirjoitettavaa webassemblykoodia:
     - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.
@@ -15,5 +14,6 @@
     - read kaikki
     - string eq, neq, leq, geq, ge, le --> vertaa stringien pituuksia
     - get_string_litera(idx) --> palauttaa string literalin osoitteen indeksin perusteella
+
 
 - predefined identifiers miettiminen ja lisääminen

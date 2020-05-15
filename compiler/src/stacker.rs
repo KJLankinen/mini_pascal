@@ -1,6 +1,6 @@
 use super::data_types::{
-    IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenOptIdx,
-    TokenSymbolIdxIdxOptIdx, TokenType,
+    IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx,
+    TokenOptIdx, TokenSymbolIdxIdxOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
@@ -22,10 +22,14 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn program(&mut self, idx: usize) {
         if let NodeType::Program(data) = self.tree[idx].data {
             self.fname = Some(data.token.expect("Program is missing a token.").value);
+            // emit program start
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
+            // emit main block start
             self.block(data.idx);
+            // emit main block end
+            // emit program end
             self.fname = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -46,19 +50,26 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
     fn block(&mut self, idx: usize) {
         if let NodeType::Block(idx) = self.tree[idx].data {
+            // emit block start
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
                 next = self.tree[idx].right_sibling;
             }
+        // emit block end
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
+    // TODO: pretty much everything
     fn function(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
             self.fname = Some(data.token.expect("Function is missing a token.").value);
+            // do function stuff
+            // must contain $rv local variable (as the last local) and $FB block, if function has a return type.
+            // See return statement.
+            // At end, emit local get $rv
             self.fname = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -77,7 +88,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             NodeType::Declaration(_) => {}
             NodeType::Return(data) => self.return_statement(&data),
             NodeType::Read(idx) => self.read_statement(idx),
-            NodeType::Write(idx) => self.write_statement(idx),
+            NodeType::Write(data) => self.write_statement(&data),
             NodeType::If(data) => self.if_statement(&data),
             NodeType::While(data) => self.while_statement(&data),
             _ => assert!(false, "Unexpected node {:#?}.", self.tree[idx]),
@@ -100,19 +111,150 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    fn assert_statement(&mut self, _data: &TokenIdx<'a>) {}
+    fn assert_statement(&mut self, data: &TokenIdxOptIdx<'a>) {
+        // emit block start
+        // emit block start
+        self.expression(data.idx);
+        // emit eqz
+        // emit br_if 0
+        // emit br 1
+        // emit block end
+        let _idx = data.opt_idx.expect("Assert should have some opt_idx.");
+        // emit _idx as i32 const
+        // emit call $get_string_literal(idx)
+        // emit call $write_str or something
+        // emit unreachable
+        // emit block end
+    }
 
-    fn call_statement(&mut self, _data: &TokenOptIdx<'a>) {}
+    // TODO: references, i.e. "var"
+    fn call_statement(&mut self, data: &TokenOptIdx<'a>) {
+        let mut next = data.opt_idx;
+        while let Some(idx) = next {
+            self.expression(idx);
+            next = self.tree[idx].right_sibling;
+        }
+        // emit call data.token.expect("Call statement is missing a token.").value
+    }
 
-    fn return_statement(&mut self, _data: &TokenOptIdx<'a>) {}
+    fn return_statement(&mut self, data: &TokenOptIdx<'a>) {
+        if let Some(idx) = data.opt_idx {
+            self.expression(idx);
+        // emit local set $rv
+        // emit br $FB
+        } else {
+            // emit return
+        }
+    }
 
-    fn read_statement(&mut self, _idx: usize) {}
+    fn read_statement(&mut self, idx: usize) {
+        // emit call $fd_read_input or something
+        let mut next = Some(idx);
+        while let Some(idx) = next {
+            if let NodeType::Variable(variable_data) = self.tree[idx].data {
+                let _local_idx = self.get_variable_local_idx(&variable_data);
+                // emit const i32 local_idx
+                match variable_data.st {
+                    SymbolType::Bool => {
+                        // emit call $bool_from_input
+                    }
+                    SymbolType::Int => {
+                        // emit call $i32_from_input
+                    }
+                    SymbolType::Real => {
+                        // emit call $f32_from_input
+                    }
+                    SymbolType::String => {
+                        // emit call $string_from_input
+                    }
+                    SymbolType::ArrayBool(_)
+                    | SymbolType::ArrayInt(_)
+                    | SymbolType::ArrayReal(_)
+                    | SymbolType::ArrayString(_)
+                    | SymbolType::Undefined => {
+                        assert!(false, "Unexpected symbol type {:#?}.", variable_data);
+                    }
+                }
+            } else {
+                break;
+            }
 
-    fn write_statement(&mut self, _idx: usize) {}
+            next = self.tree[idx].right_sibling;
+        }
+    }
 
-    fn if_statement(&mut self, _data: &TokenIdxIdxOptIdx<'a>) {}
+    fn write_statement(&mut self, data: &TokenIdx<'a>) {
+        let token = data.token.expect("Write is missing a token.");
+        let arguments = self
+            .symbol_table
+            .get_write_arguments((token.line, token.column));
+        let mut next = Some(data.idx);
+        let mut i = 0;
+        while let Some(idx) = next {
+            self.expression(idx);
 
-    fn while_statement(&mut self, _data: &TokenIdxIdx<'a>) {}
+            match arguments[i] {
+                SymbolType::Bool => {
+                    // emit call $write_bool
+                }
+                SymbolType::Int => {
+                    // emit call $write_i32
+                }
+                SymbolType::Real => {
+                    // emit call $write_f32
+                }
+                SymbolType::String => {
+                    // emit call $write_string
+                }
+                SymbolType::ArrayBool(_)
+                | SymbolType::ArrayInt(_)
+                | SymbolType::ArrayReal(_)
+                | SymbolType::ArrayString(_) => {
+                    // emit call $write_i32
+                }
+                SymbolType::Undefined => {
+                    assert!(false, "Unexpected symbol type {:#?}.", data);
+                }
+            }
+
+            next = self.tree[idx].right_sibling;
+            i += 1;
+        }
+        assert_eq!(i, arguments.len(), "Not all arguments used.");
+    }
+
+    fn if_statement(&mut self, data: &TokenIdxIdxOptIdx<'a>) {
+        let has_else = data.opt_idx.is_some();
+        let _br_if_label = if has_else { 1 } else { 0 };
+
+        if has_else {
+            // emit block start
+            // emit block start
+        }
+        // emit block start
+        self.expression(data.idx);
+        // emit eqz
+        // emit br_if with br_if_label
+        self.statement(data.idx2);
+        // emit block end
+        if has_else {
+            // emit br 1
+            // emit block end
+            self.statement(data.opt_idx.unwrap());
+            // emit block end
+        }
+    }
+
+    fn while_statement(&mut self, data: &TokenIdxIdx<'a>) {
+        // emit block start
+        // emit loop start
+        self.expression(data.idx);
+        // emit br_if 1
+        self.statement(data.idx2);
+        // emit br 0
+        // emit loop end
+        // emit block end
+    }
 
     fn expression(&mut self, idx: usize) {
         match self.tree[idx].data {

@@ -1,0 +1,14 @@
+program reference;
+
+procedure p(var a: integer, var b: integer);
+begin
+    a := 1337;
+    assert(a = b);
+end;
+
+begin
+    var a, b: integer;
+    a := 0;
+    b := 1;
+    p(a, b);
+end.
