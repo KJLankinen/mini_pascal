@@ -135,7 +135,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             NodeType::Block(_) => self.block(idx),
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
-            NodeType::Call(data) => self.call_statement(&data),
+            NodeType::Call(_) => self.call_statement(idx),
             NodeType::Declaration(_) => {}
             NodeType::Return(data) => self.return_statement(&data),
             NodeType::Read(idx) => self.read_statement(idx),
@@ -179,14 +179,33 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     // TODO: references, i.e. "var"
-    // if this is a statement and func has a return type, emit drop
-    fn call_statement(&mut self, data: &TokenOptIdx<'a>) {
-        let mut next = data.opt_idx;
-        while let Some(idx) = next {
-            self.expression(idx);
-            next = self.tree[idx].right_sibling;
+    fn call_statement(&mut self, idx: usize) {
+        if let NodeType::Call(data) = self.tree[idx].data {
+            let token = data.token.expect("Call statement is missing a token.");
+            let mut next = data.opt_idx;
+            while let Some(idx) = next {
+                self.expression(idx);
+                next = self.tree[idx].right_sibling;
+            }
+            // emit call token.value
+
+            match self.tree[self.tree[idx].parent.unwrap()].data {
+                NodeType::Block(_) | NodeType::If(_) | NodeType::While(_) => {
+                    let return_type = self
+                        .symbol_table
+                        .get_function_signature(token.value)
+                        .expect("Function should have a signature.")
+                        .return_type;
+
+                    if return_type.is_some() {
+                        // emit drop
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
-        // emit call data.token.expect("Call statement is missing a token.").value
     }
 
     fn return_statement(&mut self, data: &TokenOptIdx<'a>) {
@@ -586,7 +605,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 self.expression(data.idx);
                 // emit call $array_size(addr)
             }
-            NodeType::Call(data) => self.call_statement(&data),
+            NodeType::Call(_) => self.call_statement(idx),
             _ => {
                 assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
             }
