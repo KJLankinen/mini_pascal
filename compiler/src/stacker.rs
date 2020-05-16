@@ -421,7 +421,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 | SymbolType::ArrayInt(_)
                 | SymbolType::ArrayReal(_)
                 | SymbolType::ArrayString(_) => {
-                    // emit call $write_i32
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("write_i32")));
                 }
                 SymbolType::Undefined => {
                     assert!(false, "Unexpected symbol type {:#?}.", data);
@@ -607,37 +608,38 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     self.expression(idx);
 
                     match token.token_type {
-                        TokenType::OperatorPlus => {
-                            match st {
-                                SymbolType::Int => {
-                                    // emit i32 add
-                                }
-                                SymbolType::Real => {
-                                    // emit f32 add
-                                }
-                                SymbolType::String => {
-                                    // emit call $string_concatenate
-                                }
-                                _ => {
-                                    assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                                }
+                        TokenType::OperatorPlus => match st {
+                            SymbolType::Int => {
+                                self.instructions
+                                    .push(Instruction::Add(WasmType::I32(None)));
                             }
-                        }
-                        TokenType::OperatorMinus => {
-                            match st {
-                                SymbolType::Int => {
-                                    // emit i32 sub
-                                }
-                                SymbolType::Real => {
-                                    // emit f32 sub
-                                }
-                                _ => {
-                                    assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                                }
+                            SymbolType::Real => {
+                                self.instructions
+                                    .push(Instruction::Add(WasmType::F32(None)));
                             }
-                        }
+                            SymbolType::String => {
+                                self.instructions
+                                    .push(Instruction::Call(WasmType::Str("string_concatenate")));
+                            }
+                            _ => {
+                                assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                            }
+                        },
+                        TokenType::OperatorMinus => match st {
+                            SymbolType::Int => {
+                                self.instructions
+                                    .push(Instruction::Sub(WasmType::I32(None)));
+                            }
+                            SymbolType::Real => {
+                                self.instructions
+                                    .push(Instruction::Sub(WasmType::F32(None)));
+                            }
+                            _ => {
+                                assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                            }
+                        },
                         TokenType::OperatorOr => {
-                            // emit i32 or
+                            self.instructions.push(Instruction::Or(WasmType::I32(None)));
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
@@ -649,21 +651,23 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
                     match token.token_type {
                         TokenType::OperatorPlus => {}
-                        TokenType::OperatorMinus => {
-                            match st {
-                                SymbolType::Int => {
-                                    // emit i32 -1
-                                    // emit i32 mul
-                                }
-                                SymbolType::Real => {
-                                    // emit f32 -1
-                                    // emut f32 mul
-                                }
-                                _ => {
-                                    assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                                }
+                        TokenType::OperatorMinus => match st {
+                            SymbolType::Int => {
+                                self.instructions
+                                    .push(Instruction::Const(WasmType::I32(Some(-1))));
+                                self.instructions
+                                    .push(Instruction::Mul(WasmType::I32(None)));
                             }
-                        }
+                            SymbolType::Real => {
+                                self.instructions
+                                    .push(Instruction::Const(WasmType::F32(Some(-1.0))));
+                                self.instructions
+                                    .push(Instruction::Mul(WasmType::I32(None)));
+                            }
+                            _ => {
+                                assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                            }
+                        },
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         }
@@ -677,37 +681,39 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 self.expression(data.idx2);
 
                 match token.token_type {
-                    TokenType::OperatorMultiply => {
-                        match st {
-                            SymbolType::Int => {
-                                // emit i32 mul
-                            }
-                            SymbolType::Real => {
-                                // emit f32 mul
-                            }
-                            _ => {
-                                assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                            }
+                    TokenType::OperatorMultiply => match st {
+                        SymbolType::Int => {
+                            self.instructions
+                                .push(Instruction::Mul(WasmType::I32(None)));
                         }
-                    }
-                    TokenType::OperatorDivide => {
-                        match st {
-                            SymbolType::Int => {
-                                // emit i32 div
-                            }
-                            SymbolType::Real => {
-                                // emit f32 div
-                            }
-                            _ => {
-                                assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                            }
+                        SymbolType::Real => {
+                            self.instructions
+                                .push(Instruction::Mul(WasmType::F32(None)));
                         }
-                    }
+                        _ => {
+                            assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                        }
+                    },
+                    TokenType::OperatorDivide => match st {
+                        SymbolType::Int => {
+                            self.instructions
+                                .push(Instruction::Div(WasmType::I32(None)));
+                        }
+                        SymbolType::Real => {
+                            self.instructions
+                                .push(Instruction::Div(WasmType::F32(None)));
+                        }
+                        _ => {
+                            assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                        }
+                    },
                     TokenType::OperatorModulo => {
-                        // emit i32 mod
+                        self.instructions
+                            .push(Instruction::Mod(WasmType::I32(None)));
                     }
                     TokenType::OperatorAnd => {
-                        // emit i32 and
+                        self.instructions
+                            .push(Instruction::And(WasmType::I32(None)));
                     }
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
@@ -715,13 +721,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 }
             }
             NodeType::Variable(data) => {
-                let _local_idx = self.get_variable_local_idx(&data);
+                let local_idx = self.get_variable_local_idx(&data);
                 if let Some(arr_idx) = data.opt_idx {
-                    // emit local_idx
+                    self.instructions
+                        .push(Instruction::Const(WasmType::I32(Some(local_idx as i32))));
                     self.expression(arr_idx);
-                // emit call array_access(addr, idx)
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("array_access")));
                 } else {
-                    // emit local get with local_idx
+                    self.instructions
+                        .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
                 }
             }
             NodeType::Literal(data) => {
@@ -729,35 +738,41 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 match token.token_type {
                     TokenType::LiteralBoolean => {
                         if "true" == token.value {
-                            // emit i32 1
+                            self.instructions
+                                .push(Instruction::Const(WasmType::I32(Some(1))));
                         } else {
-                            // emit i32 0
+                            self.instructions
+                                .push(Instruction::Const(WasmType::I32(Some(0))));
                         }
                     }
                     TokenType::LiteralInt => {
-                        let _literal = token
+                        let literal = token
                             .value
                             .parse::<i32>()
                             .expect("Literal int str should be possible to parse to an integer.");
-                        // emit i32 const
+                        self.instructions
+                            .push(Instruction::Const(WasmType::I32(Some(literal))));
                     }
                     TokenType::LiteralReal => {
-                        let _literal = token
+                        let literal = token
                             .value
                             .parse::<f32>()
                             .expect("Literal real str should be possible to parse to a float.");
-                        // emit f32 const
+                        self.instructions
+                            .push(Instruction::Const(WasmType::F32(Some(literal))));
                     }
                     TokenType::LiteralString => {
                         // The idx is the "ranking" of the string literal. In other words, if this
                         // is the fifth literal string that is found in the program, idx is 5.
                         // Literal strings are stored consecutively in memory and the accessing
                         // functions uses this idx to find the address of the string literal.
-                        let _idx = data
+                        let str_idx = data
                             .opt_idx
                             .expect("Literal string should have some opt_idx.");
-                        // emit _idx as i32 const
-                        // emit call $get_string_literal(idx)
+                        self.instructions
+                            .push(Instruction::Const(WasmType::I32(Some(str_idx as i32))));
+                        self.instructions
+                            .push(Instruction::Call(WasmType::Str("get_string_literal")));
                     }
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", data);
@@ -766,11 +781,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
             }
             NodeType::Not(data) => {
                 self.expression(data.idx);
-                // emit eqz
+                self.instructions.push(Instruction::Eqz);
             }
             NodeType::ArraySize(data) => {
                 self.expression(data.idx);
-                // emit call $array_size(addr)
+                self.instructions
+                    .push(Instruction::Call(WasmType::Str("array_size")));
             }
             NodeType::Call(_) => self.call_statement(idx),
             _ => {
