@@ -9,6 +9,7 @@ end;
 begin
     var a, b: integer;
     a := 0;
-    b := 1;
-    p(a, b);
+    writeln("a before assignment: ", a);
+    p(a, a);
+    writeln("a after assignment: ", a);
 end.

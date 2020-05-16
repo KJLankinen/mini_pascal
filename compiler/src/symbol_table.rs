@@ -1,8 +1,13 @@
 use super::data_types::{FunctionSignature, SymbolType, EMPTY_TOKEN};
 use std::collections::HashMap;
 
+/*
+ * "SymbolTable" contains data related to variables encountered during semantic analysis and used
+ * by the stacker.
+ */
+
 pub struct SymbolTable<'a> {
-    depth: i32,
+    pub depth: i32,
     symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize, i32)>>,
     counts: Counts,
     function_data: HashMap<&'a str, FunctionData<'a>>,
@@ -13,27 +18,6 @@ pub struct SymbolTable<'a> {
 }
 
 impl<'a> SymbolTable<'a> {
-    pub fn insert_function_signature(&mut self, key: &'a str, fs: FunctionSignature<'a>) {
-        self.function_data
-            .entry(key)
-            .or_insert(FunctionData {
-                i32_idx: HashMap::new(),
-                f32_idx: HashMap::new(),
-                it: 0,
-                ft: 0,
-                signature: FunctionSignature {
-                    parameters: vec![],
-                    return_type: None,
-                    token: EMPTY_TOKEN,
-                },
-            })
-            .signature = fs;
-    }
-
-    pub fn get_function_signature(&self, key: &'a str) -> Option<&FunctionSignature<'a>> {
-        self.function_data.get(key).map(|fd| &fd.signature)
-    }
-
     pub fn insert(&mut self, key: &'a str, st: SymbolType) {
         assert!(
             -1 < self.depth,
@@ -43,23 +27,12 @@ impl<'a> SymbolTable<'a> {
             self.current_fname.is_some(),
             "Current function name must be set before inserting values."
         );
+        assert!(
+            SymbolType::Undefined != st,
+            "Trying to insert a variable of undefined type."
+        );
 
-        // Reals are represented as f32 in webassembly, everything else as i32
-        let count = match st {
-            SymbolType::Real => self.counts.get_fc(self.depth as usize),
-            SymbolType::Bool
-            | SymbolType::Int
-            | SymbolType::String
-            | SymbolType::ArrayBool(_)
-            | SymbolType::ArrayInt(_)
-            | SymbolType::ArrayReal(_)
-            | SymbolType::ArrayString(_) => self.counts.get_ic(self.depth as usize),
-            SymbolType::Undefined => {
-                assert!(false, "Trying to insert a variable of undefined type.");
-                self.counts.get_ic(self.depth as usize)
-            }
-        };
-
+        let count = self.counts.get_count(self.depth as usize, st);
         self.symbols_in_scope
             .entry(self.depth)
             .or_insert(HashMap::new())
@@ -95,15 +68,19 @@ impl<'a> SymbolTable<'a> {
         if new_fname.is_some() {
             self.current_fname = new_fname;
             // Add parameters of this function to scope
-            for param in self
+            for (i, param) in self
                 .function_data
                 .get(new_fname.unwrap())
                 .expect("Every function should have a signature at this point.")
                 .signature
                 .parameters
-                .to_vec()
+                .iter()
+                .enumerate()
             {
-                self.insert(param.id, param.symbol_type);
+                self.symbols_in_scope
+                    .entry(self.depth)
+                    .or_insert(HashMap::new())
+                    .insert(param.id.to_lowercase(), (param.symbol_type, i, self.depth));
             }
         }
     }
@@ -145,29 +122,39 @@ impl<'a> SymbolTable<'a> {
                     };
 
                 let ((ics, it), (fcs, ft)) = self.counts.calculate_indices();
-                update_function_data(&mut fd.i32_idx, &mut fd.it, &ics, it, 0);
-                update_function_data(&mut fd.f32_idx, &mut fd.ft, &fcs, ft, it);
+                let num_parameters = fd.signature.parameters.len();
+                update_function_data(&mut fd.i32_idx, &mut fd.it, &ics, it, num_parameters);
+                update_function_data(&mut fd.f32_idx, &mut fd.ft, &fcs, ft, it + num_parameters);
             }
 
             self.current_fname = None;
         }
     }
 
-    pub fn get_variable_index(&self, fname: &'a str, st: SymbolType, depth: i32) -> Option<&usize> {
-        self.function_data.get(fname).and_then(|fd| match st {
-            SymbolType::Real => fd.f32_idx.get(&depth),
-            SymbolType::Bool
-            | SymbolType::Int
-            | SymbolType::String
-            | SymbolType::ArrayBool(_)
-            | SymbolType::ArrayInt(_)
-            | SymbolType::ArrayReal(_)
-            | SymbolType::ArrayString(_) => fd.i32_idx.get(&depth),
-            SymbolType::Undefined => {
-                assert!(false, "Trying to get a variable of undefined type.");
-                fd.i32_idx.get(&depth)
+    pub fn get_variable_index(&self, fname: &'a str, st: SymbolType, depth: i32) -> usize {
+        // Depth 0 is reserved for parameters. Since parameters can be in arbitrary order but local
+        // variables are ordered by type (all i32 represented variables first, then f32), handling
+        // differs for the two cases.
+        if let Some(fd) = self.function_data.get(fname) {
+            if 0 == depth {
+                0
+            } else {
+                assert!(
+                    SymbolType::Undefined != st,
+                    "Trying to get a variable of undefined type."
+                );
+                let v = if SymbolType::Real == st {
+                    fd.f32_idx.get(&depth)
+                } else {
+                    fd.i32_idx.get(&depth)
+                }
+                .expect("No variable found with given symbol type and depth.");
+                *v
             }
-        })
+        } else {
+            assert!(false, "No function data with given function name.");
+            0
+        }
     }
 
     pub fn add_string_literal<'b>(&mut self, literal: &'b str) -> usize {
@@ -190,6 +177,31 @@ impl<'a> SymbolTable<'a> {
         self.write_arguments
             .remove(&loc)
             .expect("Write arguments should be saved.")
+    }
+
+    pub fn insert_function_signature(&mut self, key: &'a str, fs: FunctionSignature<'a>) {
+        self.function_data
+            .entry(key)
+            .or_insert(FunctionData {
+                i32_idx: HashMap::new(),
+                f32_idx: HashMap::new(),
+                it: 0,
+                ft: 0,
+                signature: FunctionSignature {
+                    parameters: vec![],
+                    return_type: None,
+                    token: EMPTY_TOKEN,
+                },
+            })
+            .signature = fs;
+    }
+
+    pub fn get_function_signature(&self, key: &'a str) -> Option<&FunctionSignature<'a>> {
+        self.function_data.get(key).map(|fd| &fd.signature)
+    }
+
+    pub fn get_local_variable_totals(&self, key: &'a str) -> Option<(usize, usize)> {
+        self.function_data.get(key).map(|fd| (fd.it, fd.ft))
     }
 
     pub fn _print_string_literals(&self) {
@@ -222,12 +234,13 @@ impl<'a> SymbolTable<'a> {
     }
 }
 
-// ------------------------------------------------------------------------------------------------
-// "Counts" is used to keep track of how many i32 representable and how many f32 representable
-// variables are encountered as a function (or the main block) is traversed.
-// Example:
-// The maximum number of reals encountered (so far) in all the scopes of depth 3 is fm[3].
-// ------------------------------------------------------------------------------------------------
+/*
+ * "Counts" is used to keep track of how many i32 representable and how many f32 representable
+ * variables are encountered as a function (or the main block) is traversed.
+ * Example:
+ * The maximum number of reals encountered (so far) in all the scopes of depth 3 is fm[3].
+*/
+
 struct Counts {
     ic: Vec<usize>, // current i32 counts
     im: Vec<usize>, // max i32 counts
@@ -245,12 +258,17 @@ impl Counts {
         }
     }
 
-    pub fn get_fc(&mut self, idx: usize) -> &mut usize {
-        self.fc.get_mut(idx).unwrap()
-    }
-
-    pub fn get_ic(&mut self, idx: usize) -> &mut usize {
-        self.ic.get_mut(idx).unwrap()
+    pub fn get_count(&mut self, idx: usize, st: SymbolType) -> &mut usize {
+        // Reals are represented as f32 in webassembly, everything else as i32
+        if SymbolType::Real == st {
+            self.fc
+                .get_mut(idx)
+                .expect("f32 counts does not contain a value at the given idx.")
+        } else {
+            self.ic
+                .get_mut(idx)
+                .expect("i32 counts does not contain a value at the given idx.")
+        }
     }
 
     pub fn push(&mut self) {
@@ -319,27 +337,29 @@ impl Counts {
     }
 }
 
-// ------------------------------------------------------------------------------------------------
-// "FunctionData" contains data related to a function.
-// The idx maps contain the starting indices for local variables at different scope depths. The scope
-// depth is the key and the value is the starting index. All other variables are represented as i32
-// but reals are represented as f32. The local variables are recycled per depth, i.e. different
-// scopes with the same depth use the same local variables.
-// Total number of each kind of local variable is saved as well, and the function signature is
-// saved in the struct of the same name.
-// ------------------------------------------------------------------------------------------------
+/*
+* "FunctionData" contains data related to a function.
+* The idx maps contain the starting indices for local variables at different scope depths. The scope
+* depth is the key and the value is the starting index. All other variables are represented as i32
+* but reals are represented as f32. The local variables are recycled per depth, i.e. different
+* scopes with the same depth use the same local variables.
+* Total number of each kind of local variable is saved as well, and the function signature is
+* saved in the struct of the same name.
+*/
+
 #[derive(Debug)]
 pub struct FunctionData<'a> {
-    pub i32_idx: HashMap<i32, usize>,
-    pub f32_idx: HashMap<i32, usize>,
-    pub it: usize,
-    pub ft: usize,
-    pub signature: FunctionSignature<'a>,
+    i32_idx: HashMap<i32, usize>,
+    f32_idx: HashMap<i32, usize>,
+    it: usize,
+    ft: usize,
+    signature: FunctionSignature<'a>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_types::Parameter;
 
     #[test]
     fn counts_cumsum() {
@@ -391,5 +411,161 @@ mod tests {
 
         assert_eq!(counts.im, vec![6, 5, 18, 8]);
         assert_eq!(counts.fm, vec![11, 5, 8, 40]);
+    }
+
+    #[test]
+    fn variable_indices() {
+        let var_types = vec![
+            SymbolType::Bool,
+            SymbolType::Real,
+            SymbolType::Int,
+            SymbolType::Int,
+            SymbolType::Bool,
+            SymbolType::Int, // first local
+            SymbolType::Int,
+            SymbolType::Real,
+            SymbolType::ArrayReal(0),
+            SymbolType::String,
+            SymbolType::String,
+            SymbolType::Real,
+            SymbolType::Int,
+            SymbolType::String,
+            SymbolType::Real,
+            SymbolType::Int,
+            SymbolType::Int,
+            SymbolType::Int,
+            SymbolType::ArrayReal(0),
+            SymbolType::Real,
+        ];
+        let vars: Vec<(String, SymbolType)> = (0..var_types.len())
+            .map(|i| (i.to_string(), var_types[i]))
+            .collect();
+        let num_params = 5;
+        let mut locals: Vec<(&str, SymbolType, usize)> = (num_params..var_types.len())
+            .map(|i| (vars[i].0.as_str(), vars[i].1, 0))
+            .collect();
+        let parameters = (0..num_params)
+            .map(|i| Parameter {
+                _is_ref: false,
+                symbol_type: vars[i].1,
+                id: &vars[i].0,
+            })
+            .collect();
+
+        let mut symbol_table = SymbolTable::new();
+        let fs = FunctionSignature {
+            parameters: parameters,
+            return_type: None,
+            token: EMPTY_TOKEN,
+        };
+
+        symbol_table.insert_function_signature(fs.token.value, fs);
+        symbol_table.step_in(Some(EMPTY_TOKEN.value));
+        // depth 0
+        {
+            symbol_table.step_in(None);
+            // depth 1
+            {
+                symbol_table.insert(locals[0].0, locals[0].1); // i32 0 + 5 = 5
+                symbol_table.insert(locals[1].0, locals[1].1); // i32 1 + 5 = 6
+                symbol_table.insert(locals[2].0, locals[2].1); // f32 0 + 13 = 13
+
+                locals[0].2 = symbol_table.get(locals[0].0).unwrap().1;
+                locals[1].2 = symbol_table.get(locals[1].0).unwrap().1;
+                locals[2].2 = symbol_table.get(locals[2].0).unwrap().1;
+
+                symbol_table.step_in(None);
+                // depth 2
+                {
+                    symbol_table.insert(locals[3].0, locals[3].1); // i32 0 + 8
+                    symbol_table.insert(locals[4].0, locals[4].1); // i32 1 + 8
+                    symbol_table.insert(locals[5].0, locals[5].1); // i32 2 + 8
+
+                    locals[3].2 = symbol_table.get(locals[3].0).unwrap().1;
+                    locals[4].2 = symbol_table.get(locals[4].0).unwrap().1;
+                    locals[5].2 = symbol_table.get(locals[5].0).unwrap().1;
+                }
+                symbol_table.step_out();
+
+                // depth 1
+                symbol_table.insert(locals[6].0, locals[6].1); // f32 1 + 13 = 14
+                locals[6].2 = symbol_table.get(locals[6].0).unwrap().1;
+
+                symbol_table.step_in(None);
+                // depth 2
+                {
+                    symbol_table.insert(locals[7].0, locals[7].1); // i32 0 + 8 = 8
+                    symbol_table.insert(locals[8].0, locals[8].1); // i32 1 + 8 = 9
+                    symbol_table.insert(locals[9].0, locals[9].1); // f32 0 + 16 = 16
+
+                    locals[7].2 = symbol_table.get(locals[7].0).unwrap().1;
+                    locals[8].2 = symbol_table.get(locals[8].0).unwrap().1;
+                    locals[9].2 = symbol_table.get(locals[9].0).unwrap().1;
+
+                    symbol_table.step_in(None);
+                    // depth 3
+                    {
+                        symbol_table.insert(locals[10].0, locals[10].1); // i32 0 + 11 = 11
+                        symbol_table.insert(locals[11].0, locals[11].1); // i32 1 + 11 = 12
+
+                        locals[10].2 = symbol_table.get(locals[10].0).unwrap().1;
+                        locals[11].2 = symbol_table.get(locals[11].0).unwrap().1;
+                    }
+                    symbol_table.step_out();
+                }
+                symbol_table.step_out();
+
+                // depth 1
+                symbol_table.insert(locals[12].0, locals[12].1); // i32 2 + 5 = 7
+                locals[12].2 = symbol_table.get(locals[12].0).unwrap().1;
+
+                symbol_table.step_in(None);
+                // depth 2
+                {
+                    symbol_table.insert(locals[13].0, locals[13].1); // i32 0 + 8 = 8
+                    locals[13].2 = symbol_table.get(locals[13].0).unwrap().1;
+                }
+                symbol_table.step_out();
+
+                // depth 1
+                symbol_table.insert(locals[14].0, locals[14].1); // f32 2 + 13 = 15
+                locals[14].2 = symbol_table.get(locals[14].0).unwrap().1;
+            }
+            symbol_table.step_out();
+        }
+        symbol_table.step_out();
+
+        let depths = vec![0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 1, 2, 2, 2, 3, 3, 1, 2, 1];
+        let counts: Vec<usize> = (0..num_params).chain(locals.iter().map(|l| l.2)).collect();
+        let indices = vec![
+            (0, 0),
+            (1, 0),
+            (2, 0),
+            (3, 0),
+            (4, 0),
+            (0, 5),
+            (1, 5),
+            (0, 13),
+            (0, 8),
+            (1, 8),
+            (2, 8),
+            (1, 13),
+            (0, 8),
+            (1, 8),
+            (0, 16),
+            (0, 11),
+            (1, 11),
+            (2, 5),
+            (0, 8),
+            (2, 13),
+        ];
+
+        for i in 0..var_types.len() {
+            assert_eq!(indices[i].0, counts[i]);
+            assert_eq!(
+                indices[i].1,
+                symbol_table.get_variable_index(EMPTY_TOKEN.value, vars[i].1, depths[i])
+            );
+        }
     }
 }

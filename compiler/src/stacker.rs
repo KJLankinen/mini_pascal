@@ -21,16 +21,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
     // ---------------------------------------------------------------------
     fn program(&mut self, idx: usize) {
         if let NodeType::Program(data) = self.tree[idx].data {
-            self.fname = Some(data.token.expect("Program is missing a token.").value);
             // emit program start
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
             // emit main block start
+            self.fname = Some(data.token.expect("Program is missing a token.").value);
             self.block(data.idx);
-            // emit main block end
-            // emit program end
             self.fname = None;
+        // emit main block end
+        // emit program end
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -50,26 +50,77 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
     fn block(&mut self, idx: usize) {
         if let NodeType::Block(idx) = self.tree[idx].data {
-            // emit block start
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
                 next = self.tree[idx].right_sibling;
             }
-        // emit block end
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
-    // TODO: pretty much everything
     fn function(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
-            self.fname = Some(data.token.expect("Function is missing a token.").value);
-            // do function stuff
-            // must contain $rv local variable (as the last local) and $FB block, if function has a return type.
-            // See return statement.
-            // At end, emit local get $rv
+            let token = data.token.expect("Function is missing a token.");
+            self.fname = Some(token.value);
+            let (it, ft) = self
+                .symbol_table
+                .get_local_variable_totals(token.value)
+                .expect("Function should have totals.");
+
+            // emit function start token.value
+            for param in &self
+                .symbol_table
+                .get_function_signature(token.value)
+                .expect("Function should have a signature.")
+                .parameters
+            {
+                if SymbolType::Real == param.symbol_type {
+                    // emit param f32
+                } else {
+                    // emit param i32
+                }
+            }
+
+            let return_type = self
+                .symbol_table
+                .get_function_signature(token.value)
+                .expect("Function should have a signature.")
+                .return_type;
+
+            if let Some(rt) = return_type {
+                if SymbolType::Real == rt {
+                    // emit return f32
+                } else {
+                    // emit return i32
+                }
+            }
+
+            for _ in 0..=it {
+                // emit local i32
+            }
+
+            for _ in 0..=ft {
+                // emit local f32
+            }
+
+            if let Some(rt) = return_type {
+                if SymbolType::Real == rt {
+                    // emit local $rv f32
+                } else {
+                    // emit local $rv i32
+                }
+            }
+
+            // emit $FB block start
+            self.block(data.idx);
+            // emit block end
+
+            if return_type.is_some() {
+                // emit get local $rv
+            }
+
             self.fname = None;
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -128,6 +179,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     // TODO: references, i.e. "var"
+    // if this is a statement and func has a return type, emit drop
     fn call_statement(&mut self, data: &TokenOptIdx<'a>) {
         let mut next = data.opt_idx;
         while let Some(idx) = next {
@@ -140,11 +192,9 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn return_statement(&mut self, data: &TokenOptIdx<'a>) {
         if let Some(idx) = data.opt_idx {
             self.expression(idx);
-        // emit local set $rv
-        // emit br $FB
-        } else {
-            // emit return
+            // emit local set $rv
         }
+        // emit br $FB
     }
 
     fn read_statement(&mut self, idx: usize) {
@@ -545,15 +595,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
     fn get_variable_local_idx(&mut self, data: &TokenSymbolIdxIdxOptIdx<'a>) -> usize {
         data.idx
-            + self
-                .symbol_table
-                .get_variable_index(
-                    self.fname
-                        .expect("Function must have a name at this point."),
-                    data.st,
-                    data.idx2,
-                )
-                .expect("Symbol table should contain a variable index.")
+            + self.symbol_table.get_variable_index(
+                self.fname
+                    .expect("Function must have a name at this point."),
+                data.st,
+                data.idx2,
+            )
     }
 
     pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b mut SymbolTable<'a>) -> Self {

@@ -41,7 +41,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 },
             );
             self.symbol_table.step_in(Some(token.value));
-            self.block(data.idx, false);
+            self.block(data.idx);
             self.symbol_table.step_out();
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
@@ -70,11 +70,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
     }
 
-    fn block(&mut self, idx: usize, increment_scope: bool) {
+    fn block(&mut self, idx: usize) {
         if let NodeType::Block(idx) = self.tree[idx].data {
-            if increment_scope {
-                self.symbol_table.step_in(None);
-            }
+            self.symbol_table.step_in(None);
 
             let mut next = Some(idx);
             while let Some(idx) = next {
@@ -82,9 +80,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 next = self.tree[idx].right_sibling;
             }
 
-            if increment_scope {
-                self.symbol_table.step_out();
-            }
+            self.symbol_table.step_out();
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
@@ -159,7 +155,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             self.symbol_table.step_in(Some(token.value));
 
             // Analyze the function block
-            self.block(data.idx, false);
+            self.block(data.idx);
 
             // Step out and reset return type
             self.symbol_table.step_out();
@@ -174,7 +170,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(_) => self.block(idx, true),
+            NodeType::Block(_) => self.block(idx),
             NodeType::Assert(_) => self.assert_statement(idx),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(data) => {
