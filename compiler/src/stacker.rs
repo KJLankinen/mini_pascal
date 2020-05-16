@@ -12,12 +12,14 @@ pub struct Stacker<'a, 'b> {
     instructions: Vec<Instruction<'a>>,
 }
 
+#[derive(Debug)]
 enum WasmType<'a> {
     I32(Option<i32>),
     F32(Option<f32>),
     Str(&'a str),
 }
 
+#[derive(Debug)]
 enum Instruction<'a> {
     ProgramBegin(&'a str),
     FunctionBegin(&'a str),
@@ -54,6 +56,7 @@ enum Instruction<'a> {
 impl<'a, 'b> Stacker<'a, 'b> {
     pub fn stack_ir(&mut self) {
         self.program(0);
+        println!("{:#?}", self.instructions);
     }
 
     // ---------------------------------------------------------------------
