@@ -825,12 +825,18 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn id_list(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut recovery_token = None;
-        self.tree[my_idx].data = NodeType::Identifier(self.process(
-            Parser::match_token,
-            &[TokenType::Identifier],
-            &[TokenType::ListSeparator],
-            &mut recovery_token,
-        )?);
+        self.tree[my_idx].data = NodeType::Variable(TokenSymbolIdxIdxOptIdx {
+            token: self.process(
+                Parser::match_token,
+                &[TokenType::Identifier],
+                &[TokenType::ListSeparator],
+                &mut recovery_token,
+            )?,
+            st: SymbolType::Undefined,
+            idx: !0,
+            idx2: -1,
+            opt_idx: None,
+        });
 
         let tt = self.scanner.peek().token_type;
         if TokenType::ListSeparator == tt {

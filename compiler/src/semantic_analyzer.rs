@@ -282,12 +282,40 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         let st = self.check_type(data.idx2);
         let mut next = Some(data.idx);
         while let Some(idx) = next {
-            if let NodeType::Identifier(token) = self.tree[idx].data {
-                let token = token.expect("Identifier is missing a token.");
+            if let NodeType::Variable(mut data) = self.tree[idx].data {
+                let token = data.token.expect("Variable is missing a token.");
                 if let Some(_) = self.symbol_table.get(token.value) {
                     self.logger.add_error(ErrorType::Redeclaration(token));
                 } else {
                     self.symbol_table.insert(token.value, st);
+
+                    match st {
+                        SymbolType::ArrayBool(_)
+                        | SymbolType::ArrayInt(_)
+                        | SymbolType::ArrayReal(_)
+                        | SymbolType::ArrayString(_) => {
+                            // Add an error string to linear memory, since the size check is done
+                            // during runtime.
+                            data.opt_idx = Some(
+                        self.symbol_table.add_string_literal(
+                            format!(
+                                "Trying to allocate too much memory at once. Only 1024 bytes is supported. At {}:{}: \"{}\"",
+                                self.logger.file_name,
+                                token.line,
+                                self.logger.get_line(token.line as usize).trim()
+                            )
+                            .as_str(),
+                        ),
+                    );
+                        }
+                        _ => {}
+                    }
+
+                    let (_, count, depth) = self.symbol_table.get(token.value).unwrap();
+                    data.idx = *count;
+                    data.idx2 = *depth;
+                    data.st = st;
+                    self.tree[idx].data = NodeType::Variable(data);
                 }
             } else {
                 break;

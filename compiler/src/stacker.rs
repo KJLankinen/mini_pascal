@@ -60,6 +60,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
+    // TODO: if variable is ref, type should always be i32, but f32 is loaded from mem as f32
     fn function(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function is missing a token.");
@@ -136,7 +137,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             NodeType::Assert(data) => self.assert_statement(&data),
             NodeType::Assignment(data) => self.assign_statement(&data),
             NodeType::Call(_) => self.call_statement(idx),
-            NodeType::Declaration(_) => {}
+            NodeType::Declaration(data) => self.declaration(&data),
             NodeType::Return(data) => self.return_statement(&data),
             NodeType::Read(idx) => self.read_statement(idx),
             NodeType::Write(data) => self.write_statement(&data),
@@ -205,6 +206,61 @@ impl<'a, 'b> Stacker<'a, 'b> {
             }
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
+        }
+    }
+
+    fn declaration(&mut self, data: &IdxIdx) {
+        let mut next = Some(data.idx);
+        while let Some(idx) = next {
+            if let NodeType::Variable(data) = self.tree[idx].data {
+                let _local_idx = self.get_variable_local_idx(&data);
+                match data.st {
+                    SymbolType::Bool | SymbolType::Int => {
+                        // emit i32 const 0
+                        // emit set local with _local_idx
+                    }
+                    SymbolType::Real => {
+                        // emit f32 const 0
+                        // emit set local with _local_idx
+                    }
+                    SymbolType::String => {
+                        // can't really allocate, except some default amount
+                        // emit i32 const 16
+                        // emit call $allocate
+                        // emit set local with _local_idx
+                    }
+                    SymbolType::ArrayBool(expr_idx)
+                    | SymbolType::ArrayInt(expr_idx)
+                    | SymbolType::ArrayReal(expr_idx)
+                    | SymbolType::ArrayString(expr_idx) => {
+                        // must allocate according to the expr_idx
+                        // set e.g. 1024 as max allocation size for safety
+
+                        // emit block begin
+                        self.expression(expr_idx);
+                        // emit i32 const 1024
+                        // emit i32 less
+                        // emit br_if 0
+                        let _str_idx = data
+                            .opt_idx
+                            .expect("Variable (at declaration) should have some opt_idx.");
+                        // emit str_idx as i32 const
+                        // emit call $get_string_literal(idx)
+                        // emit call $write_str or something
+                        // emit unreachable
+                        // block end
+                        // emit call $allocate
+                        // emit set local with _local_idx
+                    }
+                    _ => {
+                        assert!(false, "Unexpected symbol type {:#?}.", data);
+                    }
+                }
+            } else {
+                break;
+            }
+
+            next = self.tree[idx].right_sibling;
         }
     }
 

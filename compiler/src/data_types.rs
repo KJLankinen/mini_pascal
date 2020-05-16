@@ -345,7 +345,6 @@ pub enum NodeType<'a> {
     ParamList(usize),
     Parameter(TokenIdxBool<'a>),
     VariableType(TokenSymbolType<'a>),
-    Identifier(Option<TokenData<'a>>),
     Assert(TokenIdxOptIdx<'a>),
     Assignment(IdxIdx),
     Call(TokenOptIdx<'a>),
@@ -381,7 +380,6 @@ impl<'a> From<NodeType<'a>> for u32 {
             NodeType::ParamList(_) => 5,
             NodeType::Parameter(_) => 6,
             NodeType::VariableType(_) => 7,
-            NodeType::Identifier(_) => 8,
             NodeType::Assert(_) => 9,
             NodeType::Assignment(_) => 10,
             NodeType::Call(_) => 11,
@@ -481,19 +479,6 @@ impl<'a> Serialize for NodeType<'a> {
                 let mut state =
                     serializer.serialize_struct_variant("NodeType", u32::from(*self), "Type", 1)?;
                 state.serialize_field("type", &data.st)?;
-                state.end()
-            }
-            NodeType::Identifier(data) => {
-                let mut state = serializer.serialize_struct_variant(
-                    "NodeType",
-                    u32::from(*self),
-                    "Identifier",
-                    1,
-                )?;
-                state.serialize_field(
-                    "identifier",
-                    &data.expect("Identifier token is none.").value,
-                )?;
                 state.end()
             }
             NodeType::Assert(_) => {

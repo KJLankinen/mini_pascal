@@ -5,6 +5,7 @@
 - webassembly:
     - var, eli pass-by-reference: frame pointer?
     - linear memoryyn string literalit
+    - allocator
 
 - kirjoitettavaa webassemblykoodia:
     - assert-funktio, joka käyttää unreachablea ja osaa tulostaa expressionin, rivin ja tiedoston.
@@ -13,7 +14,8 @@
     - read reals, write reals (ehkä integeriä käyttäen).
     - read kaikki
     - string eq, neq, leq, geq, ge, le --> vertaa stringien pituuksia
-    - get_string_litera(idx) --> palauttaa string literalin osoitteen indeksin perusteella
+    - get_string_literal(idx) --> palauttaa string literalin osoitteen indeksin perusteella
+    - allocate(n_bytes) --> palauttaa osoitteen, josta allokoitu "n_bytes" tavua
 
 
 - predefined identifiers miettiminen ja lisääminen
