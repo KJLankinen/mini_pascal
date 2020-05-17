@@ -106,7 +106,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         while let Some(idx) = next {
                             if let NodeType::Parameter(data) = self.tree[idx].data {
                                 param_vec.push(Parameter {
-                                    _is_ref: data.b,
+                                    is_ref: data.b,
                                     symbol_type: self.check_type(data.idx),
                                     id: data
                                         .token
@@ -238,8 +238,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             next = self.tree[idx].right_sibling;
         }
 
+        let mut num_refs = 0;
         let token = data.token.expect("Call is missing a token.");
-        if let Some(fs) = self.symbol_table.get_function_signature(token.value) {
+        let st = if let Some(fs) = self.symbol_table.get_function_signature(token.value) {
             if fs.parameters.len() == argument_types.len() {
                 for i in 0..fs.parameters.len() {
                     if fs.parameters[i].symbol_type != argument_types[i]
@@ -252,6 +253,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                             argument_types,
                         ));
                         break;
+                    }
+
+                    if fs.parameters[i].is_ref {
+                        num_refs += 1;
                     }
                 }
             } else if fs.parameters.len() > argument_types.len() {
@@ -275,7 +280,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             self.logger
                 .add_error(ErrorType::UndeclaredIdentifier(token));
             None
-        }
+        };
+        self.symbol_table.increment_ref_count(num_refs);
+        st
     }
 
     fn declaration_statement(&mut self, data: &IdxIdx) {
@@ -311,7 +318,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         _ => {}
                     }
 
-                    let (_, count, depth) = self.symbol_table.get(token.value).unwrap();
+                    let (_, count, depth, _) = self.symbol_table.get(token.value).unwrap();
                     data.idx = *count;
                     data.idx2 = *depth;
                     data.st = st;
@@ -469,7 +476,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             let mut symbol_type = None;
             let token = data.token.expect("Variable is missing a token.");
 
-            if let Some(&(st, count, depth)) = self.symbol_table.find(token.value) {
+            if let Some(&(st, count, depth, is_ref)) = self.symbol_table.find(token.value) {
                 // If variable contains an array indexing expression
                 // i.e. opt_idx = Some(idx), check that
                 // 1. The expression results in an integer
@@ -504,6 +511,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 data.idx = count;
                 data.idx2 = depth;
                 data.st = st;
+                data.b = is_ref;
                 self.tree[idx].data = NodeType::Variable(data);
 
                 assert!(

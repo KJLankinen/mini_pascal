@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 pub struct SymbolTable<'a> {
     pub depth: i32,
-    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize, i32)>>,
+    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize, i32, bool)>>,
     counts: Counts,
     function_data: HashMap<&'a str, FunctionData<'a>>,
     current_fname: Option<&'a str>,
@@ -36,18 +36,18 @@ impl<'a> SymbolTable<'a> {
         self.symbols_in_scope
             .entry(self.depth)
             .or_insert(HashMap::new())
-            .insert(key.to_lowercase(), (st, *count, self.depth));
+            .insert(key.to_lowercase(), (st, *count, self.depth, false));
 
         *count += 1;
     }
 
-    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize, i32)> {
+    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize, i32, bool)> {
         self.symbols_in_scope
             .get(&self.depth)
             .and_then(|m| m.get(&key.to_lowercase()))
     }
 
-    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize, i32)> {
+    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize, i32, bool)> {
         for i in (0..=self.depth).rev() {
             if let Some(tuple) = self
                 .symbols_in_scope
@@ -80,7 +80,10 @@ impl<'a> SymbolTable<'a> {
                 self.symbols_in_scope
                     .entry(self.depth)
                     .or_insert(HashMap::new())
-                    .insert(param.id.to_lowercase(), (param.symbol_type, i, self.depth));
+                    .insert(
+                        param.id.to_lowercase(),
+                        (param.symbol_type, i, self.depth, param.is_ref),
+                    );
             }
         }
     }
@@ -192,12 +195,30 @@ impl<'a> SymbolTable<'a> {
                     return_type: None,
                     token: EMPTY_TOKEN,
                 },
+                num_refs: 0,
             })
             .signature = fs;
     }
 
     pub fn get_function_signature(&self, key: &'a str) -> Option<&FunctionSignature<'a>> {
         self.function_data.get(key).map(|fd| &fd.signature)
+    }
+
+    pub fn increment_ref_count(&mut self, num: usize) {
+        self.current_fname.and_then(|fname| {
+            self.function_data.get_mut(fname).and_then(|fd| {
+                if fd.num_refs < num {
+                    fd.num_refs = num;
+                    Some(num)
+                } else {
+                    None
+                }
+            })
+        });
+    }
+
+    pub fn get_function_ref_count(&self, key: &'a str) -> Option<usize> {
+        self.function_data.get(key).and_then(|fd| Some(fd.num_refs))
     }
 
     pub fn get_local_variable_totals(&self, key: &'a str) -> Option<(usize, usize)> {
@@ -354,6 +375,7 @@ pub struct FunctionData<'a> {
     it: usize,
     ft: usize,
     signature: FunctionSignature<'a>,
+    num_refs: usize,
 }
 
 #[cfg(test)]

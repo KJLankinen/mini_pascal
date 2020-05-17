@@ -1,6 +1,6 @@
 use super::data_types::{
     IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx,
-    TokenOptIdx, TokenSymbolIdxIdxOptIdx, TokenType,
+    TokenOptIdx, TokenSymbolBoolIdxIdxOptIdx, TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
@@ -31,6 +31,8 @@ enum Instruction<'a> {
     Local(Option<&'a str>, WasmType<'a>),
     GetLocal(WasmType<'a>),
     SetLocal(WasmType<'a>),
+    MemLoad(WasmType<'a>),
+    MemStore(WasmType<'a>),
     Const(WasmType<'a>),
     Call(WasmType<'a>),
     Eqz,
@@ -105,7 +107,6 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    // TODO: if variable is ref, type should always be i32, but f32 is loaded from mem as f32
     fn function(&mut self, idx: usize) {
         if let NodeType::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function is missing a token.");
@@ -123,7 +124,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 .expect("Function should have a signature.")
                 .parameters
             {
-                if SymbolType::Real == param.symbol_type {
+                if SymbolType::Real == param.symbol_type && false == param.is_ref {
                     self.instructions
                         .push(Instruction::Param(WasmType::F32(None)));
                 } else {
@@ -168,6 +169,23 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 }
             }
 
+            if let Some(nr) = self.symbol_table.get_function_ref_count(token.value) {
+                // nr tells the maximum number of arguments that are references across all the
+                // different function calls that are issued from this function.
+                // The local variables that are passed as references are stored in linear
+                // memory, the base address of which is stored in the local special variable "refs".
+                if 0 < nr {
+                    self.instructions
+                        .push(Instruction::Local(Some("refs"), WasmType::I32(None)));
+                    self.instructions
+                        .push(Instruction::Const(WasmType::I32(Some((nr * 4) as i32)))); // 4 bytes per variable
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("allocate")));
+                    self.instructions
+                        .push(Instruction::SetLocal(WasmType::Str("refs")));
+                }
+            }
+
             self.instructions.push(Instruction::BlockBegin(Some("FB")));
             self.block(data.idx);
             self.instructions.push(Instruction::End);
@@ -204,18 +222,9 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
     fn assign_statement(&mut self, data: &IdxIdx) {
         if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
+            self.emit_set_local_pre_expr(&variable_data);
             self.expression(data.idx2);
-            let local_idx = self.get_variable_local_idx(&variable_data);
-            if let Some(arr_idx) = variable_data.opt_idx {
-                self.instructions
-                    .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
-                self.expression(arr_idx);
-                self.instructions
-                    .push(Instruction::Call(WasmType::Str("array_assign")));
-            } else {
-                self.instructions
-                    .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
-            }
+            self.emit_set_local_post_expr(&variable_data);
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[data.idx]);
         }
@@ -254,6 +263,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
             self.instructions
                 .push(Instruction::Call(WasmType::Str(token.value)));
 
+            // store data back to locals
+
             match self.tree[self.tree[idx].parent.unwrap()].data {
                 NodeType::Block(_) | NodeType::If(_) | NodeType::While(_) => {
                     let return_type = self
@@ -282,22 +293,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     SymbolType::Bool | SymbolType::Int => {
                         self.instructions
                             .push(Instruction::Const(WasmType::I32(Some(0))));
-                        self.instructions
-                            .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
                     }
                     SymbolType::Real => {
                         self.instructions
                             .push(Instruction::Const(WasmType::F32(Some(0.0))));
-                        self.instructions
-                            .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
                     }
                     SymbolType::String => {
                         self.instructions
                             .push(Instruction::Const(WasmType::I32(Some(16))));
                         self.instructions
                             .push(Instruction::Call(WasmType::Str("allocate")));
-                        self.instructions
-                            .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
                     }
                     SymbolType::ArrayBool(expr_idx)
                     | SymbolType::ArrayInt(expr_idx)
@@ -325,15 +330,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
                             .push(Instruction::Call(WasmType::Str("write_str")));
                         self.instructions.push(Instruction::Unreachable);
                         self.instructions.push(Instruction::End);
+                        self.expression(expr_idx);
                         self.instructions
                             .push(Instruction::Call(WasmType::Str("allocate")));
-                        self.instructions
-                            .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
                     }
                     _ => {
                         assert!(false, "Unexpected symbol type {:#?}.", data);
                     }
                 }
+                self.instructions
+                    .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
             } else {
                 break;
             }
@@ -357,9 +363,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
         let mut next = Some(idx);
         while let Some(idx) = next {
             if let NodeType::Variable(variable_data) = self.tree[idx].data {
-                let local_idx = self.get_variable_local_idx(&variable_data);
-                self.instructions
-                    .push(Instruction::Const(WasmType::I32(Some(local_idx as i32))));
+                self.emit_set_local_pre_expr(&variable_data);
                 match variable_data.st {
                     SymbolType::Bool => {
                         self.instructions
@@ -385,6 +389,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         assert!(false, "Unexpected symbol type {:#?}.", variable_data);
                     }
                 }
+                self.emit_set_local_post_expr(&variable_data);
             } else {
                 break;
             }
@@ -725,15 +730,20 @@ impl<'a, 'b> Stacker<'a, 'b> {
             }
             NodeType::Variable(data) => {
                 let local_idx = self.get_variable_local_idx(&data);
+                self.instructions
+                    .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
                 if let Some(arr_idx) = data.opt_idx {
-                    self.instructions
-                        .push(Instruction::Const(WasmType::I32(Some(local_idx as i32))));
                     self.expression(arr_idx);
                     self.instructions
                         .push(Instruction::Call(WasmType::Str("array_access")));
-                } else {
-                    self.instructions
-                        .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+                } else if data.b {
+                    if SymbolType::Real == data.st {
+                        self.instructions
+                            .push(Instruction::MemLoad(WasmType::F32(None)));
+                    } else {
+                        self.instructions
+                            .push(Instruction::MemLoad(WasmType::I32(None)));
+                    }
                 }
             }
             NodeType::Literal(data) => {
@@ -798,7 +808,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    fn get_variable_local_idx(&mut self, data: &TokenSymbolIdxIdxOptIdx<'a>) -> usize {
+    fn get_variable_local_idx(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) -> usize {
         data.idx
             + self.symbol_table.get_variable_index(
                 self.fname
@@ -806,6 +816,36 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 data.st,
                 data.idx2,
             )
+    }
+
+    fn emit_set_local_pre_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
+        if data.b && data.opt_idx.is_none() {
+            let local_idx = self.get_variable_local_idx(&data);
+            self.instructions
+                .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+        }
+    }
+
+    fn emit_set_local_post_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
+        let local_idx = self.get_variable_local_idx(&data);
+        if let Some(arr_idx) = data.opt_idx {
+            self.instructions
+                .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+            self.expression(arr_idx);
+            self.instructions
+                .push(Instruction::Call(WasmType::Str("array_assign")));
+        } else if data.b {
+            if SymbolType::Real == data.st {
+                self.instructions
+                    .push(Instruction::MemStore(WasmType::F32(None)));
+            } else {
+                self.instructions
+                    .push(Instruction::MemStore(WasmType::I32(None)));
+            }
+        } else {
+            self.instructions
+                .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
+        }
     }
 
     pub fn new(tree: &'b LcRsTree<NodeType<'a>>, symbol_table: &'b mut SymbolTable<'a>) -> Self {

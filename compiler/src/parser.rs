@@ -1,7 +1,8 @@
 use super::data_types::{
     ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
-    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxIdx,
-    TokenSymbolIdxIdxOptIdx, TokenSymbolIdxOptIdx, TokenSymbolType, TokenType,
+    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx,
+    TokenSymbolBoolIdxIdxOptIdx, TokenSymbolIdxIdx, TokenSymbolIdxOptIdx, TokenSymbolType,
+    TokenType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -825,7 +826,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn id_list(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut recovery_token = None;
-        self.tree[my_idx].data = NodeType::Variable(TokenSymbolIdxIdxOptIdx {
+        self.tree[my_idx].data = NodeType::Variable(TokenSymbolBoolIdxIdxOptIdx {
             token: self.process(
                 Parser::match_token,
                 &[TokenType::Identifier],
@@ -833,6 +834,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 &mut recovery_token,
             )?,
             st: SymbolType::Undefined,
+            b: false,
             idx: !0,
             idx2: -1,
             opt_idx: None,
@@ -885,9 +887,10 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn variable(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenSymbolIdxIdxOptIdx {
+        let mut node_data = TokenSymbolBoolIdxIdxOptIdx {
             token: None,
             st: SymbolType::Undefined,
+            b: false,
             idx: !0,
             idx2: -1,
             opt_idx: None,
@@ -897,7 +900,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenSymbolIdxIdxOptIdx<'a>,
+            node_data: &mut TokenSymbolBoolIdxIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {

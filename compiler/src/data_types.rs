@@ -319,9 +319,10 @@ pub struct TokenSymbolIdxOptIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TokenSymbolIdxIdxOptIdx<'a> {
+pub struct TokenSymbolBoolIdxIdxOptIdx<'a> {
     pub token: Option<TokenData<'a>>,
     pub st: SymbolType,
+    pub b: bool,
     pub idx: usize,
     pub idx2: i32,
     pub opt_idx: Option<usize>,
@@ -357,7 +358,7 @@ pub enum NodeType<'a> {
     RelOp(TokenSymbolIdxIdx<'a>),
     AddOp(TokenSymbolIdxOptIdx<'a>),
     MulOp(TokenSymbolIdxIdx<'a>),
-    Variable(TokenSymbolIdxIdxOptIdx<'a>),
+    Variable(TokenSymbolBoolIdxIdxOptIdx<'a>),
     Literal(TokenOptIdx<'a>),
     Not(TokenIdx<'a>),
     ArraySize(TokenIdx<'a>),
@@ -644,7 +645,7 @@ impl<'a> Serialize for NodeType<'a> {
 
 #[derive(Debug, Clone)]
 pub struct Parameter<'a> {
-    pub _is_ref: bool,
+    pub is_ref: bool,
     pub symbol_type: SymbolType,
     pub id: &'a str,
 }
