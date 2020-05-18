@@ -36,11 +36,12 @@ pub fn run() {
             if filename.ends_with(filetype) {
                 match fs::read_to_string(&filename) {
                     Ok(source_str) => {
+                        let filename_prefix = filename.trim_end_matches(filetype).to_owned();
                         let out_file = match args.len() {
                             3 => {
                                 if "--debug" == args[2] {
                                     // Change "filename.mpc" to "filename.json"
-                                    Some(filename.trim_end_matches(filetype).to_owned() + ".json")
+                                    Some(filename_prefix.to_owned() + ".json")
                                 } else {
                                     eprintln!(
                                     "Unidentified extra parameter. Only \"--debug\" is supported. Given parameter is \"{}\"",
@@ -69,13 +70,21 @@ pub fn run() {
                         if logger.errors_encountered() {
                             logger.print_errors();
                             process::exit(1);
-                        } else {
-                            Stacker::new(&tree, &mut symbol_table).stack_ir();
                         }
+
+                        let mut stacker = Stacker::new(&tree, &mut symbol_table);
+                        stacker.stack_ir();
 
                         if logger.errors_encountered() {
                             logger.print_errors();
+                            process::exit(1);
                         }
+
+                        let mut wasm_string = String::new();
+                        stacker.instructions_to_wasm(&mut wasm_string);
+
+                        fs::write(filename_prefix + ".wast", wasm_string)
+                            .expect("Unable to write to a file.");
 
                         println!("");
                     }

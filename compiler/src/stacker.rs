@@ -1,6 +1,6 @@
 use super::data_types::{
-    IdxIdx, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx,
-    TokenOptIdx, TokenSymbolBoolIdxIdxOptIdx, TokenType,
+    IdxIdx, Instruction, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
+    TokenIdxOptIdx, TokenOptIdx, TokenSymbolBoolIdxIdxOptIdx, TokenType, WasmType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
@@ -13,53 +13,227 @@ pub struct Stacker<'a, 'b> {
     instructions: Vec<Instruction<'a>>,
 }
 
-#[derive(Debug)]
-enum WasmType<'a> {
-    I32(Option<i32>),
-    F32(Option<f32>),
-    Str(&'a str),
-}
-
-#[derive(Debug)]
-enum Instruction<'a> {
-    ProgramBegin(&'a str),
-    FunctionBegin(&'a str),
-    BlockBegin(Option<&'a str>),
-    LoopBegin(Option<&'a str>),
-    End,
-    Param(WasmType<'a>),
-    Result(WasmType<'a>),
-    Local(Option<&'a str>, WasmType<'a>),
-    GetLocal(WasmType<'a>),
-    SetLocal(WasmType<'a>),
-    MemLoad(WasmType<'a>),
-    MemStore(WasmType<'a>),
-    Const(WasmType<'a>),
-    Call(WasmType<'a>),
-    Eqz,
-    Br(WasmType<'a>),
-    BrIf(WasmType<'a>),
-    Unreachable,
-    Drop,
-    Eq(WasmType<'a>),
-    NEq(WasmType<'a>),
-    GreatEq(WasmType<'a>),
-    Great(WasmType<'a>),
-    LessEq(WasmType<'a>),
-    Less(WasmType<'a>),
-    Add(WasmType<'a>),
-    Sub(WasmType<'a>),
-    Mul(WasmType<'a>),
-    Div(WasmType<'a>),
-    Mod(WasmType<'a>),
-    And(WasmType<'a>),
-    Or(WasmType<'a>),
-}
-
 impl<'a, 'b> Stacker<'a, 'b> {
     pub fn stack_ir(&mut self) {
         self.program(0);
-        println!("{:#?}", self.instructions);
+    }
+
+    pub fn instructions_to_wasm(&self, string_buffer: &mut String) {
+        // This function converts the IR instruction stack to wasm instructions
+        // and pushes them to a string.
+        let mut i = 0;
+        for instr in &self.instructions {
+            let temp_string = match instr {
+                Instruction::ProgramBegin(name) => format!("(module ${}\n", name),
+                Instruction::FunctionBegin(name) => {
+                    format!("(function ${} (export \"{}\") ", name, name)
+                }
+                Instruction::BlockBegin(opt_name) => {
+                    if let Some(name) = opt_name {
+                        format!("(block ${}\n", name)
+                    } else {
+                        format!("(block \n")
+                    }
+                }
+                Instruction::LoopBegin(opt_name) => {
+                    if let Some(name) = opt_name {
+                        format!("(loop ${}\n", name)
+                    } else {
+                        format!("(loop \n")
+                    }
+                }
+                Instruction::End => String::from(")"),
+                Instruction::Param(wtype) => {
+                    if self.instructions.len() > i + 1 {
+                        match self.instructions[i + 1] {
+                            Instruction::Param(_) | Instruction::Result(_) => {
+                                format!("(param {}) ", wtype)
+                            }
+                            _ => format!("(param {}\n) ", wtype),
+                        }
+                    } else {
+                        format!("(param {}\n) ", wtype)
+                    }
+                }
+                Instruction::Result(wtype) => format!("(result {})\n", wtype),
+                Instruction::Local(opt_name, wtype) => {
+                    if let Some(name) = opt_name {
+                        format!("(local ${} {})\n", name, wtype)
+                    } else {
+                        format!("(local {})\n", wtype)
+                    }
+                }
+                Instruction::GetLocal(wtype) => match wtype {
+                    WasmType::I32(s) => format!(
+                        "local.get {}\n",
+                        s.expect("GetLocal with I32 should contain some i32 value.")
+                    ),
+                    WasmType::F32(_) => {
+                        assert!(false, "GetLocal should not contain a F32 value.");
+                        String::from("")
+                    }
+                    WasmType::Str(s) => format!("local.get ${}\n", s),
+                },
+                Instruction::SetLocal(wtype) => match wtype {
+                    WasmType::I32(s) => format!(
+                        "local.set {}\n",
+                        s.expect("SetLocal with I32 should contain some i32 value.")
+                    ),
+                    WasmType::F32(_) => {
+                        assert!(false, "SetLocal should not contain a F32 value.");
+                        String::from("")
+                    }
+                    WasmType::Str(s) => format!("local.set ${}\n", s),
+                },
+                Instruction::MemLoad(wtype) => format!("{}.load\n", wtype),
+                Instruction::MemStore(wtype) => format!("{}.store\n", wtype),
+                Instruction::Const(wtype) => match wtype {
+                    WasmType::I32(s) => format!(
+                        "{}.const {}\n",
+                        wtype,
+                        s.expect("Const should contain some value.")
+                    ),
+                    WasmType::F32(s) => format!(
+                        "{}.const {}\n",
+                        wtype,
+                        s.expect("Const should contain some value.")
+                    ),
+                    WasmType::Str(_) => {
+                        assert!(false, "Const should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Call(wtype) => match wtype {
+                    WasmType::I32(s) => {
+                        format!("call {}\n", s.expect("Call I32 should contain some value."))
+                    }
+                    WasmType::F32(_) => {
+                        assert!(false, "Call should not contain a F32 value.");
+                        String::from("")
+                    }
+                    WasmType::Str(s) => format!("call ${}", s),
+                },
+                Instruction::Eqz => format!("i32.eqz\n"),
+                Instruction::Br(wtype) => match wtype {
+                    WasmType::I32(s) => {
+                        format!("br {}\n", s.expect("Br I32 should contain some value."))
+                    }
+                    WasmType::F32(_) => {
+                        assert!(false, "Br should not contain a F32 value.");
+                        String::from("")
+                    }
+                    WasmType::Str(s) => format!("br ${}", s),
+                },
+                Instruction::BrIf(wtype) => match wtype {
+                    WasmType::I32(s) => format!(
+                        "br_if {}\n",
+                        s.expect("BrIf I32 should contain some value.")
+                    ),
+                    WasmType::F32(_) => {
+                        assert!(false, "BrIf should not contain a F32 value.");
+                        String::from("")
+                    }
+                    WasmType::Str(s) => format!("br_if ${}", s),
+                },
+                Instruction::Unreachable => format!("unreachable\n"),
+                Instruction::Drop => format!("drop\n"),
+                Instruction::Eq(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.eq\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Eq should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::NEq(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.ne\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "NEq should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::GreatEq(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.ge\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "GreatEq should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Great(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.gt\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Great should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::LessEq(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.le\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "LessEq should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Less(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.lt\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Less should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Add(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.add\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Add should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Sub(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.sub\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Sub should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Mul(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.mul\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Mul should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Div(wtype) => match wtype {
+                    WasmType::I32(_) | WasmType::F32(_) => format!("{}.div\n", wtype),
+                    WasmType::Str(_) => {
+                        assert!(false, "Div should not contain a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Mod(wtype) => match wtype {
+                    WasmType::I32(_) => format!("{}.rem_s\n", wtype),
+                    WasmType::F32(_) | WasmType::Str(_) => {
+                        assert!(false, "Mod should not contain a F32 or a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::And(wtype) => match wtype {
+                    WasmType::I32(_) => format!("{}.and\n", wtype),
+                    WasmType::F32(_) | WasmType::Str(_) => {
+                        assert!(false, "And should not contain a F32 or a Str value.");
+                        String::from("")
+                    }
+                },
+                Instruction::Or(wtype) => match wtype {
+                    WasmType::I32(_) => format!("{}.or\n", wtype),
+                    WasmType::F32(_) | WasmType::Str(_) => {
+                        assert!(false, "Or should not contain a F32 or a Str value.");
+                        String::from("")
+                    }
+                },
+            };
+
+            string_buffer.push_str(temp_string.as_str());
+
+            i += 1;
+        }
     }
 
     // ---------------------------------------------------------------------

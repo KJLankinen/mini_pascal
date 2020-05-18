@@ -248,7 +248,6 @@ pub const EMPTY_TOKEN: TokenData<'static> = TokenData {
 // ---------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TokenIdxOptIdx<'a> {
     pub token: Option<TokenData<'a>>,
@@ -643,6 +642,9 @@ impl<'a> Serialize for NodeType<'a> {
     }
 }
 
+// ---------------------------------------------------------------------
+// Function signature & parameter
+// ---------------------------------------------------------------------
 #[derive(Debug, Clone)]
 pub struct Parameter<'a> {
     pub is_ref: bool,
@@ -655,4 +657,60 @@ pub struct FunctionSignature<'a> {
     pub parameters: Vec<Parameter<'a>>,
     pub return_type: Option<SymbolType>,
     pub token: TokenData<'a>,
+}
+
+// ---------------------------------------------------------------------
+// Wasm types and Wasm instructions
+// ---------------------------------------------------------------------
+#[derive(Debug)]
+pub enum WasmType<'a> {
+    I32(Option<i32>),
+    F32(Option<f32>),
+    Str(&'a str),
+}
+
+impl<'a> fmt::Display for WasmType<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WasmType::I32(_) => write!(f, "i32"),
+            WasmType::F32(_) => write!(f, "f32"),
+            WasmType::Str(_) => write!(f, "i32"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Instruction<'a> {
+    ProgramBegin(&'a str),
+    FunctionBegin(&'a str),
+    BlockBegin(Option<&'a str>),
+    LoopBegin(Option<&'a str>),
+    End,
+    Param(WasmType<'a>),
+    Result(WasmType<'a>),
+    Local(Option<&'a str>, WasmType<'a>),
+    GetLocal(WasmType<'a>),
+    SetLocal(WasmType<'a>),
+    MemLoad(WasmType<'a>),
+    MemStore(WasmType<'a>),
+    Const(WasmType<'a>),
+    Call(WasmType<'a>),
+    Eqz,
+    Br(WasmType<'a>),
+    BrIf(WasmType<'a>),
+    Unreachable,
+    Drop,
+    Eq(WasmType<'a>),
+    NEq(WasmType<'a>),
+    GreatEq(WasmType<'a>),
+    Great(WasmType<'a>),
+    LessEq(WasmType<'a>),
+    Less(WasmType<'a>),
+    Add(WasmType<'a>),
+    Sub(WasmType<'a>),
+    Mul(WasmType<'a>),
+    Div(WasmType<'a>),
+    Mod(WasmType<'a>),
+    And(WasmType<'a>),
+    Or(WasmType<'a>),
 }
