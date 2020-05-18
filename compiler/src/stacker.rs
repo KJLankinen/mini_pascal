@@ -4,6 +4,7 @@ use super::data_types::{
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
+use std::collections::HashMap;
 
 pub struct Stacker<'a, 'b> {
     tree: &'b LcRsTree<NodeType<'a>>,
@@ -251,20 +252,248 @@ impl<'a, 'b> Stacker<'a, 'b> {
         self.instructions.push(Instruction::End);
     }
 
-    // TODO: references, i.e. "var"
     fn call_statement(&mut self, idx: usize) {
+        let add_ref_idx_to_stack = |stacker: &mut Stacker<'a, 'b>, value: i32| {
+            stacker
+                .instructions
+                .push(Instruction::Const(WasmType::I32(Some(value))));
+            stacker
+                .instructions
+                .push(Instruction::GetLocal(WasmType::Str("refs")));
+            stacker
+                .instructions
+                .push(Instruction::Add(WasmType::I32(None)));
+        };
+
         if let NodeType::Call(data) = self.tree[idx].data {
             let token = data.token.expect("Call statement is missing a token.");
+            let is_ref = self
+                .symbol_table
+                .get_function_signature(token.value)
+                .and_then(|fs| {
+                    Some(
+                        fs.parameters
+                            .iter()
+                            .map(|p| (p.is_ref, p.symbol_type))
+                            .collect(),
+                    )
+                })
+                .unwrap_or_else(|| vec![]);
             let mut next = data.opt_idx;
+            let mut i = 0;
+            let mut ref_idx = 0;
+            let mut reference_map: HashMap<&str, i32> = HashMap::new();
             while let Some(idx) = next {
-                self.expression(idx);
+                if let NodeType::Variable(var_data) = self.tree[idx].data {
+                    // We're passing a locally defined variable to the function (an lvalue)
+                    let local_idx = self.get_variable_local_idx(&var_data);
+                    let var_token = var_data.token.expect("Variable is missing a token.");
+                    match is_ref[i].1 {
+                        SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                            if is_ref[i].0 {
+                                if let Some(arr_idx) = var_data.opt_idx {
+                                    self.instructions.push(Instruction::GetLocal(WasmType::I32(
+                                        Some(local_idx as i32),
+                                    )));
+                                    self.expression(arr_idx);
+                                    // "check_bounds":
+                                    // args: arr, idx
+                                    // checks that idx is within bounds of arr
+                                    // returns idx if yes, unreachable if not
+                                    self.instructions
+                                        .push(Instruction::Call(WasmType::Str("check_bounds")));
+                                    // Get back to stack
+                                    self.instructions.push(Instruction::GetLocal(WasmType::I32(
+                                        Some(local_idx as i32),
+                                    )));
+                                    self.instructions
+                                        .push(Instruction::Add(WasmType::I32(None)));
+                                } else if var_data.b {
+                                    // We're passing a reference to a variable that we got
+                                    // ourselves as a reference. Just pass the address on.
+                                    // The variable at "local_idx" is a parameter we received and
+                                    // it contains the address of the variable our caller gave us.
+                                    self.instructions.push(Instruction::GetLocal(WasmType::I32(
+                                        Some(local_idx as i32),
+                                    )));
+                                } else {
+                                    // We're passing a local variable (non-reference parameter or
+                                    // an ordinary local) as a reference.
+                                    if let Some(&idx) = reference_map.get(var_token.value) {
+                                        // Already passed this variable as a reference earlier, pass the
+                                        // local address again.
+                                        add_ref_idx_to_stack(self, idx);
+                                    } else {
+                                        // This is a new variable we're passing as a refence. Add
+                                        // it to map.
+                                        reference_map.insert(var_token.value, ref_idx);
+                                        // Get address to stack
+                                        add_ref_idx_to_stack(self, ref_idx);
+                                        // The variable at "local_idx" contains just an ordinary value
+                                        // for bool, int or real. Get the value to stack.
+                                        self.instructions.push(Instruction::GetLocal(
+                                            WasmType::I32(Some(local_idx as i32)),
+                                        ));
+
+                                        // Store the value at the ref index
+                                        if SymbolType::Real == is_ref[i].1 {
+                                            self.instructions
+                                                .push(Instruction::MemStore(WasmType::F32(None)));
+                                        } else {
+                                            self.instructions
+                                                .push(Instruction::MemStore(WasmType::I32(None)));
+                                        }
+
+                                        // Get the ref index back to top of stack and pass it to the
+                                        // callee.
+                                        add_ref_idx_to_stack(self, ref_idx);
+                                    }
+                                }
+                            } else {
+                                // We're not passing a reference, but just an ordinary bool int or
+                                // real by value. The variable may still be something we got as
+                                // reference, but that is handled by "expression".
+                                self.expression(idx);
+                            }
+                        }
+                        SymbolType::String
+                        | SymbolType::ArrayBool(_)
+                        | SymbolType::ArrayInt(_)
+                        | SymbolType::ArrayReal(_)
+                        | SymbolType::ArrayString(_) => {
+                            // Arrays and strings are always passed as pointers,
+                            // not as pointers to pointers.
+                            if is_ref[i].0 {
+                                // If we're passing a reference,
+                                // we can just pass the pointer, i.e. the actual address.
+                                self.instructions
+                                    .push(Instruction::GetLocal(WasmType::I32(Some(
+                                        local_idx as i32,
+                                    ))));
+                            } else {
+                                // Allocate a new array/string and pass its address: we don't want
+                                // the callee to modify our data, since the array/string is passed
+                                // by value.
+
+                                if SymbolType::String == is_ref[i].1 {
+                                    // New string:
+                                    // allocates space for three i32 values: pointer to data, length and
+                                    // capacity. Allocates some capacity at data. Sets length to
+                                    // 0.
+                                    // Returns a pointer to the first of the three i32 values
+                                    self.instructions
+                                        .push(Instruction::Call(WasmType::Str("new_string")));
+                                } else {
+                                    // New array:
+                                    // allocates space for three i32 values: pointer to data, length and
+                                    // capacity. Allocates some capacity at data. Sets length to
+                                    // argument.
+                                    // Returns a pointer to the first of the three i32 values
+                                    self.instructions
+                                        .push(Instruction::Const(WasmType::I32(Some(1024))));
+                                    self.instructions
+                                        .push(Instruction::Call(WasmType::Str("new_array")));
+                                }
+                                self.instructions
+                                    .push(Instruction::GetLocal(WasmType::I32(Some(
+                                        local_idx as i32,
+                                    ))));
+                                if SymbolType::String == is_ref[i].1 {
+                                    self.instructions
+                                        .push(Instruction::Call(WasmType::Str("copy_string")));
+                                } else {
+                                    self.instructions
+                                        .push(Instruction::Call(WasmType::Str("copy_array")));
+                                }
+                            }
+                        }
+                        _ => {
+                            assert!(false, "Unexpected symbol type {:#?}", var_data);
+                        }
+                    }
+                } else {
+                    // We're passing an rvalue, i.e. the result of an expression to a function.
+                    // We don't have to care about updating our own values after the function call,
+                    // since the function will only modify temporary variables (rvalues), but we
+                    // still must save ordinary (non-array) values to our reference array, because
+                    // the callee will handle all its reference parameters in the same way. So even
+                    // if the contents are temporary, the handling will still involve memory loads.
+                    if is_ref[i].0 {
+                        match is_ref[i].1 {
+                            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                                // Get the address of this reference to top of stack
+                                add_ref_idx_to_stack(self, ref_idx);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    // Get the value of the expression to top of stack
+                    self.expression(idx);
+
+                    if is_ref[i].0 {
+                        match is_ref[i].1 {
+                            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                                // Store the value of the expression to the local reference array
+                                if SymbolType::Real == is_ref[i].1 {
+                                    self.instructions
+                                        .push(Instruction::MemStore(WasmType::F32(None)));
+                                } else {
+                                    self.instructions
+                                        .push(Instruction::MemStore(WasmType::I32(None)));
+                                }
+                                // Get address of stored variable back to stack
+                                add_ref_idx_to_stack(self, ref_idx);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                ref_idx += is_ref[i].0 as i32;
+                i += 1;
                 next = self.tree[idx].right_sibling;
             }
+
+            // Call the function with the arguments on stack
             self.instructions
                 .push(Instruction::Call(WasmType::Str(token.value)));
 
-            // store data back to locals
+            // Store any references back to locals
+            next = data.opt_idx;
+            while let Some(idx) = next {
+                if let NodeType::Variable(var_data) = self.tree[idx].data {
+                    if let Some(&idx) = reference_map
+                        .get(var_data.token.expect("Variable is missing a token").value)
+                    {
+                        add_ref_idx_to_stack(self, idx);
+                        match var_data.st {
+                            SymbolType::Bool | SymbolType::Int => {
+                                self.instructions
+                                    .push(Instruction::MemLoad(WasmType::I32(None)));
+                            }
+                            SymbolType::Real => {
+                                self.instructions
+                                    .push(Instruction::MemLoad(WasmType::F32(None)));
+                            }
+                            _ => {
+                                assert!(
+                                    false,
+                                    "This symbol type should not lead here {:#?}",
+                                    var_data
+                                );
+                            }
+                        }
+                        let local_idx = self.get_variable_local_idx(&var_data);
+                        self.instructions
+                            .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
+                    }
+                }
+                next = self.tree[idx].right_sibling;
+            }
 
+            // If current function has no return type and this call is a statement (= not part of an
+            // expression), drop the value from stack.
             match self.tree[self.tree[idx].parent.unwrap()].data {
                 NodeType::Block(_) | NodeType::If(_) | NodeType::While(_) => {
                     let return_type = self
@@ -299,10 +528,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
                             .push(Instruction::Const(WasmType::F32(Some(0.0))));
                     }
                     SymbolType::String => {
+                        // New string:
+                        // allocates space for three i32 values: pointer to data, length and
+                        // capacity. Allocates some capacity at data. Sets length to 0.
+                        // Returns a pointer to the first of the three i32 values
                         self.instructions
-                            .push(Instruction::Const(WasmType::I32(Some(16))));
-                        self.instructions
-                            .push(Instruction::Call(WasmType::Str("allocate")));
+                            .push(Instruction::Call(WasmType::Str("new_string")));
                     }
                     SymbolType::ArrayBool(expr_idx)
                     | SymbolType::ArrayInt(expr_idx)
@@ -331,8 +562,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         self.instructions.push(Instruction::Unreachable);
                         self.instructions.push(Instruction::End);
                         self.expression(expr_idx);
+                        // New array:
+                        // allocates space for three i32 values: pointer to data, length and
+                        // capacity. Allocates some capacity at data. Sets length to expr_idx.
+                        // Returns a pointer to the first of the three i32 values
                         self.instructions
-                            .push(Instruction::Call(WasmType::Str("allocate")));
+                            .push(Instruction::Call(WasmType::Str("new_array")));
                     }
                     _ => {
                         assert!(false, "Unexpected symbol type {:#?}.", data);
@@ -889,8 +1124,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
             }
             SymbolType::String => {
                 // args: dst_str, src_str
+                // must perform a deep copy
+                // if enough capacity, copy, if not, allocate new
+                // returns: dst_str
                 self.instructions
                     .push(Instruction::Call(WasmType::Str("copy_string")));
+                self.instructions.push(Instruction::Drop);
             }
             SymbolType::ArrayBool(_)
             | SymbolType::ArrayInt(_)
@@ -902,8 +1141,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         .push(Instruction::Call(WasmType::Str("array_assign")));
                 } else {
                     // args: dst_arr, src_arr
+                    // must perform a deep copy
+                    // if enough capacity, copy, if not, allocate new
+                    // returns: dst_arr
                     self.instructions
                         .push(Instruction::Call(WasmType::Str("copy_array")));
+                    self.instructions.push(Instruction::Drop);
                 }
             }
             _ => {

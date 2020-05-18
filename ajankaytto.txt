@@ -15,4 +15,5 @@
 14.5.	& 10,5h	    & implementing intermediate stack language translator and symbol table
 15.5.	& 7,5h      & implementing intermediate stack language translator and symbol table
 16.5.	& 11h       & implementing intermediate stack language translator and symbol table (some unit tests)
-17.5.	& 14 -->    &
+17.5.	& 4h        & implementing intermediate stack language translator
+18.5.	& 1030-->   & implementing intermediate stack language translator
