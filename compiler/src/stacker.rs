@@ -732,17 +732,39 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 let local_idx = self.get_variable_local_idx(&data);
                 self.instructions
                     .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
-                if let Some(arr_idx) = data.opt_idx {
-                    self.expression(arr_idx);
-                    self.instructions
-                        .push(Instruction::Call(WasmType::Str("array_access")));
-                } else if data.b {
-                    if SymbolType::Real == data.st {
-                        self.instructions
-                            .push(Instruction::MemLoad(WasmType::F32(None)));
-                    } else {
-                        self.instructions
-                            .push(Instruction::MemLoad(WasmType::I32(None)));
+                match data.st {
+                    SymbolType::Bool | SymbolType::Int => {
+                        if data.b {
+                            self.instructions
+                                .push(Instruction::MemLoad(WasmType::I32(None)));
+                        }
+                    }
+                    SymbolType::Real => {
+                        if data.b {
+                            self.instructions
+                                .push(Instruction::MemLoad(WasmType::F32(None)));
+                        }
+                    }
+                    SymbolType::String => {
+                        // string references pass their actual address, non-references pass the
+                        // address of a copy. In either case, the value already points to the data.
+                    }
+                    SymbolType::ArrayBool(_)
+                    | SymbolType::ArrayInt(_)
+                    | SymbolType::ArrayReal(_)
+                    | SymbolType::ArrayString(_) => {
+                        // array references pass their actual address, non-references pass the
+                        // address of a copy. In either case, the value already points to the data.
+
+                        if let Some(arr_idx) = data.opt_idx {
+                            self.expression(arr_idx);
+                            // args: arr, idx
+                            self.instructions
+                                .push(Instruction::Call(WasmType::Str("array_access")));
+                        }
+                    }
+                    _ => {
+                        assert!(false, "Unexpected symbol type {:#?}", data);
                     }
                 }
             }
@@ -819,32 +841,74 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn emit_set_local_pre_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
-        if data.b && data.opt_idx.is_none() {
-            let local_idx = self.get_variable_local_idx(&data);
-            self.instructions
-                .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+        let local_idx = self.get_variable_local_idx(&data);
+        match data.st {
+            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                if data.b {
+                    self.instructions
+                        .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+                }
+            }
+            SymbolType::String => {
+                self.instructions
+                    .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+            }
+            SymbolType::ArrayBool(_)
+            | SymbolType::ArrayInt(_)
+            | SymbolType::ArrayReal(_)
+            | SymbolType::ArrayString(_) => {
+                self.instructions
+                    .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
+
+                if let Some(expr_idx) = data.opt_idx {
+                    self.expression(expr_idx);
+                }
+            }
+            _ => {
+                assert!(false, "Unexpected symbol type {:#?}", data);
+            }
         }
     }
 
     fn emit_set_local_post_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
-        let local_idx = self.get_variable_local_idx(&data);
-        if let Some(arr_idx) = data.opt_idx {
-            self.instructions
-                .push(Instruction::GetLocal(WasmType::I32(Some(local_idx as i32))));
-            self.expression(arr_idx);
-            self.instructions
-                .push(Instruction::Call(WasmType::Str("array_assign")));
-        } else if data.b {
-            if SymbolType::Real == data.st {
-                self.instructions
-                    .push(Instruction::MemStore(WasmType::F32(None)));
-            } else {
-                self.instructions
-                    .push(Instruction::MemStore(WasmType::I32(None)));
+        match data.st {
+            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                if data.b {
+                    if SymbolType::Real == data.st {
+                        self.instructions
+                            .push(Instruction::MemStore(WasmType::F32(None)));
+                    } else {
+                        self.instructions
+                            .push(Instruction::MemStore(WasmType::I32(None)));
+                    }
+                } else {
+                    let local_idx = self.get_variable_local_idx(&data);
+                    self.instructions
+                        .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
+                }
             }
-        } else {
-            self.instructions
-                .push(Instruction::SetLocal(WasmType::I32(Some(local_idx as i32))));
+            SymbolType::String => {
+                // args: dst_str, src_str
+                self.instructions
+                    .push(Instruction::Call(WasmType::Str("copy_string")));
+            }
+            SymbolType::ArrayBool(_)
+            | SymbolType::ArrayInt(_)
+            | SymbolType::ArrayReal(_)
+            | SymbolType::ArrayString(_) => {
+                if data.opt_idx.is_some() {
+                    // args: arr, idx, value
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("array_assign")));
+                } else {
+                    // args: dst_arr, src_arr
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("copy_array")));
+                }
+            }
+            _ => {
+                assert!(false, "Unexpected symbol type {:#?}", data);
+            }
         }
     }
 
