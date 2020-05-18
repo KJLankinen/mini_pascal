@@ -26,7 +26,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
             let temp_string = match instr {
                 Instruction::ProgramBegin(name) => format!("(module ${}\n", name),
                 Instruction::FunctionBegin(name) => {
-                    format!("(function ${} (export \"{}\") ", name, name)
+                    if self.instructions.len() > i + 1 {
+                        match self.instructions[i + 1] {
+                            Instruction::Param(_) | Instruction::Result(_) => {
+                                format!("(func ${} (export \"{}\") ", name, name)
+                            }
+                            _ => format!("(func ${} (export \"{}\")\n", name, name),
+                        }
+                    } else {
+                        format!("(func ${} (export \"{}\")\n", name, name)
+                    }
                 }
                 Instruction::BlockBegin(opt_name) => {
                     if let Some(name) = opt_name {
@@ -111,7 +120,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         assert!(false, "Call should not contain a F32 value.");
                         String::from("")
                     }
-                    WasmType::Str(s) => format!("call ${}", s),
+                    WasmType::Str(s) => format!("call ${}\n", s),
                 },
                 Instruction::Eqz => format!("i32.eqz\n"),
                 Instruction::Br(wtype) => match wtype {
@@ -242,14 +251,51 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn program(&mut self, idx: usize) {
         if let NodeType::Program(data) = self.tree[idx].data {
             let token = data.token.expect("Program is missing a token.");
+            let (it, ft) = self
+                .symbol_table
+                .get_local_variable_totals(token.value)
+                .expect("Function should have totals.");
+
             self.instructions
                 .push(Instruction::ProgramBegin(token.value));
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
-            self.instructions.push(Instruction::FunctionBegin("_start"));
+            self.instructions
+                .push(Instruction::FunctionBegin("__start"));
             self.fname = Some(token.value);
+
+            for _ in 0..=it {
+                self.instructions
+                    .push(Instruction::Local(None, WasmType::I32(None)));
+            }
+
+            for _ in 0..=ft {
+                self.instructions
+                    .push(Instruction::Local(None, WasmType::F32(None)));
+            }
+
+            if let Some(nr) = self.symbol_table.get_function_ref_count(token.value) {
+                // nr tells the maximum number of arguments that are references across all the
+                // different function calls that are issued from this function.
+                // The local variables that are passed as references are stored in linear
+                // memory, the base address of which is stored in the local special variable "refs".
+                if 0 < nr {
+                    self.instructions
+                        .push(Instruction::Local(Some("refs"), WasmType::I32(None)));
+                    self.instructions
+                        .push(Instruction::Const(WasmType::I32(Some((nr * 4) as i32)))); // 4 bytes per variable
+                    self.instructions
+                        .push(Instruction::Call(WasmType::Str("allocate")));
+                    self.instructions
+                        .push(Instruction::SetLocal(WasmType::Str("refs")));
+                }
+            }
+
+            self.instructions.push(Instruction::BlockBegin(Some("FB")));
             self.block(data.idx);
+            self.instructions.push(Instruction::End);
+
             self.fname = None;
             self.instructions.push(Instruction::End);
             self.instructions.push(Instruction::End);
@@ -369,6 +415,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 self.instructions
                     .push(Instruction::GetLocal(WasmType::Str("rv")));
             }
+
+            self.instructions.push(Instruction::End);
 
             self.fname = None;
         } else {
