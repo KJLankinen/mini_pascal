@@ -261,16 +261,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
-            self.instructions
-                .push(Instruction::FunctionBegin("__start"));
+            self.instructions.push(Instruction::FunctionBegin("_start"));
             self.fname = Some(token.value);
 
-            for _ in 0..=it {
+            for _ in 0..it {
                 self.instructions
                     .push(Instruction::Local(None, WasmType::I32(None)));
             }
 
-            for _ in 0..=ft {
+            for _ in 0..ft {
                 self.instructions
                     .push(Instruction::Local(None, WasmType::F32(None)));
             }
@@ -370,12 +369,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 }
             }
 
-            for _ in 0..=it {
+            for _ in 0..it {
                 self.instructions
                     .push(Instruction::Local(None, WasmType::I32(None)));
             }
 
-            for _ in 0..=ft {
+            for _ in 0..ft {
                 self.instructions
                     .push(Instruction::Local(None, WasmType::F32(None)));
             }

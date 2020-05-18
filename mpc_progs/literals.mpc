@@ -4,7 +4,7 @@ begin
     var a, b, c: Boolean;
     var i, j, k: integer;
     var p, q, r: real;
-    var s, t, u: string;
+    {*var s, t, u: string;*}
 
     begin
         var a, b, e: integer;
@@ -25,7 +25,7 @@ begin
             z := 1;
         end;
     end;
-{*
+
     b := true;
     b := false;
 
@@ -40,6 +40,7 @@ begin
     r := 0.1000001;
     r := 3.1415;
 
+    {*
     s := "Hello!";
     s := "Ciao!";
     s := "Moi!"; *}
