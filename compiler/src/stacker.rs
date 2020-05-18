@@ -232,6 +232,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn assert_statement(&mut self, data: &TokenIdxOptIdx<'a>) {
+        let idx = data.opt_idx.expect("Assert should have some opt_idx.");
         self.instructions.push(Instruction::BlockBegin(None));
         self.instructions.push(Instruction::BlockBegin(None));
         self.expression(data.idx);
@@ -241,13 +242,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
         self.instructions
             .push(Instruction::Br(WasmType::I32(Some(1))));
         self.instructions.push(Instruction::End);
-        let idx = data.opt_idx.expect("Assert should have some opt_idx.");
         self.instructions
             .push(Instruction::Const(WasmType::I32(Some(idx as i32))));
         self.instructions
             .push(Instruction::Call(WasmType::Str("get_string_literal")));
         self.instructions
-            .push(Instruction::Call(WasmType::Str("write_str")));
+            .push(Instruction::Call(WasmType::Str("write_string")));
         self.instructions.push(Instruction::Unreachable);
         self.instructions.push(Instruction::End);
     }
@@ -296,10 +296,6 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                         Some(local_idx as i32),
                                     )));
                                     self.expression(arr_idx);
-                                    // "check_bounds":
-                                    // args: arr, idx
-                                    // checks that idx is within bounds of arr
-                                    // returns idx if yes, unreachable if not
                                     self.instructions
                                         .push(Instruction::Call(WasmType::Str("check_bounds")));
                                     // Get back to stack
@@ -374,37 +370,14 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                 // Allocate a new array/string and pass its address: we don't want
                                 // the callee to modify our data, since the array/string is passed
                                 // by value.
-
-                                if SymbolType::String == is_ref[i].1 {
-                                    // New string:
-                                    // allocates space for three i32 values: pointer to data, length and
-                                    // capacity. Allocates some capacity at data. Sets length to
-                                    // 0.
-                                    // Returns a pointer to the first of the three i32 values
-                                    self.instructions
-                                        .push(Instruction::Call(WasmType::Str("new_string")));
-                                } else {
-                                    // New array:
-                                    // allocates space for three i32 values: pointer to data, length and
-                                    // capacity. Allocates some capacity at data. Sets length to
-                                    // argument.
-                                    // Returns a pointer to the first of the three i32 values
-                                    self.instructions
-                                        .push(Instruction::Const(WasmType::I32(Some(1024))));
-                                    self.instructions
-                                        .push(Instruction::Call(WasmType::Str("new_array")));
-                                }
+                                self.instructions
+                                    .push(Instruction::Call(WasmType::Str("new_array")));
                                 self.instructions
                                     .push(Instruction::GetLocal(WasmType::I32(Some(
                                         local_idx as i32,
                                     ))));
-                                if SymbolType::String == is_ref[i].1 {
-                                    self.instructions
-                                        .push(Instruction::Call(WasmType::Str("copy_string")));
-                                } else {
-                                    self.instructions
-                                        .push(Instruction::Call(WasmType::Str("copy_array")));
-                                }
+                                self.instructions
+                                    .push(Instruction::Call(WasmType::Str("copy_array")));
                             }
                         }
                         _ => {
@@ -528,44 +501,32 @@ impl<'a, 'b> Stacker<'a, 'b> {
                             .push(Instruction::Const(WasmType::F32(Some(0.0))));
                     }
                     SymbolType::String => {
-                        // New string:
-                        // allocates space for three i32 values: pointer to data, length and
-                        // capacity. Allocates some capacity at data. Sets length to 0.
-                        // Returns a pointer to the first of the three i32 values
                         self.instructions
-                            .push(Instruction::Call(WasmType::Str("new_string")));
+                            .push(Instruction::Call(WasmType::Str("new_array")));
                     }
                     SymbolType::ArrayBool(expr_idx)
                     | SymbolType::ArrayInt(expr_idx)
                     | SymbolType::ArrayReal(expr_idx)
                     | SymbolType::ArrayString(expr_idx) => {
-                        // must allocate according to the expr_idx
-                        // set e.g. 1024 as max allocation size for safety
-
+                        let str_idx = data
+                            .opt_idx
+                            .expect("Variable (at declaration) should have some opt_idx.");
                         self.instructions.push(Instruction::BlockBegin(None));
                         self.expression(expr_idx);
                         self.instructions
-                            .push(Instruction::Const(WasmType::I32(Some(1024))));
+                            .push(Instruction::Const(WasmType::I32(Some(256))));
                         self.instructions
                             .push(Instruction::Less(WasmType::I32(None)));
                         self.instructions
                             .push(Instruction::BrIf(WasmType::I32(Some(0))));
-                        let str_idx = data
-                            .opt_idx
-                            .expect("Variable (at declaration) should have some opt_idx.");
                         self.instructions
                             .push(Instruction::Const(WasmType::I32(Some(str_idx as i32))));
                         self.instructions
                             .push(Instruction::Call(WasmType::Str("get_string_literal")));
                         self.instructions
-                            .push(Instruction::Call(WasmType::Str("write_str")));
+                            .push(Instruction::Call(WasmType::Str("write_string")));
                         self.instructions.push(Instruction::Unreachable);
                         self.instructions.push(Instruction::End);
-                        self.expression(expr_idx);
-                        // New array:
-                        // allocates space for three i32 values: pointer to data, length and
-                        // capacity. Allocates some capacity at data. Sets length to expr_idx.
-                        // Returns a pointer to the first of the three i32 values
                         self.instructions
                             .push(Instruction::Call(WasmType::Str("new_array")));
                     }
@@ -981,21 +942,25 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         }
                     }
                     SymbolType::String => {
-                        // string references pass their actual address, non-references pass the
+                        // String references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
                     }
                     SymbolType::ArrayBool(_)
                     | SymbolType::ArrayInt(_)
                     | SymbolType::ArrayReal(_)
                     | SymbolType::ArrayString(_) => {
-                        // array references pass their actual address, non-references pass the
+                        // Array references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
-
                         if let Some(arr_idx) = data.opt_idx {
                             self.expression(arr_idx);
-                            // args: arr, idx
-                            self.instructions
-                                .push(Instruction::Call(WasmType::Str("array_access")));
+
+                            if let SymbolType::ArrayReal(_) = data.st {
+                                self.instructions
+                                    .push(Instruction::Call(WasmType::Str("array_access_f")));
+                            } else {
+                                self.instructions
+                                    .push(Instruction::Call(WasmType::Str("array_access_i")));
+                            }
                         }
                     }
                     _ => {
@@ -1123,12 +1088,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 }
             }
             SymbolType::String => {
-                // args: dst_str, src_str
-                // must perform a deep copy
-                // if enough capacity, copy, if not, allocate new
-                // returns: dst_str
                 self.instructions
-                    .push(Instruction::Call(WasmType::Str("copy_string")));
+                    .push(Instruction::Call(WasmType::Str("copy_array")));
                 self.instructions.push(Instruction::Drop);
             }
             SymbolType::ArrayBool(_)
@@ -1136,14 +1097,14 @@ impl<'a, 'b> Stacker<'a, 'b> {
             | SymbolType::ArrayReal(_)
             | SymbolType::ArrayString(_) => {
                 if data.opt_idx.is_some() {
-                    // args: arr, idx, value
-                    self.instructions
-                        .push(Instruction::Call(WasmType::Str("array_assign")));
+                    if let SymbolType::ArrayReal(_) = data.st {
+                        self.instructions
+                            .push(Instruction::Call(WasmType::Str("array_assign_f")));
+                    } else {
+                        self.instructions
+                            .push(Instruction::Call(WasmType::Str("array_assign_i")));
+                    }
                 } else {
-                    // args: dst_arr, src_arr
-                    // must perform a deep copy
-                    // if enough capacity, copy, if not, allocate new
-                    // returns: dst_arr
                     self.instructions
                         .push(Instruction::Call(WasmType::Str("copy_array")));
                     self.instructions.push(Instruction::Drop);
