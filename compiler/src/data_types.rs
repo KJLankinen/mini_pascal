@@ -669,13 +669,19 @@ pub enum WasmType<'a> {
     Str(&'a str),
 }
 
+impl<'a> WasmType<'a> {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WasmType::I32(_) => "i32",
+            WasmType::F32(_) => "f32",
+            WasmType::Str(_) => "i32",
+        }
+    }
+}
+
 impl<'a> fmt::Display for WasmType<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            WasmType::I32(_) => write!(f, "i32"),
-            WasmType::F32(_) => write!(f, "f32"),
-            WasmType::Str(_) => write!(f, "i32"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 

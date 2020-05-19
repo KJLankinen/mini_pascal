@@ -219,7 +219,13 @@ impl<'a> SymbolTable<'a> {
     }
 
     pub fn get_function_ref_count(&self, key: &'a str) -> Option<usize> {
-        self.function_data.get(key).and_then(|fd| Some(fd.num_refs))
+        self.function_data.get(key).and_then(|fd| {
+            if fd.num_refs > 0 {
+                Some(fd.num_refs)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn get_local_variable_totals(&self, key: &'a str) -> Option<(usize, usize)> {
