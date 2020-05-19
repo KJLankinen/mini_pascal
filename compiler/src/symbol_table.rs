@@ -128,9 +128,10 @@ impl<'a> SymbolTable<'a> {
                 let num_parameters = fd.signature.parameters.len();
                 update_function_data(&mut fd.i32_idx, &mut fd.it, &ics, it, num_parameters);
                 update_function_data(&mut fd.f32_idx, &mut fd.ft, &fcs, ft, it + num_parameters);
-            }
 
-            self.current_fname = None;
+                self.counts.clear();
+                self.current_fname = None;
+            }
         }
     }
 
@@ -355,6 +356,13 @@ impl Counts {
             (self.calculate_cumsum(&self.im), self.im.iter().sum()),
             (self.calculate_cumsum(&self.fm), self.fm.iter().sum()),
         )
+    }
+
+    pub fn clear(&mut self) {
+        self.ic.clear();
+        self.im.clear();
+        self.fc.clear();
+        self.fm.clear();
     }
 }
 
