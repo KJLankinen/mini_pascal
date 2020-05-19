@@ -82,7 +82,8 @@ pub fn run() {
                             logger.print_errors();
                             process::exit(1);
                         } else {
-                            Wasmer::new(&instructions, &mut wasm_string).instructions_to_wasm();
+                            Wasmer::new(&instructions, &mut wasm_string, &symbol_table)
+                                .instructions_to_wasm();
                         }
 
                         fs::write(filename_prefix + ".wast", wasm_string)

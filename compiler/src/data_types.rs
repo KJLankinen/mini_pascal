@@ -692,6 +692,7 @@ pub enum Instruction<'a> {
     BlockBegin(Option<&'a str>),
     LoopBegin(Option<&'a str>),
     End,
+    DataSegment,
     Param(WasmType<'a>),
     Result(WasmType<'a>),
     Local(Option<&'a str>, WasmType<'a>),

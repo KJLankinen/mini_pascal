@@ -36,6 +36,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 .expect("Function should have totals.");
 
             emit!(self, Instruction::ProgramBegin(token.value));
+            if 0 < self.symbol_table.borrow_string_literals().len() {
+                emit!(self, Instruction::DataSegment);
+            }
+
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }

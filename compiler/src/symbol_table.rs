@@ -173,6 +173,14 @@ impl<'a> SymbolTable<'a> {
         self.string_literal_bytes.len() - 1
     }
 
+    pub fn borrow_string_literals(&self) -> &String {
+        &self.string_literals
+    }
+
+    pub fn borrow_string_literal_bytes(&self) -> &Vec<(usize, usize)> {
+        &self.string_literal_bytes
+    }
+
     pub fn add_write_arguments(&mut self, loc: (u32, u32), args: Vec<SymbolType>) {
         self.write_arguments.insert(loc, args);
     }

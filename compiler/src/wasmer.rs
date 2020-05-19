@@ -1,8 +1,11 @@
 use super::data_types::{Instruction, WasmType};
+use super::symbol_table::SymbolTable;
 
 pub struct Wasmer<'a, 'b> {
     instructions: &'b Vec<Instruction<'a>>,
     wasm_string: &'b mut String,
+    symbol_table: &'b SymbolTable<'a>,
+    next_free_byte: usize,
 }
 
 impl<'a, 'b> Wasmer<'a, 'b> {
@@ -44,6 +47,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                     start_from_new_line = false;
                     String::from(")")
                 }
+                Instruction::DataSegment => self.literal_string_segment(),
                 Instruction::Param(wtype) => {
                     start_from_new_line = false;
                     format!("(param {}) ", wtype)
@@ -245,10 +249,72 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         self.wasm_string.push_str("\n");
     }
 
-    pub fn new(instructions: &'b Vec<Instruction<'a>>, wasm_string: &'b mut String) -> Self {
+    fn literal_string_segment(&mut self) -> String {
+        // This function write the literal string data segment to a string that's ready to be
+        // written to a wast file. It takes the start of the string data segment as input and
+        // returns the location as output. Naturally both values must be in bytes.
+        let swap_bytes = |v: i32| -> i32 {
+            let mut swapped = 0;
+            swapped = swapped | (0xff & v) << 24;
+            swapped = swapped | (0xff << 8 & v) << 16;
+            swapped = swapped | (0xff << 16 & v) << 8;
+            swapped = swapped | (0xff << 24 & v);
+            swapped
+        };
+
+        let mut data_segment = String::new();
+        let num_strings = self.symbol_table.borrow_string_literal_bytes().len();
+        if 0 < num_strings {
+            data_segment.push_str("(data (i32.const ");
+            data_segment.push_str(self.next_free_byte.to_string().as_str());
+            data_segment.push_str(") \"");
+
+            // Write the "start" and "len" numbers as bytes in little endian order.
+            // "start" is the actual, raw address in linear memory where the string data recides.
+            for (start, len) in self.symbol_table.borrow_string_literal_bytes() {
+                format!(
+                    "{:08X}",
+                    swap_bytes((*start + self.next_free_byte + 8 * num_strings) as i32)
+                )
+                .chars()
+                .chain(format!("{:08X}", swap_bytes(*len as i32)).chars())
+                .enumerate()
+                .for_each(|(i, c)| {
+                    if 0 == i % 2 {
+                        data_segment.push_str("\\");
+                    }
+                    data_segment.push(c);
+                });
+            }
+
+            // Change " to \" inside the literals
+            self.symbol_table
+                .borrow_string_literals()
+                .chars()
+                .for_each(|c| {
+                    if '\"' == c {
+                        data_segment.push_str("\\");
+                    }
+                    data_segment.push(c);
+                });
+            data_segment.push_str("\")");
+        }
+
+        self.next_free_byte = self.next_free_byte + data_segment.as_bytes().len();
+        data_segment
+    }
+
+    pub fn new(
+        instructions: &'b Vec<Instruction<'a>>,
+        wasm_string: &'b mut String,
+        symbol_table: &'b SymbolTable<'a>,
+    ) -> Self {
+        // TODO: get next_free_byte from somewhere
         Wasmer {
             instructions: instructions,
             wasm_string: wasm_string,
+            symbol_table: symbol_table,
+            next_free_byte: 0,
         }
     }
 }
