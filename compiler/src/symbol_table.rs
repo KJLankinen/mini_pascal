@@ -1,5 +1,5 @@
 use super::data_types::{FunctionSignature, SymbolType, EMPTY_TOKEN};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /*
  * "SymbolTable" contains data related to variables encountered during semantic analysis and used
@@ -15,6 +15,7 @@ pub struct SymbolTable<'a> {
     string_literals: String,
     string_literal_bytes: Vec<(usize, usize)>,
     write_arguments: HashMap<(u32, u32), Vec<SymbolType>>,
+    pub library_functions: HashSet<&'a str>,
 }
 
 impl<'a> SymbolTable<'a> {
@@ -266,6 +267,7 @@ impl<'a> SymbolTable<'a> {
             string_literals: String::new(),
             string_literal_bytes: vec![],
             write_arguments: HashMap::new(),
+            library_functions: HashSet::new(),
         }
     }
 }

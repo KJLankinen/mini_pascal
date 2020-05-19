@@ -829,7 +829,3 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         every_branch_returns
     }
 }
-
-// ---------------------------------------------------------------------
-// Auxiliary structs used during the semantic analysis
-// ---------------------------------------------------------------------

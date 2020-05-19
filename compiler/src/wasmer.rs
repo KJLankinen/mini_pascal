@@ -6,7 +6,8 @@ pub struct Wasmer<'a, 'b> {
     wasm_string: &'b mut String,
     symbol_table: &'b SymbolTable<'a>,
     next_free_byte: usize,
-    _imported_contents: &'b str,
+    imported_contents: &'b str,
+    lib_name: &'a str,
 }
 
 impl<'a, 'b> Wasmer<'a, 'b> {
@@ -49,6 +50,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                     String::from(")")
                 }
                 Instruction::DataSegment => self.literal_string_segment(),
+                Instruction::Imports => self.imports(),
                 Instruction::Param(wtype) => {
                     start_from_new_line = false;
                     format!("(param {}) ", wtype)
@@ -114,6 +116,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                     }
                     WasmType::Str(s) => format!("call ${}", s),
                 },
+                Instruction::LibFunc(name) => format!("call ${}", name),
                 Instruction::Eqz => format!("i32.eqz"),
                 Instruction::Br(wtype) => match wtype {
                     WasmType::I32(s) => {
@@ -305,11 +308,71 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         data_segment
     }
 
+    fn imports(&mut self) -> String {
+        // This function goes through the library file and imports all the functions that the
+        // compiled program uses.
+        let mut imports_string = String::new();
+        if 0 < self.symbol_table.library_functions.len() {
+            imports_string.push_str("(import \"");
+            imports_string.push_str(self.lib_name);
+            imports_string.push_str("\" \"memory\" (memory 0))");
+            for fname in &self.symbol_table.library_functions {
+                if let Some(line) = self.imported_contents.lines().find(|l| l.contains(fname)) {
+                    imports_string.push_str("\n  (import \"");
+                    imports_string.push_str(self.lib_name);
+                    imports_string.push_str("\" \"");
+                    imports_string.push_str(fname);
+                    imports_string.push_str("\" (func $");
+                    imports_string.push_str(fname);
+
+                    let mut result_idx = None;
+                    if let Some(start) = line.find("param") {
+                        imports_string.push_str(" (param");
+                        result_idx = line.find("result");
+                        let line = match result_idx {
+                            Some(idx) => &line[start..idx],
+                            None => &line[start..line.len()],
+                        };
+
+                        for s in line.split_ascii_whitespace() {
+                            if s.contains("i32") {
+                                imports_string.push_str(" i32");
+                            } else if s.contains("f32") {
+                                imports_string.push_str(" f32");
+                            }
+                        }
+
+                        imports_string.push(')');
+                    }
+
+                    if let Some(idx) = result_idx {
+                        imports_string.push_str(" (result");
+                        let line = &line[idx..line.len()];
+
+                        if line.contains("i32") {
+                            imports_string.push_str(" i32");
+                        } else if line.contains("f32") {
+                            imports_string.push_str(" f32");
+                        }
+
+                        imports_string.push(')');
+                    }
+
+                    imports_string.push(')');
+                    imports_string.push(')');
+                }
+            }
+        }
+
+        imports_string
+    }
+
     pub fn new(
         instructions: &'b Vec<Instruction<'a>>,
         wasm_string: &'b mut String,
         symbol_table: &'b SymbolTable<'a>,
         imported_contents: &'b str,
+        lib_name: &'a str,
     ) -> Self {
         // TODO: get next_free_byte from somewhere
         Wasmer {
@@ -317,7 +380,8 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             wasm_string: wasm_string,
             symbol_table: symbol_table,
             next_free_byte: 0,
-            _imported_contents: imported_contents,
+            imported_contents: imported_contents,
+            lib_name: lib_name,
         }
     }
 }

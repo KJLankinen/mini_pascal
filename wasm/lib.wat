@@ -406,6 +406,135 @@
           local.set $j
           br 0))))
 
+  (func $allocate (param $n_bytes i32) (result i32)
+    ;; allocates n_bytes from linear memory
+    ;; and returns the address
+    i32.const 0)
+
+  (func $check_bounds (param $adr i32) (param $idx i32) (result i32)
+    ;; checks that the length of array at "arr" >= idx
+    ;; returns idx if yes, otherwise unreachable
+    i32.const 0)
+
+  (func $new_array (result i32)
+    ;; allocates space for three i32 values: pdata, length, capacity
+    ;; allocates 1024 bytes of memory at "pdata" (use "allocate")
+    ;; returns a pointer to the first of the three consecutive i32 values
+    i32.const 0)
+  (func $copy_array (param $dst i32) (param $src i32) (result i32)
+    ;; copies values of length and capacity from src to dst
+    ;; copies bytes from src pdata to dst pdata
+    ;; returns the value dst
+    i32.const 0)
+  
+  (func $get_string_literal (param $idx i32) (result i32)
+    ;; gets the index of a stored string literal
+    ;; calculates/fetches the address from that index
+    ;; returns the address of the string literal
+    i32.const 0)
+  
+  (func $read_input 
+    ;; reads the contents of stdin to the stdin array (pretty much fd_read)
+    )
+  
+  (func $bool_from_input (result i32)
+    ;; converts the next whitespaced delimited value from stdin buffer to a bool(i32, [0, 1]) value (atob)
+    ;; returns the converted value
+    i32.const 0)
+  
+  (func $i32_from_input (result i32)
+    ;; converts the next whitespaced delimited value from stdin buffer to a i32 value (atoi)
+    ;; returns the converted value
+    i32.const 0)
+  
+  (func $f32_from_input (result f32)
+    ;; converts the next whitespaced delimited value from stdin buffer to a f32 value (atof)
+    ;; returns the converted value
+    f32.const 0)
+  
+  (func $string_from_input (result i32)
+    ;; creates a new string (call new_array)
+    ;; adds the next whitespace delimited value from stdin buffer to that string
+    ;; returns the address of the string
+    i32.const 0)
+  
+  (func $write_bool (param $value i32) 
+    ;; takes in a boolean value and converts it to "true"/"false" string and prints it to stdout (btoa)
+    )
+  
+  (func $write_i32 (param $value i32) 
+    ;; takes in a i32 value and converts it to a byte string (itoa) and prints it to stdout
+    )
+  
+  (func $write_f32 (param $value f32) 
+    ;; takes in a f32 value and converts it to a byte string (ftoa) and prints it to stdout
+    )
+  
+  (func $write_string (param $addr i32) 
+    ;; writes the contents of the string at "addr" to stdout
+    )
+  
+  (func $string_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 1 if equal 0 if not
+    i32.const 0)
+  
+  (func $string_neq (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 0 if equal, 1 if not
+    i32.const 0)
+  
+  (func $string_great (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 1 if str1.len > str2.len, 0 otherwise
+    i32.const 0)
+  
+  (func $string_great_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 1 if str1.len >= str2.len, 0 otherwise
+    i32.const 0)
+  
+  (func $string_less (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 1 if str1.len < str2.len, 0 otherwise
+    i32.const 0)
+  
+  (func $string_less_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes the addresses of two strings and compares their lengths
+    ;; returns 1 if str1.len <= str2.len, 0 otherwise
+    i32.const 0)
+  
+  (func $string_concatenate (param $addr1 i32) (param $addr2 i32) (result i32)
+    ;; takes as input two strings
+    ;; adds the contents of the second to the first at "addr1 + str1.len", while within capacity
+    ;; returns "addr1"
+    i32.const 0)
+  
+  (func $array_size (param $addr i32) (result i32)
+    ;; checks the length of the array at addr
+    ;; returns it (divided by four, lenght is bytes)
+    i32.const 0)
+  
+  (func $array_access_i (param $addr i32) (param $idx i32) (result i32)
+    ;; call "check_bounds"
+    ;; loads value at addr + idx to stack and returns it
+    i32.const 0)
+  
+  (func $array_access_f (param $addr i32) (param $idx i32) (result f32)
+    ;; call "check_bounds"
+    ;; loads value at addr + idx to stack and returns it
+    f32.const 0)
+  
+  (func $array_assign_i (param $addr i32) (param $idx i32) (param $value i32) 
+    ;; call "check_bounds"
+    ;; store value to addr + idx
+    )
+  
+  (func $array_assign_f (param $addr i32) (param $idx i32) (param $value f32) 
+    ;; call "check_bounds"
+    ;; store value to addr + idx
+    )
+
   (export "writeln" (func $writeln)) 
   (export "print_newline" (func $print_newline))
   (export "is_one_or_zero" (func $is_one_or_zero)) 
@@ -415,3 +544,29 @@
   (export "atoi " (func $atoi )) 
   (export "itoa " (func $itoa )) 
   (export "reverse_bytes " (func $reverse_bytes )))
+  (export "allocate " (func $allocate )))
+  (export "check_bounds " (func $check_bounds )))
+  (export "new_array " (func $new_array )))
+  (export "copy_array " (func $copy_array )))
+  (export "get_string_literal" (func $get_string_literal)))
+  (export "read_input " (func $read_input )))
+  (export "bool_from_input " (func $bool_from_input )))
+  (export "i32_from_input " (func $i32_from_input )))
+  (export "f32_from_input " (func $f32_from_input )))
+  (export "string_from_input " (func $string_from_input )))
+  (export "write_bool " (func $write_bool )))
+  (export "write_i32 " (func $write_i32 )))
+  (export "write_f32 " (func $write_f32 )))
+  (export "write_string " (func $write_string )))
+  (export "string_eq" (func $string_eq)))
+  (export "string_neq" (func $string_neq)))
+  (export "string_great" (func $string_great)))
+  (export "string_great_eq " (func $string_great_eq )))
+  (export "string_less" (func $string_less)))
+  (export "string_less_eq " (func $string_less_eq )))
+  (export "string_concatenate " (func $string_concatenate )))
+  (export "array_size " (func $array_size )))
+  (export "array_access_i " (func $array_access_i )))
+  (export "array_access_f " (func $array_access_f )))
+  (export "array_assign_i " (func $array_assign_i )))
+  (export "array_assign_f " (func $array_assign_f )))

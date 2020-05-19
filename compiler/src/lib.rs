@@ -61,12 +61,25 @@ pub fn run() {
                                     _ => None,
                                 };
 
+                                let lib_name = if let Some(idx) = lib_filename.rfind('/') {
+                                    &lib_filename[idx + 1..]
+                                } else {
+                                    &lib_filename
+                                };
+
+                                let lib_name = if let Some(idx) = lib_name.rfind('.') {
+                                    &lib_name[..idx]
+                                } else {
+                                    &lib_name
+                                };
+
                                 analyze(
                                     &source_str,
                                     &filename,
                                     &out_file,
                                     ast_file.as_ref().map(|s| &**s),
                                     &lib_contents,
+                                    lib_name,
                                 );
                             }
                             Err(err) => {
@@ -101,6 +114,7 @@ fn analyze(
     out_file: &str,
     ast_file: Option<&str>,
     lib_contents: &str,
+    lib_name: &str,
 ) {
     let mut logger = Logger::new(&source_str, filename);
     let mut tree = LcRsTree::new();
@@ -129,8 +143,14 @@ fn analyze(
         logger.print_errors();
         process::exit(1);
     } else {
-        Wasmer::new(&instructions, &mut wasm_string, &symbol_table, lib_contents)
-            .instructions_to_wasm();
+        Wasmer::new(
+            &instructions,
+            &mut wasm_string,
+            &symbol_table,
+            lib_contents,
+            lib_name,
+        )
+        .instructions_to_wasm();
     }
 
     match fs::write(out_file, wasm_string) {
