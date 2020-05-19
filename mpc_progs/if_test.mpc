@@ -1,8 +1,19 @@
 program if_test;
+
+function f1(a: real): integer;
+begin
+    var i, j, k: integer;
+    if a > 0.5 then
+        return i
+    else
+        return i + 5
+end;
+
 begin
     var i: integer;
-    i := 0;
-    if true then
-        var i: integer;
-    return
+    if f1(6.0) < 5 then
+    begin
+        var i, j: integer;
+        i := i + j
+    end
 end.

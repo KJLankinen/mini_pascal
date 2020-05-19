@@ -597,25 +597,17 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     | TokenType::OperatorGreater
                     | TokenType::OperatorGreaterEqual
                     | TokenType::OperatorLess
-                    | TokenType::OperatorLessEqual => {
-                        if SymbolType::Undefined
-                            == self.match_operands(
-                                type1,
-                                type2,
-                                &vec![
-                                    SymbolType::Bool,
-                                    SymbolType::Int,
-                                    SymbolType::Real,
-                                    SymbolType::String,
-                                ],
-                                &token,
-                            )
-                        {
-                            SymbolType::Undefined
-                        } else {
-                            SymbolType::Bool
-                        }
-                    }
+                    | TokenType::OperatorLessEqual => self.match_operands(
+                        type1,
+                        type2,
+                        &vec![
+                            SymbolType::Bool,
+                            SymbolType::Int,
+                            SymbolType::Real,
+                            SymbolType::String,
+                        ],
+                        &token,
+                    ),
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         SymbolType::Undefined
@@ -623,7 +615,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 };
                 data.st = st;
                 self.tree[idx].data = NodeType::RelOp(data);
-                st
+                if SymbolType::Undefined == st {
+                    st
+                } else {
+                    SymbolType::Bool
+                }
             }
             NodeType::AddOp(mut data) => {
                 let token = data.token.expect("Add operator is missing a token.");
