@@ -39,7 +39,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         TokenType::LParen,
         TokenType::Identifier,
         TokenType::LiteralInt,
-        TokenType::LiteralBoolean,
+        TokenType::LiteralBool,
         TokenType::LiteralReal,
         TokenType::LiteralString,
     ];
@@ -1096,7 +1096,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::KeywordElse => {
                     parser.match_token(&[TokenType::KeywordElse])?;
-                    TokenType::LiteralBoolean
+                    TokenType::LiteralBool
                 }
                 TokenType::LiteralInt => {
                     // Label for expression
@@ -1127,7 +1127,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                         TokenType::Undefined
                     }
                 }
-                TokenType::LiteralBoolean => {
+                TokenType::LiteralBool => {
                     // Label for second statement
                     node_data.opt_idx = Some(parser.statement(my_idx)?);
                     TokenType::Undefined
@@ -1705,7 +1705,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 )?
                 .unwrap_or_else(|| !0)
             }
-            tt @ TokenType::LiteralBoolean
+            tt @ TokenType::LiteralBool
             | tt @ TokenType::LiteralInt
             | tt @ TokenType::LiteralReal
             | tt @ TokenType::LiteralString => {

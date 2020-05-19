@@ -708,7 +708,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             NodeType::Literal(mut data) => {
                 let token = data.token.expect("Literal is missing a token.");
                 match token.token_type {
-                    TokenType::LiteralBoolean => SymbolType::Bool,
+                    TokenType::LiteralBool => SymbolType::Bool,
                     TokenType::LiteralInt => SymbolType::Int,
                     TokenType::LiteralReal => SymbolType::Real,
                     TokenType::LiteralString => {
