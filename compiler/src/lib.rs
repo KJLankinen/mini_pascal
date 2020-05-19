@@ -6,6 +6,7 @@ mod scanner;
 mod semantic_analyzer;
 mod stacker;
 mod symbol_table;
+mod wasmer;
 
 use lcrs_tree::LcRsTree;
 use logger::Logger;
@@ -14,6 +15,7 @@ use semantic_analyzer::Analyzer;
 use stacker::Stacker;
 use std::{env, fs, process};
 use symbol_table::SymbolTable;
+use wasmer::Wasmer;
 
 pub fn run() {
     let args: Vec<String> = env::args().collect();
@@ -54,12 +56,12 @@ pub fn run() {
                         };
                         let mut logger = Logger::new(&source_str, filename);
                         let mut tree = LcRsTree::new();
-                        let mut symbol_table = SymbolTable::new();
                         {
                             Parser::new(&source_str, &mut logger, &mut tree)
                                 .parse(out_file.as_ref().map(|s| &**s));
                         }
 
+                        let mut symbol_table = SymbolTable::new();
                         if logger.errors_encountered() {
                             logger.print_errors();
                             process::exit(1);
@@ -67,21 +69,21 @@ pub fn run() {
                             Analyzer::new(&mut tree, &mut logger, &mut symbol_table).analyze();
                         }
 
+                        let mut instructions = vec![];
                         if logger.errors_encountered() {
                             logger.print_errors();
                             process::exit(1);
-                        }
-
-                        let mut stacker = Stacker::new(&tree, &mut symbol_table);
-                        stacker.stack_ir();
-
-                        if logger.errors_encountered() {
-                            logger.print_errors();
-                            process::exit(1);
+                        } else {
+                            Stacker::new(&tree, &mut symbol_table, &mut instructions).stack_ir();
                         }
 
                         let mut wasm_string = String::new();
-                        stacker.instructions_to_wasm(&mut wasm_string);
+                        if logger.errors_encountered() {
+                            logger.print_errors();
+                            process::exit(1);
+                        } else {
+                            Wasmer::new(&instructions, &mut wasm_string).instructions_to_wasm();
+                        }
 
                         fs::write(filename_prefix + ".wast", wasm_string)
                             .expect("Unable to write to a file.");
