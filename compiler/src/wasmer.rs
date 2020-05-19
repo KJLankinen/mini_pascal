@@ -6,6 +6,7 @@ pub struct Wasmer<'a, 'b> {
     wasm_string: &'b mut String,
     symbol_table: &'b SymbolTable<'a>,
     next_free_byte: usize,
+    _imported_contents: &'b str,
 }
 
 impl<'a, 'b> Wasmer<'a, 'b> {
@@ -308,6 +309,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         instructions: &'b Vec<Instruction<'a>>,
         wasm_string: &'b mut String,
         symbol_table: &'b SymbolTable<'a>,
+        imported_contents: &'b str,
     ) -> Self {
         // TODO: get next_free_byte from somewhere
         Wasmer {
@@ -315,6 +317,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             wasm_string: wasm_string,
             symbol_table: symbol_table,
             next_free_byte: 0,
+            _imported_contents: imported_contents,
         }
     }
 }
