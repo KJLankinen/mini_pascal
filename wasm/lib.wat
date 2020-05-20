@@ -36,6 +36,20 @@
   (data (i32.const 84) "\04")             ;; capacity: 4
   (data (i32.const 88) "\01")             ;; stride: 1
   (data (i32.const 92) "\n\00\00\00")     ;; data
+
+  ;; testing
+  (data (i32.const 96) "\70") ;; ptr 112
+  (data (i32.const 100) "\0B") ;; len 11
+  (data (i32.const 104) "\14") ;; capacity 20 = 14
+  (data (i32.const 108) "\01") ;; stride 1 
+  (data (i32.const 112) "voi turskan")
+
+  ;; perkeet
+  (data (i32.const 132) "\94") ;; ptr 148
+  (data (i32.const 136) "\08") ;; len 8
+  (data (i32.const 140) "\08") ;; capacity 8
+  (data (i32.const 144) "\01") ;; stride 1 
+  (data (i32.const 148) " perkeet")
   
   (global $i32_dump i32 (i32.const 0))
   (global $newline_buffer i32 (i32.const 76))
@@ -49,6 +63,10 @@
   (global $i32_stdout_buffer i32 (i32.const 4))
   (global $true_buffer i32 (i32.const 32))
   (global $false_buffer i32 (i32.const 52))
+
+  ;; testing
+  (global $turska i32 (i32.const 96))
+  (global $perkeet i32 (i32.const 132))
   
   ;; write an array of bytes starting at given loc to stdin followed by a newline character
   (func $writeln (export "writeln") (param $pmem i32)
@@ -409,6 +427,32 @@
           i32.sub
           local.set $j
           br 0))))
+  
+  (func $i32_min (export "i32_min") (param i32) (param i32) (result i32)
+    (local $min i32)
+    local.get 0
+    local.set $min
+    (block
+      local.get 0
+      local.get 1
+      i32.lt_s
+      br_if 0
+      local.get 1
+      local.set $min)
+    local.get $min)
+  
+  (func $i32_max (export "i32_max") (param i32) (param i32) (result i32)
+    (local $max i32)
+    local.get 0
+    local.set $max
+    (block
+      local.get 0
+      local.get 1
+      i32.gt_s
+      br_if 0
+      local.get 1
+      local.set $max)
+    local.get $max)
 
   (func $allocate (export "allocate") (param $n_bytes i32) (result i32)
     ;; allocates n_bytes from linear memory
@@ -535,12 +579,104 @@
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if str1.len <= str2.len, 0 otherwise
     i32.const 0)
-  
+
+  (func $copy (export "copy") (param $src i32) (param $dst i32) (param $n_bytes i32) (result i32)
+    ;; returns the number of bytes copied
+    (local $i i32)
+    i32.const 0
+    local.set $i
+    (block
+      (loop
+        local.get $dst
+        local.get $i
+        i32.add
+        local.get $src
+        local.get $i
+        i32.add
+        i32.load8_s
+        i32.store8
+        local.get $i
+        i32.const 1
+        i32.add
+        local.tee $i
+        local.get $n_bytes
+        i32.ge_s
+        br_if 1
+        br 0))
+    local.get $i)
+
+  (func $array_end (export "array_last") (param $addr i32) (result i32)
+    ;; returns the address of the first free byte
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    global.get $offset_length
+    i32.add
+    i32.load
+    local.get $addr
+    i32.load
+    i32.add)
+
   (func $string_concatenate (export "string_concatenate") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes as input two strings
-    ;; adds the contents of the second to the first at "addr1 + str1.len", while within capacity
-    ;; returns "addr1"
-    i32.const 0)
+    ;; Takes two strings and adds the contents of the second
+    ;; to the first, or as many bytes as fit within capacity.
+    ;; This function does not allocate.
+    ;; Returns $addr1
+    (local $temp i32)
+ 
+    ;; get address of length on stack for the final store op
+    local.get $addr1
+    global.get $offset_length
+    i32.add   
+
+    ;; src = $addr2
+    local.get $addr2
+    i32.load
+
+    ;; dst = $addr1 + str1.len (in bytes)
+    local.get $addr1
+    call $array_end
+
+    ;; str1.capacity - str1.len
+    local.get $addr1
+    call $array_capacity
+    local.get $addr1
+    call $array_size
+    i32.sub
+
+    ;; str2.len
+    local.get $addr2
+    call $array_size
+
+    ;; min(str2.len, str1.capacity - str1.len)
+    call $i32_min
+
+    ;; multiply len by stride to get len in bytes
+    ;; string has stride 1, so this is unnecessary, unless it's not
+    local.get $addr1
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.mul
+
+    ;; copy n bytes from $addr2 to $addr1 + len
+    ;; returns num bytes copied
+    call $copy
+    local.get $addr1
+    global.get $offset_length
+    i32.add
+    i32.load
+    ;; add num of bytes copied to length
+    i32.add
+    i32.store
+
+    local.get $addr1)
   
   (func $array_size (export "array_size") (param $addr i32) (result i32)
     ;; returns the length of the array at addr divided by stride
@@ -554,6 +690,26 @@
     ;;   i.e. i = 1 -> bytes 4-7
     local.get $addr
     global.get $offset_length
+    i32.add
+    i32.load
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.div_s)
+  
+  (func $array_capacity (export "array_capacity") (param $addr i32) (result i32)
+    ;; returns the capacity of the array at addr divided by stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    global.get $offset_capacity
     i32.add
     i32.load
     local.get $addr
@@ -647,4 +803,10 @@
     i32.mul
     local.get $value
     f32.store)
-  )
+
+  (func (export "_start")
+    global.get $turska
+    global.get $perkeet
+    call $string_concatenate
+    call $writeln)
+)
