@@ -554,6 +554,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             next = self.tree[idx].right_sibling;
             i += 1;
         }
+        emit!(self, Instr::LibFunc("write_newline"));
         assert_eq!(i, arguments.len(), "Not all arguments used.");
     }
 

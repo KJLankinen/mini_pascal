@@ -71,8 +71,9 @@
   (func (export "_start")
     global.get $turska
     global.get $perkeet
-    call $string_concatenate
-    call $writeln)
+    call $string_less
+    call $write_bool
+    call $write_newline)
   
   ;; -----------------------------------------------------------------
   ;; Conversions
@@ -89,6 +90,10 @@
     call $atoi
     i32.eqz
     i32.eqz)
+
+  (func $atof (export "atof") (param $pmem i32) (result f32)
+    ;; TODO
+    f32.const 0)
  
   (func $atoi (export "atoi") (param $pmem i32) (result i32)
     ;; convert array of bytes to an i32 value
@@ -189,6 +194,10 @@
     local.get $v
     local.get $sign
     i32.mul)
+
+  (func $ftoa (export "ftoa") (param $v f32) (param $pmem i32)
+    ;; TODO
+    )
   
   (func $itoa (export "itoa") (param $v i32) (param $pmem i32)
     ;; convert integer to a byte representation, i.e. an array of bytes
@@ -290,7 +299,7 @@
   ;; -----------------------------------------------------------------
   ;; I/O
   ;; -----------------------------------------------------------------
-  (func $writeln (export "writeln") (param $pmem i32)
+  (func $write (export "write") (param $pmem i32)
     ;; write an array of bytes starting at given loc to stdin followed by a newline character
     ;; assumptions:
     ;; * The pointer should point to consecutive 8 bytes, that contain
@@ -300,137 +309,128 @@
     i32.const 1
     global.get $i32_dump
     call $fd_write
-    drop
-    
-    call $print_newline)
+    drop)
   
-  (func $print_newline (export "print_newline")
-    ;; write '\n' to stdout
-    i32.const 1
+  (func $write_newline (export "write_newline")
     global.get $newline_buffer
-    i32.const 1
-    global.get $i32_dump
-    call $fd_write
-    drop)
-  
-  (func $print_int (export "print_int") (param $value i32)
-    ;; write given int to stdout
-    ;; convert value to byte array
-    local.get $value
-    global.get $i32_stdout_buffer
-    call $itoa
-    
-    global.get $i32_stdout_buffer
-    call $reverse_bytes
-    
-    i32.const 1
-    global.get $i32_stdout_buffer
-    i32.const 1
-    global.get $i32_dump
-    call $fd_write
-    drop)
+    call $write)
+
+  (func $writeln (export "writeln") (param $pmem i32)
+    local.get $pmem
+    call $write 
+    call $write_newline)
    
-  (func $print_bool (export "print_bool") (param $value i32)
-    ;; write given bool to stdout
+  (func $write_bool (export "write_bool") (param $value i32)
     (block
       (block
         local.get $value
         i32.eqz
         br_if 0
-        i32.const 1
         global.get $true_buffer
-        i32.const 1
-        global.get $i32_dump
-        call $fd_write
-        drop
+        call $write
         br 1)
-    
-      i32.const 1
       global.get $false_buffer
-      i32.const 1
-      global.get $i32_dump
-      call $fd_write
-      drop))
+      call $write))
+  
+  (func $write_i32 (export "write_i32") (param $v i32)
+    local.get $v
+    global.get $i32_stdout_buffer
+    call $itoa
+    global.get $i32_stdout_buffer
+    call $reverse_bytes
+    global.get $i32_stdout_buffer
+    call $write)
+  
+  (func $write_f32 (export "write_f32") (param $v f32) 
+    ;; TODO
+    )
+  
+  (func $write_string (export "write_string") (param $addr i32) 
+    local.get $addr
+    call $write
+    )
 
   (func $read_input (export "read_input")
+    ;; TODO
     ;; reads the contents of stdin to the stdin array (pretty much fd_read)
     )
   
   (func $bool_from_input (export "bool_from_input") (result i32)
+    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a bool(i32, [0, 1]) value (atob)
     ;; returns the converted value
     i32.const 0)
   
   (func $i32_from_input (export "i32_from_input")  (result i32)
+    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a i32 value (atoi)
     ;; returns the converted value
     i32.const 0)
   
   (func $f32_from_input (export "f32_from_input") (result f32)
+    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a f32 value (atof)
     ;; returns the converted value
     f32.const 0)
   
   (func $string_from_input (export "string_from_input") (result i32)
+    ;; TODO
     ;; creates a new string (call new_array)
     ;; adds the next whitespace delimited value from stdin buffer to that string
     ;; returns the address of the string
     i32.const 0)
   
-  (func $write_bool (export "write_bool") (param $value i32) 
-    ;; takes in a boolean value and converts it to "true"/"false" string and prints it to stdout (btoa)
-    )
-  
-  (func $write_i32 (export "write_i32") (param $value i32) 
-    ;; takes in a i32 value and converts it to a byte string (itoa) and prints it to stdout
-    )
-  
-  (func $write_f32 (export "write_f32") (param $value f32) 
-    ;; takes in a f32 value and converts it to a byte string (ftoa) and prints it to stdout
-    )
-  
-  (func $write_string (export "write_string") (param $addr i32) 
-    ;; writes the contents of the string at "addr" to stdout
-    )
-  
   ;; -----------------------------------------------------------------
   ;; String
   ;; -----------------------------------------------------------------
   (func $get_string_literal (export "get_string_literal") (param $idx i32) (result i32)
+    ;; TODO
     ;; gets the index of a stored string literal
     ;; calculates/fetches the address from that index
     ;; returns the address of the string literal
     i32.const 0)
 
   (func $string_eq (export "string_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 1 if equal 0 if not
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.eq)
   
   (func $string_neq (export "string_neq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 0 if equal, 1 if not
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.ne)
  
   (func $string_great (export "string_great") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 1 if str1.len > str2.len, 0 otherwise
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.gt_u)
   
   (func $string_great_eq (export "string_great_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 1 if str1.len >= str2.len, 0 otherwise
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.ge_u)
   
   (func $string_less (export "string_less") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 1 if str1.len < str2.len, 0 otherwise
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.lt_u)
   
   (func $string_less_eq (export "string_less_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    ;; takes the addresses of two strings and compares their lengths
-    ;; returns 1 if str1.len <= str2.len, 0 otherwise
-    i32.const 0)
+    local.get $addr1
+    call $array_len
+    local.get $addr2
+    call $array_len
+    i32.le_u)
 
   (func $string_concatenate (export "string_concatenate") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; Takes two strings and adds the contents of the second
@@ -564,6 +564,7 @@
     f32.store)
 
   (func $allocate (export "allocate") (param $n_bytes i32) (result i32)
+    ;; TODO
     ;; allocates n_bytes from linear memory
     ;; and returns the address
     i32.const 0)
@@ -583,16 +584,12 @@
     (block
       (block
         local.get $addr
-        global.get $offset_length
-        i32.add
-        i32.load
+        call $array_len
         local.get $idx
         local.get $addr
-        global.get $offset_stride
-        i32.add
-        i32.load
+        call $array_stride
         i32.mul
-        i32.gt_s
+        i32.gt_u
         br_if 1)
       local.get $str_idx
       call $get_string_literal
@@ -601,6 +598,7 @@
     local.get $idx)
 
   (func $new_array (export "new_array") (param $stride i32) (result i32)
+    ;; TODO
     ;; allocates space for four i32 values: pdata, length, capacity, stride
     ;; allocates 1024 bytes of memory at "pdata" (use "allocate")
     ;; returns a pointer to the first of the four consecutive i32 values
@@ -610,7 +608,34 @@
     ;; copies values of length and capacity from src to dst
     ;; copies bytes from src pdata to dst pdata
     ;; returns the value dst
-    i32.const 0)
+    local.get $dst
+    global.get $offset_length
+    i32.add
+    local.get $src
+    call $array_len
+    i32.store
+
+    local.get $dst
+    global.get $offset_capacity
+    i32.add
+    local.get $src
+    call $array_capacity
+    i32.store
+
+    local.get $dst
+    global.get $offset_stride
+    i32.add
+    local.get $src
+    call $array_stride
+    i32.store
+
+    local.get $src
+    local.get $dst
+    local.get $src
+    call $array_len
+    call $copy
+    drop
+    local.get $dst)
  
   ;; -----------------------------------------------------------------
   ;; Misc
@@ -703,7 +728,7 @@
     (block
       local.get 0
       local.get 1
-      i32.lt_s
+      i32.lt_u
       br_if 0
       local.get 1
       local.set $min)
@@ -716,14 +741,14 @@
     (block
       local.get 0
       local.get 1
-      i32.gt_s
+      i32.gt_u
       br_if 0
       local.get 1
       local.set $max)
     local.get $max)
   
-  ;; check if given integer is zero everywhere except LSB
   (func $is_one_or_zero (export "is_one_or_zero") (param i32) (result i32)
+    ;; check if given integer is zero everywhere except LSB
     local.get 0
     i32.const 0xfffffffe
     i32.and
@@ -749,7 +774,7 @@
         i32.add
         local.tee $i
         local.get $n_bytes
-        i32.ge_s
+        i32.ge_u
         br_if 1
         br 0))
     local.get $i)
