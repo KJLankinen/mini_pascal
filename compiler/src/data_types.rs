@@ -663,7 +663,7 @@ pub struct FunctionSignature<'a> {
 // ---------------------------------------------------------------------
 // Wasm types and Wasm instructions
 // ---------------------------------------------------------------------
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmType<'a> {
     I32(Option<i32>),
     F32(Option<f32>),
