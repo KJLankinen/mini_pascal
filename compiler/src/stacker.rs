@@ -1,6 +1,6 @@
 use super::data_types::{
     IdxIdx, Instruction, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
-    TokenIdxOptIdx, TokenOptIdx, TokenSymbolBoolIdxIdxOptIdx, TokenType, WasmType,
+    TokenIdxOptIdx, TokenOptIdx, TokenType, VariableData, WasmType,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
@@ -287,7 +287,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     match is_ref[i].1 {
                         SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
                             if is_ref[i].0 {
-                                if let Some(arr_idx) = var_data.opt_idx {
+                                if let Some(arr_idx) = var_data.array_idx {
                                     emit!(
                                         self,
                                         Instruction::GetLocal(WasmType::I32(Some(
@@ -295,6 +295,13 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                         ),))
                                     );
                                     self.expression(arr_idx);
+                                    let string_idx = var_data.string_idx.expect(
+                                        "Variable should have some string index at call statement.",
+                                    );
+                                    emit!(
+                                        self,
+                                        Instruction::Const(WasmType::I32(Some(string_idx as i32)))
+                                    );
                                     emit!(self, Instruction::LibFunc("check_bounds"));
                                     // Get back to stack
                                     emit!(
@@ -304,7 +311,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                         ),))
                                     );
                                     emit!(self, Instruction::Add(WasmType::I32(None)));
-                                } else if var_data.b {
+                                } else if var_data.is_ref {
                                     // We're passing a reference to a variable that we got
                                     // ourselves as a reference. Just pass the address on.
                                     // The variable at "local_idx" is a parameter we received and
@@ -505,8 +512,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     | SymbolType::ArrayReal(expr_idx)
                     | SymbolType::ArrayString(expr_idx) => {
                         let str_idx = data
-                            .opt_idx
-                            .expect("Variable (at declaration) should have some opt_idx.");
+                            .string_idx
+                            .expect("Variable (at declaration) should have some string_idx.");
                         emit!(self, Instruction::BlockBegin(None));
                         self.expression(expr_idx);
                         emit!(self, Instruction::Const(WasmType::I32(Some(256))));
@@ -875,12 +882,12 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 );
                 match data.st {
                     SymbolType::Bool | SymbolType::Int => {
-                        if data.b {
+                        if data.is_ref {
                             emit!(self, Instruction::MemLoad(WasmType::I32(None)));
                         }
                     }
                     SymbolType::Real => {
-                        if data.b {
+                        if data.is_ref {
                             emit!(self, Instruction::MemLoad(WasmType::F32(None)));
                         }
                     }
@@ -894,9 +901,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     | SymbolType::ArrayString(_) => {
                         // Array references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
-                        if let Some(arr_idx) = data.opt_idx {
+                        if let Some(arr_idx) = data.array_idx {
                             self.expression(arr_idx);
-
+                            let string_idx = data
+                                .string_idx
+                                .expect("Variable should have some string index at array access.");
+                            emit!(
+                                self,
+                                Instruction::Const(WasmType::I32(Some(string_idx as i32)))
+                            );
                             if let SymbolType::ArrayReal(_) = data.st {
                                 emit!(self, Instruction::LibFunc("array_access_f"));
                             } else {
@@ -967,21 +980,21 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    fn get_variable_local_idx(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) -> usize {
-        data.idx
+    fn get_variable_local_idx(&mut self, data: &VariableData<'a>) -> usize {
+        data.count
             + self.symbol_table.get_variable_index(
                 self.fname
                     .expect("Function must have a name at this point."),
                 data.st,
-                data.idx2,
+                data.depth,
             )
     }
 
-    fn emit_set_local_pre_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
+    fn emit_set_local_pre_expr(&mut self, data: &VariableData<'a>) {
         let local_idx = self.get_variable_local_idx(&data);
         match data.st {
             SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
-                if data.b {
+                if data.is_ref {
                     emit!(
                         self,
                         Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
@@ -1003,8 +1016,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
                 );
 
-                if let Some(expr_idx) = data.opt_idx {
+                if let Some(expr_idx) = data.array_idx {
                     self.expression(expr_idx);
+                    let string_idx = data
+                        .string_idx
+                        .expect("Variable should have some string index at set local pre_expr.");
+                    emit!(
+                        self,
+                        Instruction::Const(WasmType::I32(Some(string_idx as i32)))
+                    );
                 }
             }
             _ => {
@@ -1013,10 +1033,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
         }
     }
 
-    fn emit_set_local_post_expr(&mut self, data: &TokenSymbolBoolIdxIdxOptIdx<'a>) {
+    fn emit_set_local_post_expr(&mut self, data: &VariableData<'a>) {
         match data.st {
             SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
-                if data.b {
+                if data.is_ref {
                     if SymbolType::Real == data.st {
                         emit!(self, Instruction::MemStore(WasmType::F32(None)));
                     } else {
@@ -1038,7 +1058,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             | SymbolType::ArrayInt(_)
             | SymbolType::ArrayReal(_)
             | SymbolType::ArrayString(_) => {
-                if data.opt_idx.is_some() {
+                if data.array_idx.is_some() {
                     if let SymbolType::ArrayReal(_) = data.st {
                         emit!(self, Instruction::LibFunc("array_assign_f"));
                     } else {

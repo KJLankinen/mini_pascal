@@ -1,8 +1,7 @@
 use super::data_types::{
     ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
-    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx,
-    TokenSymbolBoolIdxIdxOptIdx, TokenSymbolIdxIdx, TokenSymbolIdxOptIdx, TokenSymbolType,
-    TokenType,
+    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxIdx,
+    TokenSymbolIdxOptIdx, TokenSymbolType, TokenType, VariableData,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -826,7 +825,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn id_list(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut recovery_token = None;
-        self.tree[my_idx].data = NodeType::Variable(TokenSymbolBoolIdxIdxOptIdx {
+        self.tree[my_idx].data = NodeType::Variable(VariableData {
             token: self.process(
                 Parser::match_token,
                 &[TokenType::Identifier],
@@ -834,10 +833,11 @@ impl<'a, 'b> Parser<'a, 'b> {
                 &mut recovery_token,
             )?,
             st: SymbolType::Undefined,
-            b: false,
-            idx: !0,
-            idx2: -1,
-            opt_idx: None,
+            is_ref: false,
+            count: !0,
+            depth: -1,
+            array_idx: None,
+            string_idx: None,
         });
 
         let tt = self.scanner.peek().token_type;
@@ -887,20 +887,21 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn variable(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
-        let mut node_data = TokenSymbolBoolIdxIdxOptIdx {
+        let mut node_data = VariableData {
             token: None,
             st: SymbolType::Undefined,
-            b: false,
-            idx: !0,
-            idx2: -1,
-            opt_idx: None,
+            is_ref: false,
+            count: !0,
+            depth: -1,
+            array_idx: None,
+            string_idx: None,
         };
 
         fn parse_variable<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
             tt: TokenType,
             my_idx: usize,
-            node_data: &mut TokenSymbolBoolIdxIdxOptIdx<'a>,
+            node_data: &mut VariableData<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
@@ -928,7 +929,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 }
                 TokenType::LiteralInt => {
                     // Label for array expression
-                    node_data.opt_idx = Some(
+                    node_data.array_idx = Some(
                         parser
                             .process(
                                 Parser::expression,

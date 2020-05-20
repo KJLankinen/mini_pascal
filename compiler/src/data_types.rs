@@ -318,13 +318,14 @@ pub struct TokenSymbolIdxOptIdx<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TokenSymbolBoolIdxIdxOptIdx<'a> {
+pub struct VariableData<'a> {
     pub token: Option<TokenData<'a>>,
     pub st: SymbolType,
-    pub b: bool,
-    pub idx: usize,
-    pub idx2: i32,
-    pub opt_idx: Option<usize>,
+    pub is_ref: bool,
+    pub count: usize,
+    pub depth: i32,
+    pub array_idx: Option<usize>,
+    pub string_idx: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -357,7 +358,7 @@ pub enum NodeType<'a> {
     RelOp(TokenSymbolIdxIdx<'a>),
     AddOp(TokenSymbolIdxOptIdx<'a>),
     MulOp(TokenSymbolIdxIdx<'a>),
-    Variable(TokenSymbolBoolIdxIdxOptIdx<'a>),
+    Variable(VariableData<'a>),
     Literal(TokenOptIdx<'a>),
     Not(TokenIdx<'a>),
     ArraySize(TokenIdx<'a>),

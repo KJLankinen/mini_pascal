@@ -303,7 +303,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                         | SymbolType::ArrayString(_) => {
                             // Add an error string to linear memory, since the size check is done
                             // during runtime.
-                            data.opt_idx = Some(
+                            data.string_idx = Some(
                         self.symbol_table.add_string_literal(
                             format!(
                                 "Trying to allocate too much memory at once. Only 1024 bytes is supported. At {}:{}: \"{}\"",
@@ -319,8 +319,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     }
 
                     let (_, count, depth, _) = self.symbol_table.get(token.value).unwrap();
-                    data.idx = *count;
-                    data.idx2 = *depth;
+                    data.count = *count;
+                    data.depth = *depth;
                     data.st = st;
                     self.tree[idx].data = NodeType::Variable(data);
                 }
@@ -481,12 +481,26 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // i.e. opt_idx = Some(idx), check that
                 // 1. The expression results in an integer
                 // 2. The identifier is of type array
-                let st = if let Some(expr_idx) = data.opt_idx {
+                let st = if let Some(expr_idx) = data.array_idx {
                     let et = self.get_expression_type(expr_idx);
                     if SymbolType::Int != et && SymbolType::Undefined != et {
                         self.logger
                             .add_error(ErrorType::IndexTypeMismatch(token, et));
                     }
+
+                    // Store an assertion message, since the array access check is done at runtime.
+                    data.string_idx = Some(
+                        self.symbol_table.add_string_literal(
+                            format!(
+                                "Array access out of bounds at {}:{}: \"{}\"",
+                                self.logger.file_name,
+                                token.line,
+                                self.logger.get_line(token.line as usize).trim()
+                            )
+                            .as_str(),
+                        ),
+                    );
+
                     match st {
                         st @ SymbolType::Int
                         | st @ SymbolType::String
@@ -508,10 +522,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // Update data with the symbol type, the "ranking", i.e. the count how many
                 // variables of this symbol type have already been declared in this scope,
                 // and the scope depth.
-                data.idx = count;
-                data.idx2 = depth;
+                data.count = count;
+                data.depth = depth;
                 data.st = st;
-                data.b = is_ref;
+                data.is_ref = is_ref;
                 self.tree[idx].data = NodeType::Variable(data);
 
                 assert!(

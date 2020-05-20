@@ -8,46 +8,50 @@
   ;; 0-3 is reserved for a dump of size i32
   (data (i32.const 0) "\00\00\00\00")     ;; init with 0x00000000
   
-  ;; 4-27 is reserved for i32 stdout buffer
-  (data (i32.const 4) "\10")              ;; pointer to data: 16
+  ;; 4-31 is reserved for i32 stdout buffer
+  (data (i32.const 4) "\14")              ;; pointer to data: 20
   (data (i32.const 8) "\00")              ;; length: 0
   (data (i32.const 12) "\0C")             ;; capacity: 12 bytes
-  (data (i32.const 16) "\00")             ;; data
+  (data (i32.const 16) "\01")             ;; stride: 1 byte
+  (data (i32.const 20) "\00")             ;; data
   
-  ;; 28-43 true
-  (data (i32.const 28) "\28")             ;; pointer to data: 40
-  (data (i32.const 32) "\04")             ;; length: 4
-  (data (i32.const 36) "\04")             ;; capacity: 4 bytes
-  (data (i32.const 40) "true")            ;; data
+  ;; 32-51 true
+  (data (i32.const 32) "\30")             ;; pointer to data: 44
+  (data (i32.const 36) "\04")             ;; length: 4
+  (data (i32.const 40) "\04")             ;; capacity: 4 bytes
+  (data (i32.const 44) "\01")             ;; stride: 1
+  (data (i32.const 48) "true")            ;; data
   
-  ;; 44-63 false
-  (data (i32.const 44) "\38")             ;; pointer to data: 56
-  (data (i32.const 48) "\05")             ;; length: 5
-  (data (i32.const 52) "\08")             ;; capacity: 8 bytes
-  (data (i32.const 56) "false\00\00\00")  ;; data, pad with 3 bytes
+  ;; 52-75 false
+  (data (i32.const 52) "\44")             ;; pointer to data: 68
+  (data (i32.const 56) "\05")             ;; length: 5
+  (data (i32.const 60) "\08")             ;; capacity: 8 bytes
+  (data (i32.const 64) "\01")             ;; stride: 1
+  (data (i32.const 68) "false\00\00\00")  ;; data, pad with 3 bytes
   
   ;; store newline for "writeln"
   ;; can store more static data
-  (data (i32.const 64) "\4C")             ;; pointer to data: 76
-  (data (i32.const 68) "\01")             ;; length: 1
-  (data (i32.const 72) "\04")             ;; capacity: 4
-  (data (i32.const 76) "\n\00\00\00")     ;; data
+  (data (i32.const 76) "\5C")             ;; pointer to data: 92
+  (data (i32.const 80) "\01")             ;; length: 1
+  (data (i32.const 84) "\04")             ;; capacity: 4
+  (data (i32.const 88) "\01")             ;; stride: 1
+  (data (i32.const 92) "\n\00\00\00")     ;; data
   
   (global $i32_dump i32 (i32.const 0))
-  (global $newline_buffer i32 (i32.const 64))
+  (global $newline_buffer i32 (i32.const 76))
   
   ;; use these offsets when saving byte arrays
   (global $offset_length i32 (i32.const 4))
   (global $offset_capacity i32 (i32.const 8))
-  (global $offset_data i32 (i32.const 12))
+  (global $offset_stride i32 (i32.const 12))
   
   ;; locations of the buffers for printing values
   (global $i32_stdout_buffer i32 (i32.const 4))
-  (global $true_buffer i32 (i32.const 28))
-  (global $false_buffer i32 (i32.const 44))
+  (global $true_buffer i32 (i32.const 32))
+  (global $false_buffer i32 (i32.const 52))
   
   ;; write an array of bytes starting at given loc to stdin followed by a newline character
-  (func $writeln (param $pmem i32)
+  (func $writeln (export "writeln") (param $pmem i32)
     ;; assumptions:
     ;; * The pointer should point to consecutive 8 bytes, that contain
     ;;   the pointer to data and number of bytes
@@ -61,7 +65,7 @@
     call $print_newline)
   
   ;; write '\n' to stdout
-  (func $print_newline
+  (func $print_newline (export "print_newline")
     i32.const 1
     global.get $newline_buffer
     i32.const 1
@@ -70,14 +74,14 @@
     drop)
   
   ;; check if given integer is zero everywhere except LSB
-  (func $is_one_or_zero (param i32) (result i32)
+  (func $is_one_or_zero (export "is_one_or_zero") (param i32) (result i32)
     local.get 0
     i32.const 0xfffffffe
     i32.and
     i32.eqz)
   
   ;; write given int to stdout
-  (func $print_int (param $value i32)
+  (func $print_int (export "print_int") (param $value i32)
     ;; convert value to byte array
     local.get $value
     global.get $i32_stdout_buffer
@@ -92,9 +96,9 @@
     global.get $i32_dump
     call $fd_write
     drop)
-  
+   
   ;; write given bool to stdout
-  (func $print_bool (param $value i32)
+  (func $print_bool (export "print_bool") (param $value i32)
     (block
       (block
         local.get $value
@@ -116,7 +120,7 @@
       drop))
   
   ;; convert an array of bytes to a boolean value, represented as i32
-  (func $atob (param $pmem i32) (result i32)
+  (func $atob (export "atob") (param $pmem i32) (result i32)
     ;; assumptions:
     ;; * Only 0 is regarded as false, all other numbers are true, even negative ones
     ;; * Shis function does not try to handle text based values, i.e. it does not convert
@@ -127,9 +131,9 @@
     call $atoi
     i32.eqz
     i32.eqz)
-  
+ 
   ;; convert array of bytes to an i32 value
-  (func $atoi (param $pmem i32) (result i32)
+  (func $atoi (export "atoi") (param $pmem i32) (result i32)
     (local $pdata i32)
     (local $pend i32)
     (local $n i32)
@@ -229,7 +233,7 @@
     i32.mul)
   
   ;; convert integer to a byte representation, i.e. an array of bytes
-  (func $itoa (param $v i32) (param $pmem i32)
+  (func $itoa (export "itoa") (param $v i32) (param $pmem i32)
     (local $is_negative i32)
     (local $r i32)
     (local $i i32)
@@ -324,9 +328,9 @@
     local.get $pdata
     i32.sub
     i32.store)
-  
+ 
   ;; reverse bytes in place.
-  (func $reverse_bytes (param $pmem i32)
+  (func $reverse_bytes (export "reverse_bytes")  (param $pmem i32)
     (local $i i32)
     (local $j i32)
     (local $n i32)
@@ -406,167 +410,226 @@
           local.set $j
           br 0))))
 
-  (func $allocate (param $n_bytes i32) (result i32)
+  (func $allocate (export "allocate") (param $n_bytes i32) (result i32)
     ;; allocates n_bytes from linear memory
     ;; and returns the address
     i32.const 0)
 
-  (func $check_bounds (param $adr i32) (param $idx i32) (result i32)
-    ;; checks that the length of array at "arr" >= idx
-    ;; returns idx if yes, otherwise unreachable
-    i32.const 0)
+  (func $check_bounds (export "check_bounds") (param $addr i32) (param $idx i32) (param $str_idx i32) (result i32)
+    ;; checks that the length of array at $addr >= $idx
+    ;; returns $idx if yes, otherwise prints the literal string at $str_idx and becomes unreachable
 
-  (func $new_array (result i32)
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    (block
+      (block
+        local.get $addr
+        global.get $offset_length
+        i32.add
+        i32.load
+        local.get $idx
+        local.get $addr
+        global.get $offset_stride
+        i32.add
+        i32.load
+        i32.mul
+        i32.gt_s
+        br_if 1)
+      local.get $str_idx
+      call $get_string_literal
+      call $write_string
+      unreachable)
+    local.get $idx)
+
+  (func $new_array (export "new_array") (result i32)
     ;; allocates space for three i32 values: pdata, length, capacity
     ;; allocates 1024 bytes of memory at "pdata" (use "allocate")
     ;; returns a pointer to the first of the three consecutive i32 values
     i32.const 0)
-  (func $copy_array (param $dst i32) (param $src i32) (result i32)
+
+  (func $copy_array (export "copy_array") (param $dst i32) (param $src i32) (result i32)
     ;; copies values of length and capacity from src to dst
     ;; copies bytes from src pdata to dst pdata
     ;; returns the value dst
     i32.const 0)
   
-  (func $get_string_literal (param $idx i32) (result i32)
+  (func $get_string_literal (export "get_string_literal") (param $idx i32) (result i32)
     ;; gets the index of a stored string literal
     ;; calculates/fetches the address from that index
     ;; returns the address of the string literal
     i32.const 0)
-  
-  (func $read_input 
+ 
+  (func $read_input (export "read_input")
     ;; reads the contents of stdin to the stdin array (pretty much fd_read)
     )
   
-  (func $bool_from_input (result i32)
+  (func $bool_from_input (export "bool_from_input") (result i32)
     ;; converts the next whitespaced delimited value from stdin buffer to a bool(i32, [0, 1]) value (atob)
     ;; returns the converted value
     i32.const 0)
   
-  (func $i32_from_input (result i32)
+  (func $i32_from_input (export "i32_from_input")  (result i32)
     ;; converts the next whitespaced delimited value from stdin buffer to a i32 value (atoi)
     ;; returns the converted value
     i32.const 0)
   
-  (func $f32_from_input (result f32)
+  (func $f32_from_input (export "f32_from_input") (result f32)
     ;; converts the next whitespaced delimited value from stdin buffer to a f32 value (atof)
     ;; returns the converted value
     f32.const 0)
   
-  (func $string_from_input (result i32)
+  (func $string_from_input (export "string_from_input") (result i32)
     ;; creates a new string (call new_array)
     ;; adds the next whitespace delimited value from stdin buffer to that string
     ;; returns the address of the string
     i32.const 0)
   
-  (func $write_bool (param $value i32) 
+  (func $write_bool (export "write_bool") (param $value i32) 
     ;; takes in a boolean value and converts it to "true"/"false" string and prints it to stdout (btoa)
     )
   
-  (func $write_i32 (param $value i32) 
+  (func $write_i32 (export "write_i32") (param $value i32) 
     ;; takes in a i32 value and converts it to a byte string (itoa) and prints it to stdout
     )
   
-  (func $write_f32 (param $value f32) 
+  (func $write_f32 (export "write_f32") (param $value f32) 
     ;; takes in a f32 value and converts it to a byte string (ftoa) and prints it to stdout
     )
   
-  (func $write_string (param $addr i32) 
+  (func $write_string (export "write_string") (param $addr i32) 
     ;; writes the contents of the string at "addr" to stdout
     )
   
-  (func $string_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_eq (export "string_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if equal 0 if not
     i32.const 0)
   
-  (func $string_neq (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_neq (export "string_neq") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 0 if equal, 1 if not
     i32.const 0)
-  
-  (func $string_great (param $addr1 i32) (param $addr2 i32) (result i32)
+ 
+  (func $string_great (export "string_great") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if str1.len > str2.len, 0 otherwise
     i32.const 0)
   
-  (func $string_great_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_great_eq (export "string_great_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if str1.len >= str2.len, 0 otherwise
     i32.const 0)
   
-  (func $string_less (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_less (export "string_less") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if str1.len < str2.len, 0 otherwise
     i32.const 0)
   
-  (func $string_less_eq (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_less_eq (export "string_less_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes the addresses of two strings and compares their lengths
     ;; returns 1 if str1.len <= str2.len, 0 otherwise
     i32.const 0)
   
-  (func $string_concatenate (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_concatenate (export "string_concatenate") (param $addr1 i32) (param $addr2 i32) (result i32)
     ;; takes as input two strings
     ;; adds the contents of the second to the first at "addr1 + str1.len", while within capacity
     ;; returns "addr1"
     i32.const 0)
   
-  (func $array_size (param $addr i32) (result i32)
+  (func $array_size (export "array_size") (param $addr i32) (result i32)
     ;; checks the length of the array at addr
     ;; returns it (divided by four, lenght is bytes)
     i32.const 0)
   
-  (func $array_access_i (param $addr i32) (param $idx i32) (result i32)
-    ;; call "check_bounds"
-    ;; loads value at addr + idx to stack and returns it
-    i32.const 0)
+  (func $array_access_i (export "array_access_i") (param $addr i32) (param $idx i32) (param $str_idx i32)  (result i32)
+    ;; returns the value at addr + idx * stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    local.get $idx
+    local.get $str_idx
+    call $check_bounds 
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.mul
+    i32.load)
   
-  (func $array_access_f (param $addr i32) (param $idx i32) (result f32)
-    ;; call "check_bounds"
-    ;; loads value at addr + idx to stack and returns it
-    f32.const 0)
+  (func $array_access_f (export "array_access_f") (param $addr i32) (param $idx i32) (param $str_idx i32)  (result f32)
+    ;; returns the value at addr + idx * stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    local.get $idx
+    local.get $str_idx
+    call $check_bounds
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.mul
+    f32.load)
   
-  (func $array_assign_i (param $addr i32) (param $idx i32) (param $value i32) 
-    ;; call "check_bounds"
-    ;; store value to addr + idx
-    )
+  (func $array_assign_i (export "array_assign_i") (param $addr i32) (param $idx i32) (param $str_idx i32) (param $value i32) 
+    ;; store value to addr + idx * stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    local.get $idx
+    local.get $str_idx
+    call $check_bounds 
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.mul
+    local.get $value
+    i32.store)
   
-  (func $array_assign_f (param $addr i32) (param $idx i32) (param $value f32) 
-    ;; call "check_bounds"
-    ;; store value to addr + idx
-    )
-
-  (export "writeln" (func $writeln)) 
-  (export "print_newline" (func $print_newline))
-  (export "is_one_or_zero" (func $is_one_or_zero)) 
-  (export "print_int" (func $print_int)) 
-  (export "print_bool " (func $print_bool )) 
-  (export "atob " (func $atob )) 
-  (export "atoi " (func $atoi )) 
-  (export "itoa " (func $itoa )) 
-  (export "reverse_bytes " (func $reverse_bytes )))
-  (export "allocate " (func $allocate )))
-  (export "check_bounds " (func $check_bounds )))
-  (export "new_array " (func $new_array )))
-  (export "copy_array " (func $copy_array )))
-  (export "get_string_literal" (func $get_string_literal)))
-  (export "read_input " (func $read_input )))
-  (export "bool_from_input " (func $bool_from_input )))
-  (export "i32_from_input " (func $i32_from_input )))
-  (export "f32_from_input " (func $f32_from_input )))
-  (export "string_from_input " (func $string_from_input )))
-  (export "write_bool " (func $write_bool )))
-  (export "write_i32 " (func $write_i32 )))
-  (export "write_f32 " (func $write_f32 )))
-  (export "write_string " (func $write_string )))
-  (export "string_eq" (func $string_eq)))
-  (export "string_neq" (func $string_neq)))
-  (export "string_great" (func $string_great)))
-  (export "string_great_eq " (func $string_great_eq )))
-  (export "string_less" (func $string_less)))
-  (export "string_less_eq " (func $string_less_eq )))
-  (export "string_concatenate " (func $string_concatenate )))
-  (export "array_size " (func $array_size )))
-  (export "array_access_i " (func $array_access_i )))
-  (export "array_access_f " (func $array_access_f )))
-  (export "array_assign_i " (func $array_assign_i )))
-  (export "array_assign_f " (func $array_assign_f )))
+  (func $array_assign_f (export "array_assign_f") (param $addr i32) (param $idx i32) (param $str_idx i32) (param $value f32) 
+    ;; store value to addr + idx * stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    local.get $idx
+    local.get $str_idx
+    call $check_bounds 
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.mul
+    local.get $value
+    f32.store)
+  )

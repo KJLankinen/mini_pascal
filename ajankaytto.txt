@@ -18,3 +18,4 @@
 17.5.	& 4h        & implementing stacker
 18.5.	& 8,5h      & implementing stacker
 19.5.	& 12h       & implementing wasmer and webassembly lib
+20.5.	& 1010      &
