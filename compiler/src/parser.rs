@@ -1,7 +1,10 @@
+use super::data_types::NodeType as NT;
+use super::data_types::SymbolType as ST;
+use super::data_types::TokenType as TT;
 use super::data_types::{
-    ErrorType, IdxIdx, NodeType, SymbolType, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx,
-    TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxIdx,
-    TokenSymbolIdxOptIdx, TokenSymbolType, TokenType, VariableData,
+    ErrorType, IdxIdx, TokenData, TokenIdx, TokenIdxBool, TokenIdxIdx, TokenIdxIdxOptIdx,
+    TokenIdxOptIdx, TokenIdxOptIdxOptIdx, TokenOptIdx, TokenSymbolIdxIdx, TokenSymbolIdxOptIdx,
+    TokenSymbolType, VariableData,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
@@ -13,7 +16,7 @@ type ParseResult<T> = Result<T, ParseError>;
 #[derive(Debug)]
 pub struct ParseError {
     depth: usize,
-    token_type: TokenType,
+    token_type: TT,
 }
 
 // ---------------------------------------------------------------------
@@ -21,9 +24,9 @@ pub struct ParseError {
 // ---------------------------------------------------------------------
 pub struct Parser<'a, 'b> {
     scanner: Scanner<'a>,
-    tree: &'b mut LcRsTree<NodeType<'a>>,
+    tree: &'b mut LcRsTree<NT<'a>>,
     recursion_depth: usize,
-    recovery_tokens: HashMap<TokenType, HashSet<usize>>,
+    recovery_tokens: HashMap<TT, HashSet<usize>>,
     logger: &'b mut Logger<'a>,
 }
 
@@ -31,23 +34,23 @@ pub struct Parser<'a, 'b> {
 // Method implementations for the parser
 // ---------------------------------------------------------------------
 impl<'a, 'b> Parser<'a, 'b> {
-    const EXPRESSION_FIRST: &'static [TokenType] = &[
-        TokenType::OperatorPlus,
-        TokenType::OperatorMinus,
-        TokenType::OperatorNot,
-        TokenType::LParen,
-        TokenType::Identifier,
-        TokenType::LiteralInt,
-        TokenType::LiteralBool,
-        TokenType::LiteralReal,
-        TokenType::LiteralString,
+    const EXPRESSION_FIRST: &'static [TT] = &[
+        TT::OperatorPlus,
+        TT::OperatorMinus,
+        TT::OperatorNot,
+        TT::LParen,
+        TT::Identifier,
+        TT::LiteralInt,
+        TT::LiteralBool,
+        TT::LiteralReal,
+        TT::LiteralString,
     ];
     // ---------------------------------------------------------------------
     // fn match_token() and fn process() are part of the error handling of the parser.
     // Pretty much all the code inside each function is for handling different kind of errors.
     // Much of the handling code calls these functions with a function pointer.
     // ---------------------------------------------------------------------
-    fn match_token(&mut self, token_types: &[TokenType]) -> ParseResult<TokenData<'a>> {
+    fn match_token(&mut self, token_types: &[TT]) -> ParseResult<TokenData<'a>> {
         // If the next token matches any of the given expected tokens, return it
         let token_type = self.scanner.peek().token_type;
         for tt in token_types {
@@ -58,7 +61,7 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         // Token was none of the expected tokens.
         // If the token is a known token, but not undefined, it is a syntax error.
-        if TokenType::Undefined != token_type {
+        if TT::Undefined != token_type {
             self.logger.add_error(ErrorType::SyntaxError(
                 *self.scanner.peek(),
                 token_types.to_vec(),
@@ -70,7 +73,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             // first token that matches any of the recovery tokens on any recursion level.
             // Then, if that token has been set as a recovery token for multiple levels,
             // find the deepest level.
-            if TokenType::Identifier == self.scanner.peek().token_type {
+            if TT::Identifier == self.scanner.peek().token_type {
                 // If the token that triggered this error is identified as an identifier by the
                 // scanner, but it's not expected here, it's probably a typoed keyword. Let's skip
                 // it and continue recovery from the next token.
@@ -97,7 +100,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             } else {
                 // The token wasn't in the recovery tokens. Still, we should check if the token is
                 // garbage, i.e. check the token for lexical errors.
-                if TokenType::Undefined == tt {
+                if TT::Undefined == tt {
                     self.logger
                         .add_error(ErrorType::LexicalError(*self.scanner.peek()));
                 }
@@ -107,7 +110,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             // There should always be at least one recovery token, and that is the EOF.
             // If there is not, a wild bug has appeared.
             assert!(
-                TokenType::EOF != tt,
+                TT::EOF != tt,
                 "EOF should be a recovery token. {:#?}",
                 self.recovery_tokens
             );
@@ -118,8 +121,8 @@ impl<'a, 'b> Parser<'a, 'b> {
         &mut self,
         func: fn(&mut Self, T) -> ParseResult<R>,
         arg1: T,
-        recovery_tokens: &[TokenType],
-        recovery_token: &mut Option<TokenType>,
+        recovery_tokens: &[TT],
+        recovery_token: &mut Option<TT>,
     ) -> ParseResult<Option<R>> {
         // Add recovery tokens to the map.
         // Recovery tokens are tokens specified around the recursive functions.
@@ -191,101 +194,101 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_program<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordProgram => {
+                TT::KeywordProgram => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordProgram],
+                        &[TT::KeywordProgram],
                         &[
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordProcedure,
-                            TokenType::KeywordFunction,
-                            TokenType::KeywordBegin,
-                            TokenType::EndOfProgram,
+                            TT::StatementSeparator,
+                            TT::KeywordProcedure,
+                            TT::KeywordFunction,
+                            TT::KeywordBegin,
+                            TT::EndOfProgram,
                         ],
                         &mut recovery_token,
                     )?;
 
-                    recovery_token.unwrap_or_else(|| TokenType::Identifier)
+                    recovery_token.unwrap_or_else(|| TT::Identifier)
                 }
-                TokenType::Identifier => {
+                TT::Identifier => {
                     let token = parser.process(
                         Parser::match_token,
-                        &[TokenType::Identifier],
+                        &[TT::Identifier],
                         &[
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordProcedure,
-                            TokenType::KeywordFunction,
-                            TokenType::KeywordBegin,
-                            TokenType::EndOfProgram,
+                            TT::StatementSeparator,
+                            TT::KeywordProcedure,
+                            TT::KeywordFunction,
+                            TT::KeywordBegin,
+                            TT::EndOfProgram,
                         ],
                         &mut recovery_token,
                     )?;
                     recovery_token.unwrap_or_else(|| {
                         node_data.token = token;
-                        TokenType::StatementSeparator
+                        TT::StatementSeparator
                     })
                 }
-                TokenType::StatementSeparator => {
+                TT::StatementSeparator => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::StatementSeparator],
+                        &[TT::StatementSeparator],
                         &[
-                            TokenType::KeywordProcedure,
-                            TokenType::KeywordFunction,
-                            TokenType::KeywordBegin,
-                            TokenType::EndOfProgram,
+                            TT::KeywordProcedure,
+                            TT::KeywordFunction,
+                            TT::KeywordBegin,
+                            TT::EndOfProgram,
                         ],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::KeywordFunction)
+                    recovery_token.unwrap_or_else(|| TT::KeywordFunction)
                 }
-                TokenType::KeywordFunction | TokenType::KeywordProcedure => {
+                TT::KeywordFunction | TT::KeywordProcedure => {
                     node_data.opt_idx = parser
                         .process(
                             Parser::subroutines,
                             my_idx,
-                            &[TokenType::KeywordBegin, TokenType::EndOfProgram],
+                            &[TT::KeywordBegin, TT::EndOfProgram],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| None);
-                    recovery_token.unwrap_or_else(|| TokenType::KeywordBegin)
+                    recovery_token.unwrap_or_else(|| TT::KeywordBegin)
                 }
-                TokenType::KeywordBegin => {
+                TT::KeywordBegin => {
                     node_data.idx = parser
                         .process(
                             Parser::block,
                             my_idx,
-                            &[TokenType::EndOfProgram],
+                            &[TT::EndOfProgram],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
 
-                    TokenType::EndOfProgram
+                    TT::EndOfProgram
                 }
-                TokenType::EndOfProgram => {
-                    parser.match_token(&[TokenType::EndOfProgram])?;
-                    TokenType::Undefined
+                TT::EndOfProgram => {
+                    parser.match_token(&[TT::EndOfProgram])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_program(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_program(self, TokenType::KeywordProgram, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Program(node_data);
+        parse_program(self, TT::KeywordProgram, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Program(node_data);
 
         Ok(())
     }
@@ -293,19 +296,19 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn subroutines(&mut self, parent: usize) -> ParseResult<Option<usize>> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut tt = self.scanner.peek().token_type;
-        while TokenType::KeywordFunction == tt || TokenType::KeywordProcedure == tt {
+        while TT::KeywordFunction == tt || TT::KeywordProcedure == tt {
             let mut recovery_token = None;
             self.process(
                 Parser::function,
                 my_idx,
-                &[TokenType::KeywordFunction, TokenType::KeywordProcedure],
+                &[TT::KeywordFunction, TT::KeywordProcedure],
                 &mut recovery_token,
             )?;
             tt = self.scanner.peek().token_type;
         }
 
         let idx = if self.tree[my_idx].left_child.is_some() {
-            self.tree[my_idx].data = NodeType::Subroutines(self.tree[my_idx].left_child.unwrap());
+            self.tree[my_idx].data = NT::Subroutines(self.tree[my_idx].left_child.unwrap());
             Some(my_idx)
         } else {
             // No subroutines, remove this node
@@ -327,157 +330,149 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_function<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxOptIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
                 // Handle "function" and "procedure" both here.
-                TokenType::KeywordFunction => {
+                TT::KeywordFunction => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordProcedure, TokenType::KeywordFunction],
+                        &[TT::KeywordProcedure, TT::KeywordFunction],
                         &[
-                            TokenType::LParen,
-                            TokenType::RParen,
-                            TokenType::KeywordVar,
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordBegin,
+                            TT::LParen,
+                            TT::RParen,
+                            TT::KeywordVar,
+                            TT::StatementSeparator,
+                            TT::KeywordBegin,
                         ],
                         &mut recovery_token,
                     )?;
 
-                    recovery_token.unwrap_or_else(|| TokenType::Identifier)
+                    recovery_token.unwrap_or_else(|| TT::Identifier)
                 }
-                TokenType::Identifier => {
+                TT::Identifier => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::Identifier],
+                        &[TT::Identifier],
                         &[
-                            TokenType::LParen,
-                            TokenType::RParen,
-                            TokenType::KeywordVar,
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordBegin,
+                            TT::LParen,
+                            TT::RParen,
+                            TT::KeywordVar,
+                            TT::StatementSeparator,
+                            TT::KeywordBegin,
                         ],
                         &mut recovery_token,
                     )?;
 
-                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                    recovery_token.unwrap_or_else(|| TT::LParen)
                 }
-                TokenType::LParen => {
+                TT::LParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LParen],
+                        &[TT::LParen],
                         &[
-                            TokenType::RParen,
-                            TokenType::KeywordVar,
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordBegin,
+                            TT::RParen,
+                            TT::KeywordVar,
+                            TT::StatementSeparator,
+                            TT::KeywordBegin,
                         ],
                         &mut recovery_token,
                     )?;
 
                     recovery_token.unwrap_or_else(|| match parser.scanner.peek().token_type {
-                        TokenType::KeywordVar | TokenType::Identifier => TokenType::KeywordVar,
-                        _ => TokenType::RParen,
+                        TT::KeywordVar | TT::Identifier => TT::KeywordVar,
+                        _ => TT::RParen,
                     })
                 }
-                TokenType::RParen => {
+                TT::RParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::RParen],
+                        &[TT::RParen],
                         &[
-                            TokenType::TypeSeparator,
-                            TokenType::Type,
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordBegin,
+                            TT::TypeSeparator,
+                            TT::Type,
+                            TT::StatementSeparator,
+                            TT::KeywordBegin,
                         ],
                         &mut recovery_token,
                     )?;
 
                     recovery_token.unwrap_or_else(|| {
-                        if TokenType::TypeSeparator == parser.scanner.peek().token_type {
-                            TokenType::TypeSeparator
+                        if TT::TypeSeparator == parser.scanner.peek().token_type {
+                            TT::TypeSeparator
                         } else {
-                            TokenType::StatementSeparator
+                            TT::StatementSeparator
                         }
                     })
                 }
-                TokenType::KeywordVar => {
+                TT::KeywordVar => {
                     node_data.opt_idx = parser
                         .process(
                             Parser::parameter_list,
                             my_idx,
-                            &[
-                                TokenType::RParen,
-                                TokenType::StatementSeparator,
-                                TokenType::KeywordBegin,
-                            ],
+                            &[TT::RParen, TT::StatementSeparator, TT::KeywordBegin],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| None);
-                    recovery_token.unwrap_or_else(|| TokenType::RParen)
+                    recovery_token.unwrap_or_else(|| TT::RParen)
                 }
-                TokenType::TypeSeparator => {
+                TT::TypeSeparator => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::TypeSeparator],
-                        &[
-                            TokenType::Type,
-                            TokenType::StatementSeparator,
-                            TokenType::KeywordBegin,
-                        ],
+                        &[TT::TypeSeparator],
+                        &[TT::Type, TT::StatementSeparator, TT::KeywordBegin],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::Type)
+                    recovery_token.unwrap_or_else(|| TT::Type)
                 }
-                TokenType::Type => {
+                TT::Type => {
                     node_data.opt_idx2 = parser.process(
                         Parser::var_type,
                         my_idx,
-                        &[TokenType::StatementSeparator, TokenType::KeywordBegin],
+                        &[TT::StatementSeparator, TT::KeywordBegin],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::StatementSeparator)
+                    recovery_token.unwrap_or_else(|| TT::StatementSeparator)
                 }
-                TokenType::StatementSeparator => {
+                TT::StatementSeparator => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::StatementSeparator],
-                        &[TokenType::KeywordBegin],
+                        &[TT::StatementSeparator],
+                        &[TT::KeywordBegin],
                         &mut recovery_token,
                     )?;
-                    TokenType::KeywordBegin
+                    TT::KeywordBegin
                 }
-                TokenType::KeywordBegin => {
+                TT::KeywordBegin => {
                     node_data.idx = parser
                         .process(
                             Parser::block,
                             my_idx,
-                            &[TokenType::StatementSeparator],
+                            &[TT::StatementSeparator],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
 
-                    parser.match_token(&[TokenType::StatementSeparator])?;
-                    TokenType::Undefined
+                    parser.match_token(&[TT::StatementSeparator])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_function(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_function(self, TokenType::KeywordFunction, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Function(node_data);
+        parse_function(self, TT::KeywordFunction, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Function(node_data);
 
         Ok(())
     }
@@ -485,29 +480,25 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn parameter_list(&mut self, parent: usize) -> ParseResult<Option<usize>> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut tt = self.scanner.peek().token_type;
-        while TokenType::KeywordVar == tt || TokenType::Identifier == tt {
+        while TT::KeywordVar == tt || TT::Identifier == tt {
             let mut recovery_token = None;
             self.process(
                 Parser::parameter,
                 my_idx,
-                &[
-                    TokenType::ListSeparator,
-                    TokenType::KeywordVar,
-                    TokenType::Identifier,
-                ],
+                &[TT::ListSeparator, TT::KeywordVar, TT::Identifier],
                 &mut recovery_token,
             )?;
 
             match self.scanner.peek().token_type {
-                TokenType::KeywordVar | TokenType::Identifier => {
+                TT::KeywordVar | TT::Identifier => {
                     // Mising list separator
                     self.logger.add_error(ErrorType::SyntaxError(
                         *self.scanner.peek(),
-                        vec![TokenType::ListSeparator],
+                        vec![TT::ListSeparator],
                     ));
                 }
-                TokenType::ListSeparator => {
-                    self.match_token(&[TokenType::ListSeparator])?;
+                TT::ListSeparator => {
+                    self.match_token(&[TT::ListSeparator])?;
                 }
                 _ => {}
             }
@@ -515,7 +506,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         }
 
         let idx = if self.tree[my_idx].left_child.is_some() {
-            self.tree[my_idx].data = NodeType::ParamList(self.tree[my_idx].left_child.unwrap());
+            self.tree[my_idx].data = NT::ParamList(self.tree[my_idx].left_child.unwrap());
             Some(my_idx)
         } else {
             // No parameters, remove this node
@@ -536,62 +527,62 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_parameter<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxBool<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordVar => {
-                    if TokenType::Identifier == parser.scanner.peek().token_type {
-                        TokenType::Identifier
+                TT::KeywordVar => {
+                    if TT::Identifier == parser.scanner.peek().token_type {
+                        TT::Identifier
                     } else {
                         node_data.b = true;
                         parser.process(
                             Parser::match_token,
-                            &[TokenType::KeywordVar],
-                            &[TokenType::TypeSeparator, TokenType::Type],
+                            &[TT::KeywordVar],
+                            &[TT::TypeSeparator, TT::Type],
                             &mut recovery_token,
                         )?;
-                        recovery_token.unwrap_or_else(|| TokenType::Identifier)
+                        recovery_token.unwrap_or_else(|| TT::Identifier)
                     }
                 }
-                TokenType::Identifier => {
+                TT::Identifier => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::Identifier],
-                        &[TokenType::TypeSeparator, TokenType::Type],
+                        &[TT::Identifier],
+                        &[TT::TypeSeparator, TT::Type],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::TypeSeparator)
+                    recovery_token.unwrap_or_else(|| TT::TypeSeparator)
                 }
-                TokenType::TypeSeparator => {
+                TT::TypeSeparator => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::TypeSeparator],
-                        &[TokenType::Type],
+                        &[TT::TypeSeparator],
+                        &[TT::Type],
                         &mut recovery_token,
                     )?;
-                    TokenType::Type
+                    TT::Type
                 }
-                TokenType::Type => {
+                TT::Type => {
                     node_data.idx = parser.var_type(my_idx)?;
-                    TokenType::Undefined
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_parameter(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_parameter(self, TokenType::KeywordVar, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Parameter(node_data);
+        parse_parameter(self, TT::KeywordVar, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Parameter(node_data);
         Ok(())
     }
 
@@ -599,107 +590,102 @@ impl<'a, 'b> Parser<'a, 'b> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenSymbolType {
             token: None,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
         };
         let mut expr_idx = None;
 
         fn parse_type<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenSymbolType<'a>,
             expr_idx: &mut Option<usize>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordArray => {
-                    if TokenType::Type == parser.scanner.peek().token_type {
-                        TokenType::Type
+                TT::KeywordArray => {
+                    if TT::Type == parser.scanner.peek().token_type {
+                        TT::Type
                     } else {
                         parser.process(
                             Parser::match_token,
-                            &[TokenType::KeywordArray],
-                            &[
-                                TokenType::LBracket,
-                                TokenType::RBracket,
-                                TokenType::KeywordOf,
-                                TokenType::Type,
-                            ],
+                            &[TT::KeywordArray],
+                            &[TT::LBracket, TT::RBracket, TT::KeywordOf, TT::Type],
                             &mut recovery_token,
                         )?;
-                        recovery_token.unwrap_or_else(|| TokenType::LBracket)
+                        recovery_token.unwrap_or_else(|| TT::LBracket)
                     }
                 }
-                TokenType::LBracket => {
+                TT::LBracket => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LBracket],
-                        &[TokenType::RBracket, TokenType::KeywordOf, TokenType::Type],
+                        &[TT::LBracket],
+                        &[TT::RBracket, TT::KeywordOf, TT::Type],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // LiteralInt might not actually be the next token. We're only using this as a
                     // label for this arm, which we get to from LBracket.
                     node_data.token = Some(*parser.scanner.peek());
                     *expr_idx = parser.process(
                         Parser::simple_expression,
                         my_idx,
-                        &[TokenType::RBracket, TokenType::KeywordOf, TokenType::Type],
+                        &[TT::RBracket, TT::KeywordOf, TT::Type],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::RBracket)
+                    recovery_token.unwrap_or_else(|| TT::RBracket)
                 }
-                TokenType::RBracket => {
+                TT::RBracket => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::RBracket],
-                        &[TokenType::KeywordOf, TokenType::Type],
+                        &[TT::RBracket],
+                        &[TT::KeywordOf, TT::Type],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::KeywordOf)
+                    recovery_token.unwrap_or_else(|| TT::KeywordOf)
                 }
-                TokenType::KeywordOf => {
+                TT::KeywordOf => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordOf],
-                        &[TokenType::Type],
+                        &[TT::KeywordOf],
+                        &[TT::Type],
                         &mut recovery_token,
                     )?;
-                    TokenType::Type
+                    TT::Type
                 }
-                TokenType::Type => {
-                    let token = parser.match_token(&[TokenType::Type])?;
+                TT::Type => {
+                    let token = parser.match_token(&[TT::Type])?;
                     if node_data.token.is_none() {
                         node_data.token = Some(token);
                     }
 
                     node_data.st = match expr_idx {
                         Some(idx) => match token.value {
-                            "Boolean" => SymbolType::ArrayBool(*idx),
-                            "integer" => SymbolType::ArrayInt(*idx),
-                            "real" => SymbolType::ArrayReal(*idx),
-                            "string" => SymbolType::ArrayString(*idx),
-                            _ => SymbolType::Undefined,
+                            "Boolean" => ST::ArrayBool(*idx),
+                            "integer" => ST::ArrayInt(*idx),
+                            "real" => ST::ArrayReal(*idx),
+                            "string" => ST::ArrayString(*idx),
+                            _ => ST::Undefined,
                         },
                         None => match token.value {
-                            "Boolean" => SymbolType::Bool,
-                            "integer" => SymbolType::Int,
-                            "real" => SymbolType::Real,
-                            "string" => SymbolType::String,
-                            _ => SymbolType::Undefined,
+                            "Boolean" => ST::Bool,
+                            "integer" => ST::Int,
+                            "real" => ST::Real,
+                            "string" => ST::String,
+                            _ => ST::Undefined,
                         },
                     };
-                    TokenType::Undefined
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_type(parser, tt, my_idx, node_data, expr_idx)?;
             }
             Ok(())
@@ -707,12 +693,12 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         parse_type(
             self,
-            TokenType::KeywordArray,
+            TT::KeywordArray,
             my_idx,
             &mut node_data,
             &mut expr_idx,
         )?;
-        self.tree[my_idx].data = NodeType::VariableType(node_data);
+        self.tree[my_idx].data = NT::VariableType(node_data);
         Ok(my_idx)
     }
 
@@ -721,29 +707,28 @@ impl<'a, 'b> Parser<'a, 'b> {
         let mut recovery_token = None;
         self.process(
             Parser::match_token,
-            &[TokenType::KeywordBegin],
+            &[TT::KeywordBegin],
             &[
-                TokenType::KeywordVar,
-                TokenType::KeywordBegin,
-                TokenType::KeywordIf,
-                TokenType::KeywordWhile,
-                TokenType::KeywordRead,
-                TokenType::KeywordWrite,
-                TokenType::KeywordReturn,
-                TokenType::KeywordAssert,
-                TokenType::Identifier,
-                TokenType::KeywordEnd,
+                TT::KeywordVar,
+                TT::KeywordBegin,
+                TT::KeywordIf,
+                TT::KeywordWhile,
+                TT::KeywordRead,
+                TT::KeywordWrite,
+                TT::KeywordReturn,
+                TT::KeywordAssert,
+                TT::Identifier,
+                TT::KeywordEnd,
             ],
             &mut recovery_token,
         )?;
 
-        if recovery_token.is_none() || TokenType::KeywordEnd != recovery_token.unwrap() {
+        if recovery_token.is_none() || TT::KeywordEnd != recovery_token.unwrap() {
             self.statement_list(my_idx)?;
         }
 
-        self.tree[my_idx].data =
-            NodeType::Block(self.tree[my_idx].left_child.unwrap_or_else(|| !0));
-        self.match_token(&[TokenType::KeywordEnd])?;
+        self.tree[my_idx].data = NT::Block(self.tree[my_idx].left_child.unwrap_or_else(|| !0));
+        self.match_token(&[TT::KeywordEnd])?;
 
         Ok(my_idx)
     }
@@ -754,42 +739,42 @@ impl<'a, 'b> Parser<'a, 'b> {
             Parser::statement,
             parent,
             &[
-                TokenType::KeywordVar,
-                TokenType::KeywordBegin,
-                TokenType::KeywordIf,
-                TokenType::KeywordWhile,
-                TokenType::KeywordRead,
-                TokenType::KeywordWrite,
-                TokenType::KeywordReturn,
-                TokenType::KeywordAssert,
-                TokenType::StatementSeparator,
+                TT::KeywordVar,
+                TT::KeywordBegin,
+                TT::KeywordIf,
+                TT::KeywordWhile,
+                TT::KeywordRead,
+                TT::KeywordWrite,
+                TT::KeywordReturn,
+                TT::KeywordAssert,
+                TT::StatementSeparator,
             ],
             &mut recovery_token,
         )?;
 
         match self.scanner.peek().token_type {
-            TokenType::KeywordVar
-            | TokenType::KeywordBegin
-            | TokenType::KeywordIf
-            | TokenType::KeywordWhile
-            | TokenType::KeywordRead
-            | TokenType::KeywordWrite
-            | TokenType::KeywordReturn
-            | TokenType::KeywordAssert
-            | TokenType::Identifier => {
+            TT::KeywordVar
+            | TT::KeywordBegin
+            | TT::KeywordIf
+            | TT::KeywordWhile
+            | TT::KeywordRead
+            | TT::KeywordWrite
+            | TT::KeywordReturn
+            | TT::KeywordAssert
+            | TT::Identifier => {
                 // Mising statement separator
                 self.logger.add_error(ErrorType::SyntaxError(
                     *self.scanner.peek(),
-                    vec![TokenType::StatementSeparator],
+                    vec![TT::StatementSeparator],
                 ));
             }
-            TokenType::StatementSeparator => {
-                self.match_token(&[TokenType::StatementSeparator])?;
+            TT::StatementSeparator => {
+                self.match_token(&[TT::StatementSeparator])?;
             }
             _ => {}
         }
 
-        if TokenType::KeywordEnd != self.scanner.peek().token_type {
+        if TT::KeywordEnd != self.scanner.peek().token_type {
             self.statement_list(parent)
         } else {
             Ok(())
@@ -798,16 +783,16 @@ impl<'a, 'b> Parser<'a, 'b> {
 
     fn statement(&mut self, parent: usize) -> ParseResult<usize> {
         match self.scanner.peek().token_type {
-            TokenType::KeywordVar => self.declaration(parent),
-            TokenType::KeywordBegin => self.block(parent),
-            TokenType::KeywordIf => self.if_statement(parent),
-            TokenType::KeywordWhile => self.while_statement(parent),
-            TokenType::KeywordReturn => self.return_statement(parent),
-            TokenType::KeywordWrite => self.write_statement(parent),
-            TokenType::KeywordRead => self.read_statement(parent),
-            TokenType::KeywordAssert => self.assert_statement(parent),
-            TokenType::Identifier => {
-                if TokenType::LParen == self.scanner.peek_at(1).token_type {
+            TT::KeywordVar => self.declaration(parent),
+            TT::KeywordBegin => self.block(parent),
+            TT::KeywordIf => self.if_statement(parent),
+            TT::KeywordWhile => self.while_statement(parent),
+            TT::KeywordReturn => self.return_statement(parent),
+            TT::KeywordWrite => self.write_statement(parent),
+            TT::KeywordRead => self.read_statement(parent),
+            TT::KeywordAssert => self.assert_statement(parent),
+            TT::Identifier => {
+                if TT::LParen == self.scanner.peek_at(1).token_type {
                     self.call(parent)
                 } else {
                     self.assignment(parent)
@@ -825,14 +810,14 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn id_list(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut recovery_token = None;
-        self.tree[my_idx].data = NodeType::Variable(VariableData {
+        self.tree[my_idx].data = NT::Variable(VariableData {
             token: self.process(
                 Parser::match_token,
-                &[TokenType::Identifier],
-                &[TokenType::ListSeparator],
+                &[TT::Identifier],
+                &[TT::ListSeparator],
                 &mut recovery_token,
             )?,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
             is_ref: false,
             count: !0,
             depth: -1,
@@ -841,17 +826,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         });
 
         let tt = self.scanner.peek().token_type;
-        if TokenType::ListSeparator == tt {
-            self.match_token(&[TokenType::ListSeparator])?;
-        } else if TokenType::Identifier == tt {
+        if TT::ListSeparator == tt {
+            self.match_token(&[TT::ListSeparator])?;
+        } else if TT::Identifier == tt {
             // Mising list separator
             self.logger.add_error(ErrorType::SyntaxError(
                 *self.scanner.peek(),
-                vec![TokenType::ListSeparator],
+                vec![TT::ListSeparator],
             ));
         }
 
-        if TokenType::Identifier == self.scanner.peek().token_type {
+        if TT::Identifier == self.scanner.peek().token_type {
             self.id_list(parent)?;
         }
 
@@ -864,7 +849,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             .process(
                 Parser::expression,
                 parent,
-                &[TokenType::ListSeparator],
+                &[TT::ListSeparator],
                 &mut recovery_token,
             )?
             .unwrap_or_else(|| !0);
@@ -873,10 +858,10 @@ impl<'a, 'b> Parser<'a, 'b> {
             // Mising list separator
             self.logger.add_error(ErrorType::SyntaxError(
                 *self.scanner.peek(),
-                vec![TokenType::ListSeparator],
+                vec![TT::ListSeparator],
             ));
-        } else if TokenType::ListSeparator == self.scanner.peek().token_type {
-            self.match_token(&[TokenType::ListSeparator])?;
+        } else if TT::ListSeparator == self.scanner.peek().token_type {
+            self.match_token(&[TT::ListSeparator])?;
         } else {
             return Ok(expr_idx);
         }
@@ -889,7 +874,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = VariableData {
             token: None,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
             is_ref: false,
             count: !0,
             depth: -1,
@@ -899,66 +884,66 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_variable<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut VariableData<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::Identifier => {
+                TT::Identifier => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::Identifier],
-                        &[TokenType::LBracket, TokenType::RBracket],
+                        &[TT::Identifier],
+                        &[TT::LBracket, TT::RBracket],
                         &mut recovery_token,
                     )?;
-                    if TokenType::LBracket == parser.scanner.peek().token_type {
-                        TokenType::LBracket
+                    if TT::LBracket == parser.scanner.peek().token_type {
+                        TT::LBracket
                     } else {
-                        TokenType::Undefined
+                        TT::Undefined
                     }
                 }
-                TokenType::LBracket => {
+                TT::LBracket => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LBracket],
-                        &[TokenType::RBracket],
+                        &[TT::LBracket],
+                        &[TT::RBracket],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for array expression
                     node_data.array_idx = Some(
                         parser
                             .process(
                                 Parser::expression,
                                 my_idx,
-                                &[TokenType::RBracket],
+                                &[TT::RBracket],
                                 &mut recovery_token,
                             )?
                             .unwrap_or_else(|| !0),
                     );
-                    TokenType::RBracket
+                    TT::RBracket
                 }
-                TokenType::RBracket => {
-                    parser.match_token(&[TokenType::RBracket])?;
-                    TokenType::Undefined
+                TT::RBracket => {
+                    parser.match_token(&[TT::RBracket])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_variable(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_variable(self, TokenType::Identifier, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Variable(node_data);
+        parse_variable(self, TT::Identifier, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Variable(node_data);
         Ok(my_idx)
     }
 
@@ -968,20 +953,20 @@ impl<'a, 'b> Parser<'a, 'b> {
             .process(
                 Parser::variable,
                 parent,
-                &[TokenType::ListSeparator],
+                &[TT::ListSeparator],
                 &mut recovery_token,
             )?
             .unwrap_or_else(|| !0);
 
         match self.scanner.peek().token_type {
-            TokenType::ListSeparator => {
-                self.match_token(&[TokenType::ListSeparator])?;
+            TT::ListSeparator => {
+                self.match_token(&[TT::ListSeparator])?;
             }
-            TokenType::Identifier => {
+            TT::Identifier => {
                 // Mising list separator
                 self.logger.add_error(ErrorType::SyntaxError(
                     *self.scanner.peek(),
-                    vec![TokenType::ListSeparator],
+                    vec![TT::ListSeparator],
                 ));
             }
             _ => {
@@ -1003,59 +988,59 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_declaration<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut IdxIdx,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordVar => {
+                TT::KeywordVar => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordVar],
-                        &[TokenType::TypeSeparator, TokenType::Type],
+                        &[TT::KeywordVar],
+                        &[TT::TypeSeparator, TT::Type],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::Identifier)
+                    recovery_token.unwrap_or_else(|| TT::Identifier)
                 }
-                TokenType::Identifier => {
+                TT::Identifier => {
                     node_data.idx = parser
                         .process(
                             Parser::id_list,
                             my_idx,
-                            &[TokenType::TypeSeparator, TokenType::Type],
+                            &[TT::TypeSeparator, TT::Type],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    recovery_token.unwrap_or_else(|| TokenType::TypeSeparator)
+                    recovery_token.unwrap_or_else(|| TT::TypeSeparator)
                 }
-                TokenType::TypeSeparator => {
+                TT::TypeSeparator => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::TypeSeparator],
-                        &[TokenType::Type],
+                        &[TT::TypeSeparator],
+                        &[TT::Type],
                         &mut recovery_token,
                     )?;
-                    TokenType::Type
+                    TT::Type
                 }
-                TokenType::Type => {
+                TT::Type => {
                     node_data.idx2 = parser.var_type(my_idx)?;
-                    TokenType::Undefined
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_declaration(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_declaration(self, TokenType::KeywordVar, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Declaration(node_data);
+        parse_declaration(self, TT::KeywordVar, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Declaration(node_data);
 
         Ok(my_idx)
     }
@@ -1071,82 +1056,82 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_if<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordIf => {
+                TT::KeywordIf => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordIf],
-                        &[TokenType::KeywordThen, TokenType::KeywordElse],
+                        &[TT::KeywordIf],
+                        &[TT::KeywordThen, TT::KeywordElse],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::KeywordThen => {
+                TT::KeywordThen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordThen],
-                        &[TokenType::KeywordElse],
+                        &[TT::KeywordThen],
+                        &[TT::KeywordElse],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralString)
+                    recovery_token.unwrap_or_else(|| TT::LiteralString)
                 }
-                TokenType::KeywordElse => {
-                    parser.match_token(&[TokenType::KeywordElse])?;
-                    TokenType::LiteralBool
+                TT::KeywordElse => {
+                    parser.match_token(&[TT::KeywordElse])?;
+                    TT::LiteralBool
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for expression
                     node_data.idx = parser
                         .process(
                             Parser::expression,
                             my_idx,
-                            &[TokenType::KeywordThen, TokenType::KeywordElse],
+                            &[TT::KeywordThen, TT::KeywordElse],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    recovery_token.unwrap_or_else(|| TokenType::KeywordThen)
+                    recovery_token.unwrap_or_else(|| TT::KeywordThen)
                 }
-                TokenType::LiteralString => {
+                TT::LiteralString => {
                     // Label for first statement
                     node_data.idx2 = parser
                         .process(
                             Parser::statement,
                             my_idx,
-                            &[TokenType::KeywordElse],
+                            &[TT::KeywordElse],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
 
-                    if TokenType::KeywordElse == parser.scanner.peek().token_type {
-                        TokenType::KeywordElse
+                    if TT::KeywordElse == parser.scanner.peek().token_type {
+                        TT::KeywordElse
                     } else {
-                        TokenType::Undefined
+                        TT::Undefined
                     }
                 }
-                TokenType::LiteralBool => {
+                TT::LiteralBool => {
                     // Label for second statement
                     node_data.opt_idx = Some(parser.statement(my_idx)?);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_if(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_if(self, TokenType::KeywordIf, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::If(node_data);
+        parse_if(self, TT::KeywordIf, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::If(node_data);
 
         Ok(my_idx)
     }
@@ -1161,56 +1146,56 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_while<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordWhile => {
+                TT::KeywordWhile => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordWhile],
-                        &[TokenType::KeywordDo],
+                        &[TT::KeywordWhile],
+                        &[TT::KeywordDo],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::KeywordDo => {
-                    parser.match_token(&[TokenType::KeywordDo])?;
-                    TokenType::LiteralString
+                TT::KeywordDo => {
+                    parser.match_token(&[TT::KeywordDo])?;
+                    TT::LiteralString
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for expression
                     node_data.idx = parser
                         .process(
                             Parser::expression,
                             my_idx,
-                            &[TokenType::KeywordDo],
+                            &[TT::KeywordDo],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    TokenType::KeywordDo
+                    TT::KeywordDo
                 }
-                TokenType::LiteralString => {
+                TT::LiteralString => {
                     // Label for statement
                     node_data.idx2 = parser.statement(my_idx)?;
-                    TokenType::Undefined
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_while(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_while(self, TokenType::KeywordWhile, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::While(node_data);
+        parse_while(self, TT::KeywordWhile, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::While(node_data);
 
         Ok(my_idx)
     }
@@ -1218,7 +1203,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     fn return_statement(&mut self, parent: usize) -> ParseResult<usize> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenOptIdx {
-            token: Some(self.match_token(&[TokenType::KeywordReturn])?),
+            token: Some(self.match_token(&[TT::KeywordReturn])?),
             opt_idx: None,
         };
 
@@ -1228,7 +1213,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             None
         };
 
-        self.tree[my_idx].data = NodeType::Return(node_data);
+        self.tree[my_idx].data = NT::Return(node_data);
         Ok(my_idx)
     }
 
@@ -1241,60 +1226,60 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_write<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordWrite => {
+                TT::KeywordWrite => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordWrite],
-                        &[TokenType::LParen, TokenType::RParen],
+                        &[TT::KeywordWrite],
+                        &[TT::LParen, TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                    recovery_token.unwrap_or_else(|| TT::LParen)
                 }
-                TokenType::LParen => {
+                TT::LParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LParen],
-                        &[TokenType::RParen],
+                        &[TT::LParen],
+                        &[TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for argument list
                     node_data.idx = parser
                         .process(
                             Parser::argument_list,
                             my_idx,
-                            &[TokenType::RParen],
+                            &[TT::RParen],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    TokenType::RParen
+                    TT::RParen
                 }
-                TokenType::RParen => {
-                    parser.match_token(&[TokenType::RParen])?;
-                    TokenType::Undefined
+                TT::RParen => {
+                    parser.match_token(&[TT::RParen])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_write(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_write(self, TokenType::KeywordWrite, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Write(node_data);
+        parse_write(self, TT::KeywordWrite, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Write(node_data);
 
         Ok(my_idx)
     }
@@ -1305,60 +1290,60 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_read<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             arg: &mut usize,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordRead => {
+                TT::KeywordRead => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordRead],
-                        &[TokenType::LParen, TokenType::RParen],
+                        &[TT::KeywordRead],
+                        &[TT::LParen, TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                    recovery_token.unwrap_or_else(|| TT::LParen)
                 }
-                TokenType::LParen => {
+                TT::LParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LParen],
-                        &[TokenType::RParen],
+                        &[TT::LParen],
+                        &[TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for argument list
                     *arg = parser
                         .process(
                             Parser::variable_list,
                             my_idx,
-                            &[TokenType::RParen],
+                            &[TT::RParen],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    TokenType::RParen
+                    TT::RParen
                 }
-                TokenType::RParen => {
-                    parser.match_token(&[TokenType::RParen])?;
-                    TokenType::Undefined
+                TT::RParen => {
+                    parser.match_token(&[TT::RParen])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_read(parser, tt, my_idx, arg)?;
             }
             Ok(())
         }
 
-        parse_read(self, TokenType::KeywordRead, my_idx, &mut arg)?;
-        self.tree[my_idx].data = NodeType::Read(arg);
+        parse_read(self, TT::KeywordRead, my_idx, &mut arg)?;
+        self.tree[my_idx].data = NT::Read(arg);
 
         Ok(my_idx)
     }
@@ -1373,60 +1358,60 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_assert<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenIdxOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::KeywordAssert => {
+                TT::KeywordAssert => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::KeywordAssert],
-                        &[TokenType::LParen, TokenType::RParen],
+                        &[TT::KeywordAssert],
+                        &[TT::LParen, TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                    recovery_token.unwrap_or_else(|| TT::LParen)
                 }
-                TokenType::LParen => {
+                TT::LParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LParen],
-                        &[TokenType::RParen],
+                        &[TT::LParen],
+                        &[TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for argument list
                     node_data.idx = parser
                         .process(
                             Parser::expression,
                             my_idx,
-                            &[TokenType::RParen],
+                            &[TT::RParen],
                             &mut recovery_token,
                         )?
                         .unwrap_or_else(|| !0);
-                    TokenType::RParen
+                    TT::RParen
                 }
-                TokenType::RParen => {
-                    parser.match_token(&[TokenType::RParen])?;
-                    TokenType::Undefined
+                TT::RParen => {
+                    parser.match_token(&[TT::RParen])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_assert(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_assert(self, TokenType::KeywordAssert, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Assert(node_data);
+        parse_assert(self, TT::KeywordAssert, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Assert(node_data);
 
         Ok(my_idx)
     }
@@ -1440,60 +1425,60 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         fn parse_call<'a, 'b>(
             parser: &mut Parser<'a, 'b>,
-            tt: TokenType,
+            tt: TT,
             my_idx: usize,
             node_data: &mut TokenOptIdx<'a>,
         ) -> ParseResult<()> {
             let mut recovery_token = None;
             let tt = match tt {
-                TokenType::Identifier => {
+                TT::Identifier => {
                     node_data.token = parser.process(
                         Parser::match_token,
-                        &[TokenType::Identifier],
-                        &[TokenType::LParen, TokenType::RParen],
+                        &[TT::Identifier],
+                        &[TT::LParen, TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LParen)
+                    recovery_token.unwrap_or_else(|| TT::LParen)
                 }
-                TokenType::LParen => {
+                TT::LParen => {
                     parser.process(
                         Parser::match_token,
-                        &[TokenType::LParen],
-                        &[TokenType::RParen],
+                        &[TT::LParen],
+                        &[TT::RParen],
                         &mut recovery_token,
                     )?;
-                    recovery_token.unwrap_or_else(|| TokenType::LiteralInt)
+                    recovery_token.unwrap_or_else(|| TT::LiteralInt)
                 }
-                TokenType::LiteralInt => {
+                TT::LiteralInt => {
                     // Label for argument list
                     if parser.expression_follows() {
                         node_data.opt_idx = parser.process(
                             Parser::argument_list,
                             my_idx,
-                            &[TokenType::RParen],
+                            &[TT::RParen],
                             &mut recovery_token,
                         )?;
                     }
-                    TokenType::RParen
+                    TT::RParen
                 }
-                TokenType::RParen => {
-                    parser.match_token(&[TokenType::RParen])?;
-                    TokenType::Undefined
+                TT::RParen => {
+                    parser.match_token(&[TT::RParen])?;
+                    TT::Undefined
                 }
                 _ => {
                     assert!(false, "Token {} doesn't belong here.", tt);
-                    TokenType::Undefined
+                    TT::Undefined
                 }
             };
 
-            if TokenType::Undefined != tt {
+            if TT::Undefined != tt {
                 parse_call(parser, tt, my_idx, node_data)?;
             }
             Ok(())
         }
 
-        parse_call(self, TokenType::Identifier, my_idx, &mut node_data)?;
-        self.tree[my_idx].data = NodeType::Call(node_data);
+        parse_call(self, TT::Identifier, my_idx, &mut node_data)?;
+        self.tree[my_idx].data = NT::Call(node_data);
 
         Ok(my_idx)
     }
@@ -1507,14 +1492,14 @@ impl<'a, 'b> Parser<'a, 'b> {
             .process(
                 Parser::variable,
                 my_idx,
-                &[TokenType::Assignment],
+                &[TT::Assignment],
                 &mut recovery_token,
             )?
             .unwrap_or_else(|| !0);
-        self.match_token(&[TokenType::Assignment])?;
+        self.match_token(&[TT::Assignment])?;
         node_data.idx2 = self.expression(my_idx)?;
 
-        self.tree[my_idx].data = NodeType::Assignment(node_data);
+        self.tree[my_idx].data = NT::Assignment(node_data);
         Ok(my_idx)
     }
 
@@ -1525,18 +1510,18 @@ impl<'a, 'b> Parser<'a, 'b> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenSymbolIdxIdx {
             token: None,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
             idx: !0,
             idx2: !0,
         };
 
         let operators = [
-            TokenType::OperatorEqual,
-            TokenType::OperatorNotEqual,
-            TokenType::OperatorGreaterEqual,
-            TokenType::OperatorGreater,
-            TokenType::OperatorLessEqual,
-            TokenType::OperatorLess,
+            TT::OperatorEqual,
+            TT::OperatorNotEqual,
+            TT::OperatorGreaterEqual,
+            TT::OperatorGreater,
+            TT::OperatorLessEqual,
+            TT::OperatorLess,
         ];
         let mut recovery_token = None;
         node_data.idx = self
@@ -1561,7 +1546,7 @@ impl<'a, 'b> Parser<'a, 'b> {
             )?;
 
             node_data.idx2 = self.simple_expression(my_idx)?;
-            self.tree[my_idx].data = NodeType::RelOp(node_data);
+            self.tree[my_idx].data = NT::RelOp(node_data);
             Ok(my_idx)
         } else {
             self.tree.remove_node(my_idx);
@@ -1573,21 +1558,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenSymbolIdxOptIdx {
             token: None,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
             idx: !0,
             opt_idx: None,
         };
 
         let mut recovery_token = None;
-        let operators = [
-            TokenType::OperatorPlus,
-            TokenType::OperatorMinus,
-            TokenType::OperatorOr,
-        ];
+        let operators = [TT::OperatorPlus, TT::OperatorMinus, TT::OperatorOr];
 
         let return_idx = match self.scanner.peek().token_type {
             // First term may have a sign in front
-            tt @ TokenType::OperatorPlus | tt @ TokenType::OperatorMinus => {
+            tt @ TT::OperatorPlus | tt @ TT::OperatorMinus => {
                 node_data.token = self.process(
                     Parser::match_token,
                     &[tt],
@@ -1623,7 +1604,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         };
 
         if return_idx == my_idx {
-            self.tree[my_idx].data = NodeType::AddOp(node_data);
+            self.tree[my_idx].data = NT::AddOp(node_data);
         } else {
             self.tree.remove_node(my_idx);
         }
@@ -1635,17 +1616,17 @@ impl<'a, 'b> Parser<'a, 'b> {
         let my_idx = self.tree.add_child(Some(parent));
         let mut node_data = TokenSymbolIdxIdx {
             token: None,
-            st: SymbolType::Undefined,
+            st: ST::Undefined,
             idx: !0,
             idx2: !0,
         };
 
         let mut recovery_token = None;
         let operators = [
-            TokenType::OperatorMultiply,
-            TokenType::OperatorDivide,
-            TokenType::OperatorModulo,
-            TokenType::OperatorAnd,
+            TT::OperatorMultiply,
+            TT::OperatorDivide,
+            TT::OperatorModulo,
+            TT::OperatorAnd,
         ];
 
         node_data.idx = self
@@ -1671,7 +1652,7 @@ impl<'a, 'b> Parser<'a, 'b> {
         };
 
         if return_idx == my_idx {
-            self.tree[my_idx].data = NodeType::MulOp(node_data);
+            self.tree[my_idx].data = NT::MulOp(node_data);
         } else {
             self.tree.remove_node(my_idx);
         }
@@ -1692,41 +1673,36 @@ impl<'a, 'b> Parser<'a, 'b> {
 
         let mut recovery_token = None;
         node_data.idx = match self.scanner.peek().token_type {
-            TokenType::Identifier => {
-                let func = if TokenType::LParen == self.scanner.peek_at(1).token_type {
+            TT::Identifier => {
+                let func = if TT::LParen == self.scanner.peek_at(1).token_type {
                     Parser::call
                 } else {
                     Parser::variable
                 };
-                self.process(
-                    func,
-                    my_idx,
-                    &[TokenType::OperatorSize],
-                    &mut recovery_token,
-                )?
-                .unwrap_or_else(|| !0)
+                self.process(func, my_idx, &[TT::OperatorSize], &mut recovery_token)?
+                    .unwrap_or_else(|| !0)
             }
-            tt @ TokenType::LiteralBool
-            | tt @ TokenType::LiteralInt
-            | tt @ TokenType::LiteralReal
-            | tt @ TokenType::LiteralString => {
+            tt @ TT::LiteralBool
+            | tt @ TT::LiteralInt
+            | tt @ TT::LiteralReal
+            | tt @ TT::LiteralString => {
                 let lit_idx = self.tree.add_child(Some(my_idx));
                 let token = self.process(
                     Parser::match_token,
                     &[tt],
-                    &[TokenType::OperatorSize],
+                    &[TT::OperatorSize],
                     &mut recovery_token,
                 )?;
-                self.tree[lit_idx].data = NodeType::Literal(TokenOptIdx {
+                self.tree[lit_idx].data = NT::Literal(TokenOptIdx {
                     token: token,
                     opt_idx: None,
                 });
                 lit_idx
             }
-            TokenType::LParen => {
+            TT::LParen => {
                 self.process(
                     Parser::match_token,
-                    &[TokenType::LParen],
+                    &[TT::LParen],
                     Parser::EXPRESSION_FIRST,
                     &mut recovery_token,
                 )?;
@@ -1736,7 +1712,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                     .process(
                         Parser::expression,
                         my_idx,
-                        &[TokenType::RParen],
+                        &[TT::RParen],
                         &mut recovery_token,
                     )?
                     .unwrap_or_else(|| !0);
@@ -1744,17 +1720,17 @@ impl<'a, 'b> Parser<'a, 'b> {
                 recovery_token = None;
                 self.process(
                     Parser::match_token,
-                    &[TokenType::RParen],
-                    &[TokenType::OperatorSize],
+                    &[TT::RParen],
+                    &[TT::OperatorSize],
                     &mut recovery_token,
                 )?;
 
                 expr_idx
             }
-            TokenType::OperatorNot => {
+            TT::OperatorNot => {
                 node_data.token = self.process(
                     Parser::match_token,
-                    &[TokenType::OperatorNot],
+                    &[TT::OperatorNot],
                     Parser::EXPRESSION_FIRST,
                     &mut recovery_token,
                 )?;
@@ -1763,7 +1739,7 @@ impl<'a, 'b> Parser<'a, 'b> {
                 self.process(
                     Parser::factor,
                     my_idx,
-                    &[TokenType::OperatorSize],
+                    &[TT::OperatorSize],
                     &mut recovery_token,
                 )?
                 .unwrap_or_else(|| !0)
@@ -1779,14 +1755,14 @@ impl<'a, 'b> Parser<'a, 'b> {
             self.tree.remove_node(my_idx);
             node_data.idx
         } else {
-            self.tree[my_idx].data = NodeType::Not(node_data);
+            self.tree[my_idx].data = NT::Not(node_data);
             my_idx
         };
 
         // Remove the "parent" factor node that was created at start, if there is no size operator
-        let return_idx = if TokenType::OperatorSize == self.scanner.peek().token_type {
-            self.tree[size_idx].data = NodeType::ArraySize(TokenIdx {
-                token: Some(self.match_token(&[TokenType::OperatorSize])?),
+        let return_idx = if TT::OperatorSize == self.scanner.peek().token_type {
+            self.tree[size_idx].data = NT::ArraySize(TokenIdx {
+                token: Some(self.match_token(&[TT::OperatorSize])?),
                 idx: return_idx,
             });
             size_idx
@@ -1814,7 +1790,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     pub fn new(
         source_str: &'a str,
         logger: &'b mut Logger<'a>,
-        tree: &'b mut LcRsTree<NodeType<'a>>,
+        tree: &'b mut LcRsTree<NT<'a>>,
     ) -> Self {
         Parser {
             scanner: Scanner::new(source_str),
@@ -1828,7 +1804,7 @@ impl<'a, 'b> Parser<'a, 'b> {
     pub fn parse(&mut self, out_file: Option<&'a str>) {
         // Parse the program
         let mut recovery_token = None;
-        match self.process(Parser::program, 0, &[TokenType::EOF], &mut recovery_token) {
+        match self.process(Parser::program, 0, &[TT::EOF], &mut recovery_token) {
             Ok(_) => (),
             Err(_) => {
                 assert!(false, "Unhandled error at parse.");

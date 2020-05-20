@@ -1,6 +1,10 @@
+use super::data_types::NodeType as NT;
+use super::data_types::SymbolType as ST;
+use super::data_types::TokenType as TT;
+use super::data_types::WasmType as WT;
 use super::data_types::{
-    IdxIdx, Instruction, NodeType, SymbolType, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
-    TokenIdxOptIdx, TokenOptIdx, TokenType, VariableData, WasmType,
+    IdxIdx, Instruction, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx, TokenIdxOptIdx, TokenOptIdx,
+    VariableData,
 };
 use super::lcrs_tree::LcRsTree;
 use super::symbol_table::SymbolTable;
@@ -8,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 
 pub struct Stacker<'a, 'b> {
-    tree: &'b LcRsTree<NodeType<'a>>,
+    tree: &'b LcRsTree<NT<'a>>,
     symbol_table: &'b mut SymbolTable<'a>,
     fname: Option<&'a str>,
     instructions: &'b mut Vec<Instruction<'a>>,
@@ -37,7 +41,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     // Functions that handle emitting instructions
     // ---------------------------------------------------------------------
     fn program(&mut self, idx: usize) {
-        if let NodeType::Program(data) = self.tree[idx].data {
+        if let NT::Program(data) = self.tree[idx].data {
             let token = data.token.expect("Program is missing a token.");
             let (it, ft) = self
                 .symbol_table
@@ -57,11 +61,11 @@ impl<'a, 'b> Stacker<'a, 'b> {
             self.fname = Some(token.value);
 
             for _ in 0..it {
-                emit!(self, Instruction::Local(None, WasmType::I32(None)));
+                emit!(self, Instruction::Local(None, WT::I32(None)));
             }
 
             for _ in 0..ft {
-                emit!(self, Instruction::Local(None, WasmType::F32(None)));
+                emit!(self, Instruction::Local(None, WT::F32(None)));
             }
 
             let ref_count = self.symbol_table.get_function_ref_count(token.value);
@@ -71,13 +75,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 // The local variables that are passed as references are stored in linear
                 // memory, the base address of which is stored in the local special variable "refs".
                 if 0 < nr {
-                    emit!(self, Instruction::Local(Some("refs"), WasmType::I32(None)));
-                    emit!(
-                        self,
-                        Instruction::Const(WasmType::I32(Some((nr * 4) as i32)))
-                    ); // 4 bytes per variable
+                    emit!(self, Instruction::Local(Some("refs"), WT::I32(None)));
+                    emit!(self, Instruction::Const(WT::I32(Some((nr * 4) as i32)))); // 4 bytes per variable
                     emit!(self, Instruction::LibFunc("allocate"));
-                    emit!(self, Instruction::SetLocal(WasmType::Str("refs")));
+                    emit!(self, Instruction::SetLocal(WT::Str("refs")));
                 }
             }
 
@@ -94,7 +95,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn subroutines(&mut self, idx: usize) {
-        if let NodeType::Subroutines(idx) = self.tree[idx].data {
+        if let NT::Subroutines(idx) = self.tree[idx].data {
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.function(idx);
@@ -106,7 +107,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn block(&mut self, idx: usize) {
-        if let NodeType::Block(idx) = self.tree[idx].data {
+        if let NT::Block(idx) = self.tree[idx].data {
             let mut next = Some(idx);
             while let Some(idx) = next {
                 self.statement(idx);
@@ -118,7 +119,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn function(&mut self, idx: usize) {
-        if let NodeType::Function(data) = self.tree[idx].data {
+        if let NT::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function is missing a token.");
             self.fname = Some(token.value);
             let (it, ft) = self
@@ -133,10 +134,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 .expect("Function should have a signature.")
                 .parameters
             {
-                if SymbolType::Real == param.symbol_type && false == param.is_ref {
-                    emit!(self, Instruction::Param(WasmType::F32(None)));
+                if ST::Real == param.symbol_type && false == param.is_ref {
+                    emit!(self, Instruction::Param(WT::F32(None)));
                 } else {
-                    emit!(self, Instruction::Param(WasmType::I32(None)));
+                    emit!(self, Instruction::Param(WT::I32(None)));
                 }
             }
 
@@ -147,26 +148,26 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 .return_type;
 
             if let Some(rt) = return_type {
-                if SymbolType::Real == rt {
-                    emit!(self, Instruction::Result(WasmType::F32(None)));
+                if ST::Real == rt {
+                    emit!(self, Instruction::Result(WT::F32(None)));
                 } else {
-                    emit!(self, Instruction::Result(WasmType::I32(None)));
+                    emit!(self, Instruction::Result(WT::I32(None)));
                 }
             }
 
             for _ in 0..it {
-                emit!(self, Instruction::Local(None, WasmType::I32(None)));
+                emit!(self, Instruction::Local(None, WT::I32(None)));
             }
 
             for _ in 0..ft {
-                emit!(self, Instruction::Local(None, WasmType::F32(None)));
+                emit!(self, Instruction::Local(None, WT::F32(None)));
             }
 
             if let Some(rt) = return_type {
-                if SymbolType::Real == rt {
-                    emit!(self, Instruction::Local(Some("rv"), WasmType::F32(None)));
+                if ST::Real == rt {
+                    emit!(self, Instruction::Local(Some("rv"), WT::F32(None)));
                 } else {
-                    emit!(self, Instruction::Local(Some("rv"), WasmType::I32(None)));
+                    emit!(self, Instruction::Local(Some("rv"), WT::I32(None)));
                 }
             }
 
@@ -177,13 +178,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 // The local variables that are passed as references are stored in linear
                 // memory, the base address of which is stored in the local special variable "refs".
                 if 0 < nr {
-                    emit!(self, Instruction::Local(Some("refs"), WasmType::I32(None)));
-                    emit!(
-                        self,
-                        Instruction::Const(WasmType::I32(Some((nr * 4) as i32)))
-                    ); // 4 bytes per variable
+                    emit!(self, Instruction::Local(Some("refs"), WT::I32(None)));
+                    emit!(self, Instruction::Const(WT::I32(Some((nr * 4) as i32)))); // 4 bytes per variable
                     emit!(self, Instruction::LibFunc("allocate"));
-                    emit!(self, Instruction::SetLocal(WasmType::Str("refs")));
+                    emit!(self, Instruction::SetLocal(WT::Str("refs")));
                 }
             }
 
@@ -192,7 +190,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             emit!(self, Instruction::End);
 
             if return_type.is_some() {
-                emit!(self, Instruction::GetLocal(WasmType::Str("rv")));
+                emit!(self, Instruction::GetLocal(WT::Str("rv")));
             }
 
             emit!(self, Instruction::End);
@@ -208,22 +206,22 @@ impl<'a, 'b> Stacker<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(_) => self.block(idx),
-            NodeType::Assert(data) => self.assert_statement(&data),
-            NodeType::Assignment(data) => self.assign_statement(&data),
-            NodeType::Call(_) => self.call_statement(idx),
-            NodeType::Declaration(data) => self.declaration(&data),
-            NodeType::Return(data) => self.return_statement(&data),
-            NodeType::Read(idx) => self.read_statement(idx),
-            NodeType::Write(data) => self.write_statement(&data),
-            NodeType::If(data) => self.if_statement(&data),
-            NodeType::While(data) => self.while_statement(&data),
+            NT::Block(_) => self.block(idx),
+            NT::Assert(data) => self.assert_statement(&data),
+            NT::Assignment(data) => self.assign_statement(&data),
+            NT::Call(_) => self.call_statement(idx),
+            NT::Declaration(data) => self.declaration(&data),
+            NT::Return(data) => self.return_statement(&data),
+            NT::Read(idx) => self.read_statement(idx),
+            NT::Write(data) => self.write_statement(&data),
+            NT::If(data) => self.if_statement(&data),
+            NT::While(data) => self.while_statement(&data),
             _ => assert!(false, "Unexpected node {:#?}.", self.tree[idx]),
         };
     }
 
     fn assign_statement(&mut self, data: &IdxIdx) {
-        if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
+        if let NT::Variable(variable_data) = self.tree[data.idx].data {
             self.emit_set_local_pre_expr(&variable_data);
             self.expression(data.idx2);
             self.emit_set_local_post_expr(&variable_data);
@@ -238,10 +236,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
         emit!(self, Instruction::BlockBegin(None));
         self.expression(data.idx);
         emit!(self, Instruction::Eqz);
-        emit!(self, Instruction::BrIf(WasmType::I32(Some(0))));
-        emit!(self, Instruction::Br(WasmType::I32(Some(1))));
+        emit!(self, Instruction::BrIf(WT::I32(Some(0))));
+        emit!(self, Instruction::Br(WT::I32(Some(1))));
         emit!(self, Instruction::End);
-        emit!(self, Instruction::Const(WasmType::I32(Some(idx as i32))));
+        emit!(self, Instruction::Const(WT::I32(Some(idx as i32))));
         emit!(self, Instruction::LibFunc("get_string_literal"));
         emit!(self, Instruction::LibFunc("write_string"));
         emit!(self, Instruction::Unreachable);
@@ -252,18 +250,16 @@ impl<'a, 'b> Stacker<'a, 'b> {
         let add_ref_idx_to_stack = |stacker: &mut Stacker<'a, 'b>, value: i32| {
             stacker
                 .instructions
-                .push(Instruction::Const(WasmType::I32(Some(value))));
+                .push(Instruction::Const(WT::I32(Some(value))));
             stacker
                 .instructions
-                .push(Instruction::GetLocal(WasmType::Str("refs")));
-            stacker
-                .instructions
-                .push(Instruction::Add(WasmType::I32(None)));
+                .push(Instruction::GetLocal(WT::Str("refs")));
+            stacker.instructions.push(Instruction::Add(WT::I32(None)));
         };
 
-        if let NodeType::Call(data) = self.tree[idx].data {
+        if let NT::Call(data) = self.tree[idx].data {
             let token = data.token.expect("Call statement is missing a token.");
-            let is_ref = self
+            let param_info = self
                 .symbol_table
                 .get_function_signature(token.value)
                 .and_then(|fs| {
@@ -280,19 +276,18 @@ impl<'a, 'b> Stacker<'a, 'b> {
             let mut ref_idx = 0;
             let mut reference_map: HashMap<&str, i32> = HashMap::new();
             while let Some(idx) = next {
-                if let NodeType::Variable(var_data) = self.tree[idx].data {
+                let (is_ref, symbol_type) = param_info[i];
+                if let NT::Variable(var_data) = self.tree[idx].data {
                     // We're passing a locally defined variable to the function (an lvalue)
                     let local_idx = self.get_variable_local_idx(&var_data);
                     let var_token = var_data.token.expect("Variable is missing a token.");
-                    match is_ref[i].1 {
-                        SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
-                            if is_ref[i].0 {
+                    match symbol_type {
+                        ST::Bool | ST::Int | ST::Real => {
+                            if is_ref {
                                 if let Some(arr_idx) = var_data.array_idx {
                                     emit!(
                                         self,
-                                        Instruction::GetLocal(WasmType::I32(Some(
-                                            local_idx as i32
-                                        ),))
+                                        Instruction::GetLocal(WT::I32(Some(local_idx as i32),))
                                     );
                                     self.expression(arr_idx);
                                     let string_idx = var_data.string_idx.expect(
@@ -300,17 +295,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                     );
                                     emit!(
                                         self,
-                                        Instruction::Const(WasmType::I32(Some(string_idx as i32)))
+                                        Instruction::Const(WT::I32(Some(string_idx as i32)))
                                     );
                                     emit!(self, Instruction::LibFunc("check_bounds"));
                                     // Get back to stack
                                     emit!(
                                         self,
-                                        Instruction::GetLocal(WasmType::I32(Some(
-                                            local_idx as i32
-                                        ),))
+                                        Instruction::GetLocal(WT::I32(Some(local_idx as i32),))
                                     );
-                                    emit!(self, Instruction::Add(WasmType::I32(None)));
+                                    emit!(self, Instruction::Add(WT::I32(None)));
                                 } else if var_data.is_ref {
                                     // We're passing a reference to a variable that we got
                                     // ourselves as a reference. Just pass the address on.
@@ -318,9 +311,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                     // it contains the address of the variable our caller gave us.
                                     emit!(
                                         self,
-                                        Instruction::GetLocal(WasmType::I32(Some(
-                                            local_idx as i32
-                                        ),))
+                                        Instruction::GetLocal(WT::I32(Some(local_idx as i32),))
                                     );
                                 } else {
                                     // We're passing a local variable (non-reference parameter or
@@ -339,16 +330,14 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                         // for bool, int or real. Get the value to stack.
                                         emit!(
                                             self,
-                                            Instruction::GetLocal(WasmType::I32(Some(
-                                                local_idx as i32
-                                            )),)
+                                            Instruction::GetLocal(WT::I32(Some(local_idx as i32)),)
                                         );
 
                                         // Store the value at the ref index
-                                        if SymbolType::Real == is_ref[i].1 {
-                                            emit!(self, Instruction::MemStore(WasmType::F32(None)));
+                                        if ST::Real == symbol_type {
+                                            emit!(self, Instruction::MemStore(WT::F32(None)));
                                         } else {
-                                            emit!(self, Instruction::MemStore(WasmType::I32(None)));
+                                            emit!(self, Instruction::MemStore(WT::I32(None)));
                                         }
 
                                         // Get the ref index back to top of stack and pass it to the
@@ -357,34 +346,36 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                     }
                                 }
                             } else {
-                                // We're not passing a reference, but just an ordinary bool int or
+                                // We're not passing a reference, but just an ordinary bool, int or
                                 // real by value. The variable may still be something we got as
-                                // reference, but that is handled by "expression".
+                                // reference, but that is handled at self.expression.
                                 self.expression(idx);
                             }
                         }
-                        SymbolType::String
-                        | SymbolType::ArrayBool(_)
-                        | SymbolType::ArrayInt(_)
-                        | SymbolType::ArrayReal(_)
-                        | SymbolType::ArrayString(_) => {
+                        ST::String
+                        | ST::ArrayBool(_)
+                        | ST::ArrayInt(_)
+                        | ST::ArrayReal(_)
+                        | ST::ArrayString(_) => {
                             // Arrays and strings are always passed as pointers,
                             // not as pointers to pointers.
-                            if is_ref[i].0 {
+                            if is_ref {
                                 // If we're passing a reference,
                                 // we can just pass the pointer, i.e. the actual address.
                                 emit!(
                                     self,
-                                    Instruction::GetLocal(WasmType::I32(Some(local_idx as i32,)))
+                                    Instruction::GetLocal(WT::I32(Some(local_idx as i32,)))
                                 );
                             } else {
                                 // Allocate a new array/string and pass its address: we don't want
                                 // the callee to modify our data, since the array/string is passed
                                 // by value.
+                                let stride = if ST::String == symbol_type { 1 } else { 4 };
+                                emit!(self, Instruction::Const(WT::I32(Some(stride))));
                                 emit!(self, Instruction::LibFunc("new_array"));
                                 emit!(
                                     self,
-                                    Instruction::GetLocal(WasmType::I32(Some(local_idx as i32,)))
+                                    Instruction::GetLocal(WT::I32(Some(local_idx as i32,)))
                                 );
                                 emit!(self, Instruction::LibFunc("copy_array"));
                             }
@@ -400,9 +391,9 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     // still must save ordinary (non-array) values to our reference array, because
                     // the callee will handle all its reference parameters in the same way. So even
                     // if the contents are temporary, the handling will still involve memory loads.
-                    if is_ref[i].0 {
-                        match is_ref[i].1 {
-                            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                    if is_ref {
+                        match symbol_type {
+                            ST::Bool | ST::Int | ST::Real => {
                                 // Get the address of this reference to top of stack
                                 add_ref_idx_to_stack(self, ref_idx);
                             }
@@ -413,14 +404,14 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     // Get the value of the expression to top of stack
                     self.expression(idx);
 
-                    if is_ref[i].0 {
-                        match is_ref[i].1 {
-                            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+                    if is_ref {
+                        match symbol_type {
+                            ST::Bool | ST::Int | ST::Real => {
                                 // Store the value of the expression to the local reference array
-                                if SymbolType::Real == is_ref[i].1 {
-                                    emit!(self, Instruction::MemStore(WasmType::F32(None)));
+                                if ST::Real == symbol_type {
+                                    emit!(self, Instruction::MemStore(WT::F32(None)));
                                 } else {
-                                    emit!(self, Instruction::MemStore(WasmType::I32(None)));
+                                    emit!(self, Instruction::MemStore(WT::I32(None)));
                                 }
                                 // Get address of stored variable back to stack
                                 add_ref_idx_to_stack(self, ref_idx);
@@ -430,28 +421,28 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                 }
 
-                ref_idx += is_ref[i].0 as i32;
+                ref_idx += is_ref as i32;
                 i += 1;
                 next = self.tree[idx].right_sibling;
             }
 
             // Call the function with the arguments on stack
-            emit!(self, Instruction::Call(WasmType::Str(token.value)));
+            emit!(self, Instruction::Call(WT::Str(token.value)));
 
             // Store any references back to locals
             next = data.opt_idx;
             while let Some(idx) = next {
-                if let NodeType::Variable(var_data) = self.tree[idx].data {
+                if let NT::Variable(var_data) = self.tree[idx].data {
                     if let Some(&idx) = reference_map
                         .get(var_data.token.expect("Variable is missing a token").value)
                     {
                         add_ref_idx_to_stack(self, idx);
                         match var_data.st {
-                            SymbolType::Bool | SymbolType::Int => {
-                                emit!(self, Instruction::MemLoad(WasmType::I32(None)));
+                            ST::Bool | ST::Int => {
+                                emit!(self, Instruction::MemLoad(WT::I32(None)));
                             }
-                            SymbolType::Real => {
-                                emit!(self, Instruction::MemLoad(WasmType::F32(None)));
+                            ST::Real => {
+                                emit!(self, Instruction::MemLoad(WT::F32(None)));
                             }
                             _ => {
                                 assert!(
@@ -462,10 +453,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                             }
                         }
                         let local_idx = self.get_variable_local_idx(&var_data);
-                        emit!(
-                            self,
-                            Instruction::SetLocal(WasmType::I32(Some(local_idx as i32)))
-                        );
+                        emit!(self, Instruction::SetLocal(WT::I32(Some(local_idx as i32))));
                     }
                 }
                 next = self.tree[idx].right_sibling;
@@ -474,7 +462,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
             // If current function has no return type and this call is a statement (= not part of an
             // expression), drop the value from stack.
             match self.tree[self.tree[idx].parent.unwrap()].data {
-                NodeType::Block(_) | NodeType::If(_) | NodeType::While(_) => {
+                NT::Block(_) | NT::If(_) | NT::While(_) => {
                     let return_type = self
                         .symbol_table
                         .get_function_signature(token.value)
@@ -495,48 +483,44 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn declaration(&mut self, data: &IdxIdx) {
         let mut next = Some(data.idx);
         while let Some(idx) = next {
-            if let NodeType::Variable(data) = self.tree[idx].data {
+            if let NT::Variable(data) = self.tree[idx].data {
                 let local_idx = self.get_variable_local_idx(&data);
                 match data.st {
-                    SymbolType::Bool | SymbolType::Int => {
-                        emit!(self, Instruction::Const(WasmType::I32(Some(0))));
+                    ST::Bool | ST::Int => {
+                        emit!(self, Instruction::Const(WT::I32(Some(0))));
                     }
-                    SymbolType::Real => {
-                        emit!(self, Instruction::Const(WasmType::F32(Some(0.0))));
+                    ST::Real => {
+                        emit!(self, Instruction::Const(WT::F32(Some(0.0))));
                     }
-                    SymbolType::String => {
+                    ST::String => {
+                        emit!(self, Instruction::Const(WT::I32(Some(1)))); // stride of the array, 1 byte
                         emit!(self, Instruction::LibFunc("new_array"));
                     }
-                    SymbolType::ArrayBool(expr_idx)
-                    | SymbolType::ArrayInt(expr_idx)
-                    | SymbolType::ArrayReal(expr_idx)
-                    | SymbolType::ArrayString(expr_idx) => {
+                    ST::ArrayBool(expr_idx)
+                    | ST::ArrayInt(expr_idx)
+                    | ST::ArrayReal(expr_idx)
+                    | ST::ArrayString(expr_idx) => {
                         let str_idx = data
                             .string_idx
                             .expect("Variable (at declaration) should have some string_idx.");
                         emit!(self, Instruction::BlockBegin(None));
                         self.expression(expr_idx);
-                        emit!(self, Instruction::Const(WasmType::I32(Some(256))));
-                        emit!(self, Instruction::Less(WasmType::I32(None)));
-                        emit!(self, Instruction::BrIf(WasmType::I32(Some(0))));
-                        emit!(
-                            self,
-                            Instruction::Const(WasmType::I32(Some(str_idx as i32)))
-                        );
+                        emit!(self, Instruction::Const(WT::I32(Some(252)))); // 4xi32 take space at the start
+                        emit!(self, Instruction::Less(WT::I32(None)));
+                        emit!(self, Instruction::BrIf(WT::I32(Some(0))));
+                        emit!(self, Instruction::Const(WT::I32(Some(str_idx as i32))));
                         emit!(self, Instruction::LibFunc("get_string_literal"));
                         emit!(self, Instruction::LibFunc("write_string"));
                         emit!(self, Instruction::Unreachable);
                         emit!(self, Instruction::End);
+                        emit!(self, Instruction::Const(WT::I32(Some(4)))); // stride of the array, 4 bytes
                         emit!(self, Instruction::LibFunc("new_array"));
                     }
                     _ => {
                         assert!(false, "Unexpected symbol type {:#?}.", data);
                     }
                 }
-                emit!(
-                    self,
-                    Instruction::SetLocal(WasmType::I32(Some(local_idx as i32)))
-                );
+                emit!(self, Instruction::SetLocal(WT::I32(Some(local_idx as i32))));
             } else {
                 break;
             }
@@ -548,35 +532,35 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn return_statement(&mut self, data: &TokenOptIdx<'a>) {
         if let Some(idx) = data.opt_idx {
             self.expression(idx);
-            emit!(self, Instruction::SetLocal(WasmType::Str("rv")));
+            emit!(self, Instruction::SetLocal(WT::Str("rv")));
         }
-        emit!(self, Instruction::Br(WasmType::Str("FB")));
+        emit!(self, Instruction::Br(WT::Str("FB")));
     }
 
     fn read_statement(&mut self, idx: usize) {
         emit!(self, Instruction::LibFunc("read_input"));
         let mut next = Some(idx);
         while let Some(idx) = next {
-            if let NodeType::Variable(variable_data) = self.tree[idx].data {
+            if let NT::Variable(variable_data) = self.tree[idx].data {
                 self.emit_set_local_pre_expr(&variable_data);
                 match variable_data.st {
-                    SymbolType::Bool => {
+                    ST::Bool => {
                         emit!(self, Instruction::LibFunc("bool_from_input"));
                     }
-                    SymbolType::Int => {
+                    ST::Int => {
                         emit!(self, Instruction::LibFunc("i32_from_input"));
                     }
-                    SymbolType::Real => {
+                    ST::Real => {
                         emit!(self, Instruction::LibFunc("f32_from_input"));
                     }
-                    SymbolType::String => {
+                    ST::String => {
                         emit!(self, Instruction::LibFunc("string_from_input"));
                     }
-                    SymbolType::ArrayBool(_)
-                    | SymbolType::ArrayInt(_)
-                    | SymbolType::ArrayReal(_)
-                    | SymbolType::ArrayString(_)
-                    | SymbolType::Undefined => {
+                    ST::ArrayBool(_)
+                    | ST::ArrayInt(_)
+                    | ST::ArrayReal(_)
+                    | ST::ArrayString(_)
+                    | ST::Undefined => {
                         assert!(false, "Unexpected symbol type {:#?}.", variable_data);
                     }
                 }
@@ -600,25 +584,22 @@ impl<'a, 'b> Stacker<'a, 'b> {
             self.expression(idx);
 
             match arguments[i] {
-                SymbolType::Bool => {
+                ST::Bool => {
                     emit!(self, Instruction::LibFunc("write_bool"));
                 }
-                SymbolType::Int => {
+                ST::Int => {
                     emit!(self, Instruction::LibFunc("write_i32"));
                 }
-                SymbolType::Real => {
+                ST::Real => {
                     emit!(self, Instruction::LibFunc("write_f32"));
                 }
-                SymbolType::String => {
+                ST::String => {
                     emit!(self, Instruction::LibFunc("write_string"));
                 }
-                SymbolType::ArrayBool(_)
-                | SymbolType::ArrayInt(_)
-                | SymbolType::ArrayReal(_)
-                | SymbolType::ArrayString(_) => {
+                ST::ArrayBool(_) | ST::ArrayInt(_) | ST::ArrayReal(_) | ST::ArrayString(_) => {
                     emit!(self, Instruction::LibFunc("write_i32"));
                 }
-                SymbolType::Undefined => {
+                ST::Undefined => {
                     assert!(false, "Unexpected symbol type {:#?}.", data);
                 }
             }
@@ -640,11 +621,11 @@ impl<'a, 'b> Stacker<'a, 'b> {
         emit!(self, Instruction::BlockBegin(None));
         self.expression(data.idx);
         emit!(self, Instruction::Eqz);
-        emit!(self, Instruction::BrIf(WasmType::I32(Some(br_if_label))));
+        emit!(self, Instruction::BrIf(WT::I32(Some(br_if_label))));
         self.statement(data.idx2);
         emit!(self, Instruction::End);
         if has_else {
-            emit!(self, Instruction::Br(WasmType::I32(Some(1))));
+            emit!(self, Instruction::Br(WT::I32(Some(1))));
             emit!(self, Instruction::End);
             self.statement(data.opt_idx.unwrap());
             emit!(self, Instruction::End);
@@ -655,108 +636,108 @@ impl<'a, 'b> Stacker<'a, 'b> {
         emit!(self, Instruction::BlockBegin(None));
         emit!(self, Instruction::LoopBegin(None));
         self.expression(data.idx);
-        emit!(self, Instruction::BrIf(WasmType::I32(Some(1))));
+        emit!(self, Instruction::BrIf(WT::I32(Some(1))));
         self.statement(data.idx2);
-        emit!(self, Instruction::Br(WasmType::I32(Some(0))));
+        emit!(self, Instruction::Br(WT::I32(Some(0))));
         emit!(self, Instruction::End);
         emit!(self, Instruction::End);
     }
 
     fn expression(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::RelOp(data) => {
+            NT::RelOp(data) => {
                 let token = data.token.expect("Relation operator is missing a token.");
                 let st = data.st;
                 self.expression(data.idx);
                 self.expression(data.idx2);
 
                 match st {
-                    SymbolType::Bool => match token.token_type {
-                        TokenType::OperatorEqual => {
-                            emit!(self, Instruction::Eq(WasmType::I32(None)));
+                    ST::Bool => match token.token_type {
+                        TT::OperatorEqual => {
+                            emit!(self, Instruction::Eq(WT::I32(None)));
                         }
-                        TokenType::OperatorNotEqual => {
-                            emit!(self, Instruction::NEq(WasmType::I32(None)));
+                        TT::OperatorNotEqual => {
+                            emit!(self, Instruction::NEq(WT::I32(None)));
                         }
-                        TokenType::OperatorGreater => {
-                            emit!(self, Instruction::Great(WasmType::I32(None)));
+                        TT::OperatorGreater => {
+                            emit!(self, Instruction::Great(WT::I32(None)));
                         }
-                        TokenType::OperatorGreaterEqual => {
-                            emit!(self, Instruction::GreatEq(WasmType::I32(None)));
+                        TT::OperatorGreaterEqual => {
+                            emit!(self, Instruction::GreatEq(WT::I32(None)));
                         }
-                        TokenType::OperatorLess => {
-                            emit!(self, Instruction::Less(WasmType::I32(None)));
+                        TT::OperatorLess => {
+                            emit!(self, Instruction::Less(WT::I32(None)));
                         }
-                        TokenType::OperatorLessEqual => {
-                            emit!(self, Instruction::LessEq(WasmType::I32(None)));
-                        }
-                        _ => {
-                            assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
-                        }
-                    },
-                    SymbolType::Int => match token.token_type {
-                        TokenType::OperatorEqual => {
-                            emit!(self, Instruction::Eq(WasmType::I32(None)));
-                        }
-                        TokenType::OperatorNotEqual => {
-                            emit!(self, Instruction::NEq(WasmType::I32(None)));
-                        }
-                        TokenType::OperatorGreater => {
-                            emit!(self, Instruction::Great(WasmType::I32(None)));
-                        }
-                        TokenType::OperatorGreaterEqual => {
-                            emit!(self, Instruction::GreatEq(WasmType::I32(None)));
-                        }
-                        TokenType::OperatorLess => {
-                            emit!(self, Instruction::Less(WasmType::I32(None)));
-                        }
-                        TokenType::OperatorLessEqual => {
-                            emit!(self, Instruction::LessEq(WasmType::I32(None)));
+                        TT::OperatorLessEqual => {
+                            emit!(self, Instruction::LessEq(WT::I32(None)));
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         }
                     },
-                    SymbolType::Real => match token.token_type {
-                        TokenType::OperatorEqual => {
-                            emit!(self, Instruction::Eq(WasmType::F32(None)));
+                    ST::Int => match token.token_type {
+                        TT::OperatorEqual => {
+                            emit!(self, Instruction::Eq(WT::I32(None)));
                         }
-                        TokenType::OperatorNotEqual => {
-                            emit!(self, Instruction::NEq(WasmType::F32(None)));
+                        TT::OperatorNotEqual => {
+                            emit!(self, Instruction::NEq(WT::I32(None)));
                         }
-                        TokenType::OperatorGreater => {
-                            emit!(self, Instruction::Great(WasmType::F32(None)));
+                        TT::OperatorGreater => {
+                            emit!(self, Instruction::Great(WT::I32(None)));
                         }
-                        TokenType::OperatorGreaterEqual => {
-                            emit!(self, Instruction::GreatEq(WasmType::F32(None)));
+                        TT::OperatorGreaterEqual => {
+                            emit!(self, Instruction::GreatEq(WT::I32(None)));
                         }
-                        TokenType::OperatorLess => {
-                            emit!(self, Instruction::Less(WasmType::F32(None)));
+                        TT::OperatorLess => {
+                            emit!(self, Instruction::Less(WT::I32(None)));
                         }
-                        TokenType::OperatorLessEqual => {
-                            emit!(self, Instruction::LessEq(WasmType::F32(None)));
+                        TT::OperatorLessEqual => {
+                            emit!(self, Instruction::LessEq(WT::I32(None)));
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                         }
                     },
-                    SymbolType::String => match token.token_type {
-                        TokenType::OperatorEqual => {
+                    ST::Real => match token.token_type {
+                        TT::OperatorEqual => {
+                            emit!(self, Instruction::Eq(WT::F32(None)));
+                        }
+                        TT::OperatorNotEqual => {
+                            emit!(self, Instruction::NEq(WT::F32(None)));
+                        }
+                        TT::OperatorGreater => {
+                            emit!(self, Instruction::Great(WT::F32(None)));
+                        }
+                        TT::OperatorGreaterEqual => {
+                            emit!(self, Instruction::GreatEq(WT::F32(None)));
+                        }
+                        TT::OperatorLess => {
+                            emit!(self, Instruction::Less(WT::F32(None)));
+                        }
+                        TT::OperatorLessEqual => {
+                            emit!(self, Instruction::LessEq(WT::F32(None)));
+                        }
+                        _ => {
+                            assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
+                        }
+                    },
+                    ST::String => match token.token_type {
+                        TT::OperatorEqual => {
                             emit!(self, Instruction::LibFunc("string_eq"));
                         }
-                        TokenType::OperatorNotEqual => {
+                        TT::OperatorNotEqual => {
                             emit!(self, Instruction::LibFunc("string_neq"));
                         }
-                        TokenType::OperatorGreater => {
+                        TT::OperatorGreater => {
                             emit!(self, Instruction::LibFunc("string_great"));
                         }
-                        TokenType::OperatorGreaterEqual => {
+                        TT::OperatorGreaterEqual => {
                             emit!(self, Instruction::LibFunc("string_great_eq"));
                         }
-                        TokenType::OperatorLess => {
+                        TT::OperatorLess => {
                             emit!(self, Instruction::LibFunc("string_less"));
                         }
-                        TokenType::OperatorLessEqual => {
+                        TT::OperatorLessEqual => {
                             emit!(self, Instruction::LibFunc("string_less_eq"));
                         }
                         _ => {
@@ -768,7 +749,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                 }
             }
-            NodeType::AddOp(data) => {
+            NT::AddOp(data) => {
                 let token = data.token.expect("Add operator is missing a token.");
                 let st = data.st;
 
@@ -777,33 +758,33 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     self.expression(idx);
 
                     match token.token_type {
-                        TokenType::OperatorPlus => match st {
-                            SymbolType::Int => {
-                                emit!(self, Instruction::Add(WasmType::I32(None)));
+                        TT::OperatorPlus => match st {
+                            ST::Int => {
+                                emit!(self, Instruction::Add(WT::I32(None)));
                             }
-                            SymbolType::Real => {
-                                emit!(self, Instruction::Add(WasmType::F32(None)));
+                            ST::Real => {
+                                emit!(self, Instruction::Add(WT::F32(None)));
                             }
-                            SymbolType::String => {
+                            ST::String => {
                                 emit!(self, Instruction::LibFunc("string_concatenate"));
                             }
                             _ => {
                                 assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
                             }
                         },
-                        TokenType::OperatorMinus => match st {
-                            SymbolType::Int => {
-                                emit!(self, Instruction::Sub(WasmType::I32(None)));
+                        TT::OperatorMinus => match st {
+                            ST::Int => {
+                                emit!(self, Instruction::Sub(WT::I32(None)));
                             }
-                            SymbolType::Real => {
-                                emit!(self, Instruction::Sub(WasmType::F32(None)));
+                            ST::Real => {
+                                emit!(self, Instruction::Sub(WT::F32(None)));
                             }
                             _ => {
                                 assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
                             }
                         },
-                        TokenType::OperatorOr => {
-                            emit!(self, Instruction::Or(WasmType::I32(None)));
+                        TT::OperatorOr => {
+                            emit!(self, Instruction::Or(WT::I32(None)));
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
@@ -814,15 +795,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     self.expression(data.idx);
 
                     match token.token_type {
-                        TokenType::OperatorPlus => {}
-                        TokenType::OperatorMinus => match st {
-                            SymbolType::Int => {
-                                emit!(self, Instruction::Const(WasmType::I32(Some(-1))));
-                                emit!(self, Instruction::Mul(WasmType::I32(None)));
+                        TT::OperatorPlus => {}
+                        TT::OperatorMinus => match st {
+                            ST::Int => {
+                                emit!(self, Instruction::Const(WT::I32(Some(-1))));
+                                emit!(self, Instruction::Mul(WT::I32(None)));
                             }
-                            SymbolType::Real => {
-                                emit!(self, Instruction::Const(WasmType::F32(Some(-1.0))));
-                                emit!(self, Instruction::Mul(WasmType::I32(None)));
+                            ST::Real => {
+                                emit!(self, Instruction::Const(WT::F32(Some(-1.0))));
+                                emit!(self, Instruction::Mul(WT::I32(None)));
                             }
                             _ => {
                                 assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
@@ -834,71 +815,65 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                 }
             }
-            NodeType::MulOp(data) => {
+            NT::MulOp(data) => {
                 let token = data.token.expect("Multiply operator is missing a token.");
                 let st = data.st;
                 self.expression(data.idx);
                 self.expression(data.idx2);
 
                 match token.token_type {
-                    TokenType::OperatorMultiply => match st {
-                        SymbolType::Int => {
-                            emit!(self, Instruction::Mul(WasmType::I32(None)));
+                    TT::OperatorMultiply => match st {
+                        ST::Int => {
+                            emit!(self, Instruction::Mul(WT::I32(None)));
                         }
-                        SymbolType::Real => {
-                            emit!(self, Instruction::Mul(WasmType::F32(None)));
-                        }
-                        _ => {
-                            assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
-                        }
-                    },
-                    TokenType::OperatorDivide => match st {
-                        SymbolType::Int => {
-                            emit!(self, Instruction::Div(WasmType::I32(None)));
-                        }
-                        SymbolType::Real => {
-                            emit!(self, Instruction::Div(WasmType::F32(None)));
+                        ST::Real => {
+                            emit!(self, Instruction::Mul(WT::F32(None)));
                         }
                         _ => {
                             assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
                         }
                     },
-                    TokenType::OperatorModulo => {
-                        emit!(self, Instruction::Mod(WasmType::I32(None)));
+                    TT::OperatorDivide => match st {
+                        ST::Int => {
+                            emit!(self, Instruction::Div(WT::I32(None)));
+                        }
+                        ST::Real => {
+                            emit!(self, Instruction::Div(WT::F32(None)));
+                        }
+                        _ => {
+                            assert!(false, "Unexpected symbol type {:#?}.", self.tree[idx]);
+                        }
+                    },
+                    TT::OperatorModulo => {
+                        emit!(self, Instruction::Mod(WT::I32(None)));
                     }
-                    TokenType::OperatorAnd => {
-                        emit!(self, Instruction::And(WasmType::I32(None)));
+                    TT::OperatorAnd => {
+                        emit!(self, Instruction::And(WT::I32(None)));
                     }
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
                     }
                 }
             }
-            NodeType::Variable(data) => {
+            NT::Variable(data) => {
                 let local_idx = self.get_variable_local_idx(&data);
-                emit!(
-                    self,
-                    Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
-                );
+                emit!(self, Instruction::GetLocal(WT::I32(Some(local_idx as i32))));
                 match data.st {
-                    SymbolType::Bool | SymbolType::Int => {
+                    ST::Bool | ST::Int => {
                         if data.is_ref {
-                            emit!(self, Instruction::MemLoad(WasmType::I32(None)));
+                            emit!(self, Instruction::MemLoad(WT::I32(None)));
                         }
                     }
-                    SymbolType::Real => {
+                    ST::Real => {
                         if data.is_ref {
-                            emit!(self, Instruction::MemLoad(WasmType::F32(None)));
+                            emit!(self, Instruction::MemLoad(WT::F32(None)));
                         }
                     }
-                    SymbolType::String => {
+                    ST::String => {
                         // String references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
                     }
-                    SymbolType::ArrayBool(_)
-                    | SymbolType::ArrayInt(_)
-                    | SymbolType::ArrayReal(_)
-                    | SymbolType::ArrayString(_) => {
+                    ST::ArrayBool(_) | ST::ArrayInt(_) | ST::ArrayReal(_) | ST::ArrayString(_) => {
                         // Array references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
                         if let Some(arr_idx) = data.array_idx {
@@ -906,11 +881,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
                             let string_idx = data
                                 .string_idx
                                 .expect("Variable should have some string index at array access.");
-                            emit!(
-                                self,
-                                Instruction::Const(WasmType::I32(Some(string_idx as i32)))
-                            );
-                            if let SymbolType::ArrayReal(_) = data.st {
+                            emit!(self, Instruction::Const(WT::I32(Some(string_idx as i32))));
+                            if let ST::ArrayReal(_) = data.st {
                                 emit!(self, Instruction::LibFunc("array_access_f"));
                             } else {
                                 emit!(self, Instruction::LibFunc("array_access_i"));
@@ -922,31 +894,31 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                 }
             }
-            NodeType::Literal(data) => {
+            NT::Literal(data) => {
                 let token = data.token.unwrap();
                 match token.token_type {
-                    TokenType::LiteralBool => {
+                    TT::LiteralBool => {
                         if "true" == token.value {
-                            emit!(self, Instruction::Const(WasmType::I32(Some(1))));
+                            emit!(self, Instruction::Const(WT::I32(Some(1))));
                         } else {
-                            emit!(self, Instruction::Const(WasmType::I32(Some(0))));
+                            emit!(self, Instruction::Const(WT::I32(Some(0))));
                         }
                     }
-                    TokenType::LiteralInt => {
+                    TT::LiteralInt => {
                         let literal = token
                             .value
                             .parse::<i32>()
                             .expect("Literal int str should be possible to parse to an integer.");
-                        emit!(self, Instruction::Const(WasmType::I32(Some(literal))));
+                        emit!(self, Instruction::Const(WT::I32(Some(literal))));
                     }
-                    TokenType::LiteralReal => {
+                    TT::LiteralReal => {
                         let literal = token
                             .value
                             .parse::<f32>()
                             .expect("Literal real str should be possible to parse to a float.");
-                        emit!(self, Instruction::Const(WasmType::F32(Some(literal))));
+                        emit!(self, Instruction::Const(WT::F32(Some(literal))));
                     }
-                    TokenType::LiteralString => {
+                    TT::LiteralString => {
                         // The idx is the "ranking" of the string literal. In other words, if this
                         // is the fifth literal string that is found in the program, idx is 5.
                         // Literal strings are stored consecutively in memory and the accessing
@@ -954,10 +926,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         let str_idx = data
                             .opt_idx
                             .expect("Literal string should have some opt_idx.");
-                        emit!(
-                            self,
-                            Instruction::Const(WasmType::I32(Some(str_idx as i32)))
-                        );
+                        emit!(self, Instruction::Const(WT::I32(Some(str_idx as i32))));
                         emit!(self, Instruction::LibFunc("get_string_literal"));
                     }
                     _ => {
@@ -965,15 +934,15 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                 }
             }
-            NodeType::Not(data) => {
+            NT::Not(data) => {
                 self.expression(data.idx);
                 emit!(self, Instruction::Eqz);
             }
-            NodeType::ArraySize(data) => {
+            NT::ArraySize(data) => {
                 self.expression(data.idx);
                 emit!(self, Instruction::LibFunc("array_size"));
             }
-            NodeType::Call(_) => self.call_statement(idx),
+            NT::Call(_) => self.call_statement(idx),
             _ => {
                 assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
             }
@@ -993,38 +962,23 @@ impl<'a, 'b> Stacker<'a, 'b> {
     fn emit_set_local_pre_expr(&mut self, data: &VariableData<'a>) {
         let local_idx = self.get_variable_local_idx(&data);
         match data.st {
-            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+            ST::Bool | ST::Int | ST::Real => {
                 if data.is_ref {
-                    emit!(
-                        self,
-                        Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
-                    );
+                    emit!(self, Instruction::GetLocal(WT::I32(Some(local_idx as i32))));
                 }
             }
-            SymbolType::String => {
-                emit!(
-                    self,
-                    Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
-                );
+            ST::String => {
+                emit!(self, Instruction::GetLocal(WT::I32(Some(local_idx as i32))));
             }
-            SymbolType::ArrayBool(_)
-            | SymbolType::ArrayInt(_)
-            | SymbolType::ArrayReal(_)
-            | SymbolType::ArrayString(_) => {
-                emit!(
-                    self,
-                    Instruction::GetLocal(WasmType::I32(Some(local_idx as i32)))
-                );
+            ST::ArrayBool(_) | ST::ArrayInt(_) | ST::ArrayReal(_) | ST::ArrayString(_) => {
+                emit!(self, Instruction::GetLocal(WT::I32(Some(local_idx as i32))));
 
                 if let Some(expr_idx) = data.array_idx {
                     self.expression(expr_idx);
                     let string_idx = data
                         .string_idx
                         .expect("Variable should have some string index at set local pre_expr.");
-                    emit!(
-                        self,
-                        Instruction::Const(WasmType::I32(Some(string_idx as i32)))
-                    );
+                    emit!(self, Instruction::Const(WT::I32(Some(string_idx as i32))));
                 }
             }
             _ => {
@@ -1035,31 +989,25 @@ impl<'a, 'b> Stacker<'a, 'b> {
 
     fn emit_set_local_post_expr(&mut self, data: &VariableData<'a>) {
         match data.st {
-            SymbolType::Bool | SymbolType::Int | SymbolType::Real => {
+            ST::Bool | ST::Int | ST::Real => {
                 if data.is_ref {
-                    if SymbolType::Real == data.st {
-                        emit!(self, Instruction::MemStore(WasmType::F32(None)));
+                    if ST::Real == data.st {
+                        emit!(self, Instruction::MemStore(WT::F32(None)));
                     } else {
-                        emit!(self, Instruction::MemStore(WasmType::I32(None)));
+                        emit!(self, Instruction::MemStore(WT::I32(None)));
                     }
                 } else {
                     let local_idx = self.get_variable_local_idx(&data);
-                    emit!(
-                        self,
-                        Instruction::SetLocal(WasmType::I32(Some(local_idx as i32)))
-                    );
+                    emit!(self, Instruction::SetLocal(WT::I32(Some(local_idx as i32))));
                 }
             }
-            SymbolType::String => {
+            ST::String => {
                 emit!(self, Instruction::LibFunc("copy_array"));
                 emit!(self, Instruction::Drop);
             }
-            SymbolType::ArrayBool(_)
-            | SymbolType::ArrayInt(_)
-            | SymbolType::ArrayReal(_)
-            | SymbolType::ArrayString(_) => {
+            ST::ArrayBool(_) | ST::ArrayInt(_) | ST::ArrayReal(_) | ST::ArrayString(_) => {
                 if data.array_idx.is_some() {
-                    if let SymbolType::ArrayReal(_) = data.st {
+                    if let ST::ArrayReal(_) = data.st {
                         emit!(self, Instruction::LibFunc("array_assign_f"));
                     } else {
                         emit!(self, Instruction::LibFunc("array_assign_i"));
@@ -1076,7 +1024,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     pub fn new(
-        tree: &'b LcRsTree<NodeType<'a>>,
+        tree: &'b LcRsTree<NT<'a>>,
         symbol_table: &'b mut SymbolTable<'a>,
         instructions: &'b mut Vec<Instruction<'a>>,
     ) -> Self {

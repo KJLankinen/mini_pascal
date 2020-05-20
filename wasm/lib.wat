@@ -447,10 +447,10 @@
       unreachable)
     local.get $idx)
 
-  (func $new_array (export "new_array") (result i32)
-    ;; allocates space for three i32 values: pdata, length, capacity
+  (func $new_array (export "new_array") (param $stride i32) (result i32)
+    ;; allocates space for four i32 values: pdata, length, capacity, stride
     ;; allocates 1024 bytes of memory at "pdata" (use "allocate")
-    ;; returns a pointer to the first of the three consecutive i32 values
+    ;; returns a pointer to the first of the four consecutive i32 values
     i32.const 0)
 
   (func $copy_array (export "copy_array") (param $dst i32) (param $src i32) (result i32)
@@ -543,9 +543,24 @@
     i32.const 0)
   
   (func $array_size (export "array_size") (param $addr i32) (result i32)
-    ;; checks the length of the array at addr
-    ;; returns it (divided by four, lenght is bytes)
-    i32.const 0)
+    ;; returns the length of the array at addr divided by stride
+    ;; assumptions:
+    ;; - addr points to a location that contains 4 32 bit values:
+    ;;   - 0 = pointer to data
+    ;;   - 1 = length
+    ;;   - 2 = capacity
+    ;;   - 3 = stride, i.e. how many bytes one value takes
+    ;; - idx is in units of stride, not of bytes,
+    ;;   i.e. i = 1 -> bytes 4-7
+    local.get $addr
+    global.get $offset_length
+    i32.add
+    i32.load
+    local.get $addr
+    global.get $offset_stride
+    i32.add
+    i32.load
+    i32.div_s)
   
   (func $array_access_i (export "array_access_i") (param $addr i32) (param $idx i32) (param $str_idx i32)  (result i32)
     ;; returns the value at addr + idx * stride

@@ -1,4 +1,5 @@
-use super::data_types::{FunctionSignature, SymbolType, EMPTY_TOKEN};
+use super::data_types::SymbolType as ST;
+use super::data_types::{FunctionSignature, EMPTY_TOKEN};
 use std::collections::{HashMap, HashSet};
 
 /*
@@ -8,18 +9,18 @@ use std::collections::{HashMap, HashSet};
 
 pub struct SymbolTable<'a> {
     pub depth: i32,
-    symbols_in_scope: HashMap<i32, HashMap<String, (SymbolType, usize, i32, bool)>>,
+    symbols_in_scope: HashMap<i32, HashMap<String, (ST, usize, i32, bool)>>,
     counts: Counts,
     function_data: HashMap<&'a str, FunctionData<'a>>,
     current_fname: Option<&'a str>,
     string_literals: String,
     string_literal_bytes: Vec<(usize, usize)>,
-    write_arguments: HashMap<(u32, u32), Vec<SymbolType>>,
+    write_arguments: HashMap<(u32, u32), Vec<ST>>,
     pub library_functions: HashSet<&'a str>,
 }
 
 impl<'a> SymbolTable<'a> {
-    pub fn insert(&mut self, key: &'a str, st: SymbolType) {
+    pub fn insert(&mut self, key: &'a str, st: ST) {
         assert!(
             -1 < self.depth,
             "Scope depth must be positive, use step_in() before insert."
@@ -29,7 +30,7 @@ impl<'a> SymbolTable<'a> {
             "Current function name must be set before inserting values."
         );
         assert!(
-            SymbolType::Undefined != st,
+            ST::Undefined != st,
             "Trying to insert a variable of undefined type."
         );
 
@@ -42,13 +43,13 @@ impl<'a> SymbolTable<'a> {
         *count += 1;
     }
 
-    pub fn get(&self, key: &'a str) -> Option<&(SymbolType, usize, i32, bool)> {
+    pub fn get(&self, key: &'a str) -> Option<&(ST, usize, i32, bool)> {
         self.symbols_in_scope
             .get(&self.depth)
             .and_then(|m| m.get(&key.to_lowercase()))
     }
 
-    pub fn find(&self, key: &'a str) -> Option<&(SymbolType, usize, i32, bool)> {
+    pub fn find(&self, key: &'a str) -> Option<&(ST, usize, i32, bool)> {
         for i in (0..=self.depth).rev() {
             if let Some(tuple) = self
                 .symbols_in_scope
@@ -136,7 +137,7 @@ impl<'a> SymbolTable<'a> {
         }
     }
 
-    pub fn get_variable_index(&self, fname: &'a str, st: SymbolType, depth: i32) -> usize {
+    pub fn get_variable_index(&self, fname: &'a str, st: ST, depth: i32) -> usize {
         // Depth 0 is reserved for parameters. Since parameters can be in arbitrary order but local
         // variables are ordered by type (all i32 represented variables first, then f32), handling
         // differs for the two cases.
@@ -145,10 +146,10 @@ impl<'a> SymbolTable<'a> {
                 0
             } else {
                 assert!(
-                    SymbolType::Undefined != st,
+                    ST::Undefined != st,
                     "Trying to get a variable of undefined type."
                 );
-                let v = if SymbolType::Real == st {
+                let v = if ST::Real == st {
                     fd.f32_idx.get(&depth)
                 } else {
                     fd.i32_idx.get(&depth)
@@ -182,11 +183,11 @@ impl<'a> SymbolTable<'a> {
         &self.string_literal_bytes
     }
 
-    pub fn add_write_arguments(&mut self, loc: (u32, u32), args: Vec<SymbolType>) {
+    pub fn add_write_arguments(&mut self, loc: (u32, u32), args: Vec<ST>) {
         self.write_arguments.insert(loc, args);
     }
 
-    pub fn get_write_arguments(&mut self, loc: (u32, u32)) -> Vec<SymbolType> {
+    pub fn get_write_arguments(&mut self, loc: (u32, u32)) -> Vec<ST> {
         self.write_arguments
             .remove(&loc)
             .expect("Write arguments should be saved.")
@@ -296,9 +297,9 @@ impl Counts {
         }
     }
 
-    pub fn get_count(&mut self, idx: usize, st: SymbolType) -> &mut usize {
+    pub fn get_count(&mut self, idx: usize, st: ST) -> &mut usize {
         // Reals are represented as f32 in webassembly, everything else as i32
-        if SymbolType::Real == st {
+        if ST::Real == st {
             self.fc
                 .get_mut(idx)
                 .expect("f32 counts does not contain a value at the given idx.")
@@ -462,32 +463,32 @@ mod tests {
     #[test]
     fn variable_indices() {
         let var_types = vec![
-            SymbolType::Bool,
-            SymbolType::Real,
-            SymbolType::Int,
-            SymbolType::Int,
-            SymbolType::Bool,
-            SymbolType::Int, // first local
-            SymbolType::Int,
-            SymbolType::Real,
-            SymbolType::ArrayReal(0),
-            SymbolType::String,
-            SymbolType::String,
-            SymbolType::Real,
-            SymbolType::Int,
-            SymbolType::String,
-            SymbolType::Real,
-            SymbolType::Int,
-            SymbolType::Int,
-            SymbolType::Int,
-            SymbolType::ArrayReal(0),
-            SymbolType::Real,
+            ST::Bool,
+            ST::Real,
+            ST::Int,
+            ST::Int,
+            ST::Bool,
+            ST::Int, // first local
+            ST::Int,
+            ST::Real,
+            ST::ArrayReal(0),
+            ST::String,
+            ST::String,
+            ST::Real,
+            ST::Int,
+            ST::String,
+            ST::Real,
+            ST::Int,
+            ST::Int,
+            ST::Int,
+            ST::ArrayReal(0),
+            ST::Real,
         ];
-        let vars: Vec<(String, SymbolType)> = (0..var_types.len())
+        let vars: Vec<(String, ST)> = (0..var_types.len())
             .map(|i| (i.to_string(), var_types[i]))
             .collect();
         let num_params = 5;
-        let mut locals: Vec<(&str, SymbolType, usize)> = (num_params..var_types.len())
+        let mut locals: Vec<(&str, ST, usize)> = (num_params..var_types.len())
             .map(|i| (vars[i].0.as_str(), vars[i].1, 0))
             .collect();
         let parameters = (0..num_params)

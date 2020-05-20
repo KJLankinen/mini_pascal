@@ -1,7 +1,8 @@
-use super::data_types::{ErrorType, SymbolType};
+use super::data_types::ErrorType as ET;
+use super::data_types::SymbolType as ST;
 
 pub struct Logger<'a> {
-    errors: Vec<ErrorType<'a>>,
+    errors: Vec<ET<'a>>,
     lines: Vec<&'a str>,
     pub file_name: &'a str,
 }
@@ -15,7 +16,7 @@ impl<'a> Logger<'a> {
         }
     }
 
-    pub fn add_error(&mut self, error: ErrorType<'a>) {
+    pub fn add_error(&mut self, error: ET<'a>) {
         self.errors.push(error);
     }
 
@@ -25,12 +26,12 @@ impl<'a> Logger<'a> {
             let column;
             let line;
             match error {
-                ErrorType::LexicalError(token) => {
+                ET::LexicalError(token) => {
                     eprintln!("Encountered an undefined token \"{}\".", token.value);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::SyntaxError(token, expected) => {
+                ET::SyntaxError(token, expected) => {
                     if 1 < expected.len() {
                         eprint!("Expected one of ");
                         for e in expected.iter() {
@@ -45,12 +46,12 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::UndeclaredIdentifier(token) => {
+                ET::UndeclaredIdentifier(token) => {
                     eprintln!("Identifier \"{}\" is used before declaration.", token.value);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IllegalOperation(token, symbols) => {
+                ET::IllegalOperation(token, symbols) => {
                     eprint!(
                         "Operator \"{}\" can't be used in an expression with type(s) ",
                         token.value
@@ -62,7 +63,7 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::UnmatchedComment(l, c) => {
+                ET::UnmatchedComment(l, c) => {
                     eprintln!(
                         "Multi-line comment starts at {}:{} but is never terminated.",
                         l, c
@@ -70,7 +71,7 @@ impl<'a> Logger<'a> {
                     line = *l;
                     column = *c;
                 }
-                ErrorType::Redeclaration(token) => {
+                ET::Redeclaration(token) => {
                     eprintln!(
                         "A redeclaration of an already declared variable \"{}\".",
                         token.value
@@ -78,7 +79,7 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::AssignMismatchedType(token, identifier_type, expression_type) => {
+                ET::AssignMismatchedType(token, identifier_type, expression_type) => {
                     eprint!("Mismatched types in assignment. Identifier is of type ");
                     eprintln!(
                         "\"{}\", expression of type \"{}\".",
@@ -87,49 +88,43 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::AssertMismatchedType(token, expression_type) => {
-                    eprint!(
-                        "Assert can only be used with type \"{}\", ",
-                        SymbolType::Bool
-                    );
+                ET::AssertMismatchedType(token, expression_type) => {
+                    eprint!("Assert can only be used with type \"{}\", ", ST::Bool);
                     eprintln!("given expression was of type \"{}\".", expression_type);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IndexTypeMismatch(token, expression_type) => {
-                    eprint!(
-                        "Indexing expression must be of type \"{}\", ",
-                        SymbolType::Int
-                    );
+                ET::IndexTypeMismatch(token, expression_type) => {
+                    eprint!("Indexing expression must be of type \"{}\", ", ST::Int);
                     eprintln!("expression was of type \"{}\".", expression_type);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::IllegalIndexing(token, symbol_type) => {
+                ET::IllegalIndexing(token, symbol_type) => {
                     eprint!(
                         "Indexing can only be used with types \"{}\", \"{}\", \"{}\", \"{}\", ",
-                        SymbolType::ArrayBool(0),
-                        SymbolType::ArrayInt(0),
-                        SymbolType::ArrayReal(0),
-                        SymbolType::ArrayString(0),
+                        ST::ArrayBool(0),
+                        ST::ArrayInt(0),
+                        ST::ArrayReal(0),
+                        ST::ArrayString(0),
                     );
                     eprintln!("while identifier was of type \"{}\".", symbol_type);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::TooFewArguments(
+                ET::TooFewArguments(
                     function_token,
                     parameter_types,
                     call_token,
                     argument_types,
                 )
-                | ErrorType::TooManyArguments(
+                | ET::TooManyArguments(
                     function_token,
                     parameter_types,
                     call_token,
                     argument_types,
                 )
-                | ErrorType::MismatchedArgumentTypes(
+                | ET::MismatchedArgumentTypes(
                     function_token,
                     parameter_types,
                     call_token,
@@ -156,7 +151,7 @@ impl<'a> Logger<'a> {
                     line = call_token.line;
                     column = call_token.column;
                 }
-                ErrorType::MismatchedReturnType(token, return_type, expected_return_type) => {
+                ET::MismatchedReturnType(token, return_type, expected_return_type) => {
                     eprintln!("Mismatched return type. Return expression is of type \"{}\", while expected type is \"{}\".",
                         return_type.map(|t| format!("{}", t)).unwrap_or_else(|| "void".to_string()),
                         expected_return_type.map(|t| format!("{}", t)).unwrap_or_else(|| "void".to_string())
@@ -164,12 +159,12 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::ReadMismatchedType(token, variable_type) => {
+                ET::ReadMismatchedType(token, variable_type) => {
                     eprintln!("Read is not defined for type \"{}\".", variable_type);
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::ExprTypeMismatch(token, expected_type, given_type) => {
+                ET::ExprTypeMismatch(token, expected_type, given_type) => {
                     eprintln!(
                         "Expression type is expected to be \"{}\", but instead it is \"{}\".",
                         expected_type, given_type
@@ -177,12 +172,12 @@ impl<'a> Logger<'a> {
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::MissingReturnStatements(token) => {
+                ET::MissingReturnStatements(token) => {
                     eprintln!("Function does not return from every possible branch.");
                     line = token.line;
                     column = token.column;
                 }
-                ErrorType::ArraySizeTypeMismatch(token, factor_type) => {
+                ET::ArraySizeTypeMismatch(token, factor_type) => {
                     eprintln!(
                         ".size operator is not defined for type \"{}\".",
                         factor_type

@@ -1,15 +1,19 @@
+use super::data_types::ErrorType as ET;
+use super::data_types::NodeType as NT;
+use super::data_types::SymbolType as ST;
+use super::data_types::TokenType as TT;
 use super::data_types::{
-    ErrorType, FunctionSignature, IdxIdx, NodeType, Parameter, SymbolType, TokenData, TokenIdx,
-    TokenIdxIdx, TokenIdxIdxOptIdx, TokenOptIdx, TokenType,
+    FunctionSignature, IdxIdx, Parameter, TokenData, TokenIdx, TokenIdxIdx, TokenIdxIdxOptIdx,
+    TokenOptIdx,
 };
 use super::lcrs_tree::LcRsTree;
 use super::logger::Logger;
 use super::symbol_table::SymbolTable;
 
 pub struct Analyzer<'a, 'b> {
-    tree: &'b mut LcRsTree<NodeType<'a>>,
+    tree: &'b mut LcRsTree<NT<'a>>,
     logger: &'b mut Logger<'a>,
-    current_return_type: Option<SymbolType>,
+    current_return_type: Option<ST>,
     symbol_table: &'b mut SymbolTable<'a>,
 }
 
@@ -26,7 +30,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // Functions that handle the semantic constraints
     // ---------------------------------------------------------------------
     fn program(&mut self, idx: usize) {
-        if let NodeType::Program(data) = self.tree[idx].data {
+        if let NT::Program(data) = self.tree[idx].data {
             if let Some(idx) = data.opt_idx {
                 self.subroutines(idx);
             }
@@ -49,7 +53,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn subroutines(&mut self, idx: usize) {
-        if let NodeType::Subroutines(idx) = self.tree[idx].data {
+        if let NT::Subroutines(idx) = self.tree[idx].data {
             // Process the functions in two passes:
             // First: process all function signatures and add them to map
             let mut next = Some(idx);
@@ -71,7 +75,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn block(&mut self, idx: usize) {
-        if let NodeType::Block(idx) = self.tree[idx].data {
+        if let NT::Block(idx) = self.tree[idx].data {
             self.symbol_table.step_in(None);
 
             let mut next = Some(idx);
@@ -87,10 +91,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn function_signature(&mut self, idx: usize) {
-        if let NodeType::Function(data) = self.tree[idx].data {
+        if let NT::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function has no identifier token.");
             if let Some(_) = self.symbol_table.get_function_signature(token.value) {
-                self.logger.add_error(ErrorType::Redeclaration(token));
+                self.logger.add_error(ET::Redeclaration(token));
             } else {
                 let mut fs = FunctionSignature {
                     parameters: vec![],
@@ -101,10 +105,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // Handle parameter list
                 if let Some(idx) = data.opt_idx {
                     let mut param_vec = Vec::new();
-                    if let NodeType::ParamList(idx) = self.tree[idx].data {
+                    if let NT::ParamList(idx) = self.tree[idx].data {
                         let mut next = Some(idx);
                         while let Some(idx) = next {
-                            if let NodeType::Parameter(data) = self.tree[idx].data {
+                            if let NT::Parameter(data) = self.tree[idx].data {
                                 param_vec.push(Parameter {
                                     is_ref: data.b,
                                     symbol_type: self.check_type(data.idx),
@@ -132,7 +136,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn function_block(&mut self, idx: usize) {
-        if let NodeType::Function(data) = self.tree[idx].data {
+        if let NT::Function(data) = self.tree[idx].data {
             let token = data.token.expect("Function is missing a token.");
 
             // Set return type
@@ -147,8 +151,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // at least something from every possible branch.
                 // The correctness of the return type is checked during actual analysis
                 if false == self.block_returns(data.idx) {
-                    self.logger
-                        .add_error(ErrorType::MissingReturnStatements(token));
+                    self.logger.add_error(ET::MissingReturnStatements(token));
                 }
             }
 
@@ -170,34 +173,33 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     fn statement(&mut self, idx: usize) {
         match self.tree[idx].data {
-            NodeType::Block(_) => self.block(idx),
-            NodeType::Assert(_) => self.assert_statement(idx),
-            NodeType::Assignment(data) => self.assign_statement(&data),
-            NodeType::Call(data) => {
+            NT::Block(_) => self.block(idx),
+            NT::Assert(_) => self.assert_statement(idx),
+            NT::Assignment(data) => self.assign_statement(&data),
+            NT::Call(data) => {
                 self.call_statement(&data);
             }
-            NodeType::Declaration(data) => self.declaration_statement(&data),
-            NodeType::Return(data) => self.return_statement(&data),
-            NodeType::Read(idx) => self.read_statement(idx),
-            NodeType::Write(data) => self.write_statement(&data),
-            NodeType::If(data) => self.if_statement(&data),
-            NodeType::While(data) => self.while_statement(&data),
+            NT::Declaration(data) => self.declaration_statement(&data),
+            NT::Return(data) => self.return_statement(&data),
+            NT::Read(idx) => self.read_statement(idx),
+            NT::Write(data) => self.write_statement(&data),
+            NT::If(data) => self.if_statement(&data),
+            NT::While(data) => self.while_statement(&data),
             _ => assert!(false, "Unexpected node {:#?}.", self.tree[idx]),
         };
     }
 
     fn assign_statement(&mut self, data: &IdxIdx) {
-        if let NodeType::Variable(variable_data) = self.tree[data.idx].data {
+        if let NT::Variable(variable_data) = self.tree[data.idx].data {
             let token = variable_data.token.expect("Variable is missing a token.");
             let et = self.get_expression_type(data.idx2);
             if let Some(vt) = self.get_variable_type(data.idx) {
-                if et != vt && SymbolType::Undefined != et {
+                if et != vt && ST::Undefined != et {
                     self.logger
-                        .add_error(ErrorType::AssignMismatchedType(token, vt, et));
+                        .add_error(ET::AssignMismatchedType(token, vt, et));
                 }
             } else {
-                self.logger
-                    .add_error(ErrorType::UndeclaredIdentifier(token));
+                self.logger.add_error(ET::UndeclaredIdentifier(token));
             }
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[data.idx]);
@@ -205,12 +207,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     }
 
     fn assert_statement(&mut self, idx: usize) {
-        if let NodeType::Assert(mut data) = self.tree[idx].data {
+        if let NT::Assert(mut data) = self.tree[idx].data {
             let token = data.token.expect("Assert is missing a token.");
             let et = self.get_expression_type(data.idx);
-            if SymbolType::Bool != et && SymbolType::Undefined != et {
-                self.logger
-                    .add_error(ErrorType::AssertMismatchedType(token, et));
+            if ST::Bool != et && ST::Undefined != et {
+                self.logger.add_error(ET::AssertMismatchedType(token, et));
             }
 
             data.opt_idx = Some(
@@ -224,13 +225,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     .as_str(),
                 ),
             );
-            self.tree[idx].data = NodeType::Assert(data);
+            self.tree[idx].data = NT::Assert(data);
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
         }
     }
 
-    fn call_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<SymbolType> {
+    fn call_statement(&mut self, data: &TokenOptIdx<'a>) -> Option<ST> {
         let mut argument_types = vec![];
         let mut next = data.opt_idx;
         while let Some(idx) = next {
@@ -244,9 +245,9 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             if fs.parameters.len() == argument_types.len() {
                 for i in 0..fs.parameters.len() {
                     if fs.parameters[i].symbol_type != argument_types[i]
-                        && SymbolType::Undefined != argument_types[i]
+                        && ST::Undefined != argument_types[i]
                     {
-                        self.logger.add_error(ErrorType::MismatchedArgumentTypes(
+                        self.logger.add_error(ET::MismatchedArgumentTypes(
                             fs.token,
                             fs.parameters.iter().map(|p| p.symbol_type).collect(),
                             token,
@@ -260,14 +261,14 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     }
                 }
             } else if fs.parameters.len() > argument_types.len() {
-                self.logger.add_error(ErrorType::TooFewArguments(
+                self.logger.add_error(ET::TooFewArguments(
                     fs.token,
                     fs.parameters.iter().map(|p| p.symbol_type).collect(),
                     token,
                     argument_types,
                 ));
             } else {
-                self.logger.add_error(ErrorType::TooManyArguments(
+                self.logger.add_error(ET::TooManyArguments(
                     fs.token,
                     fs.parameters.iter().map(|p| p.symbol_type).collect(),
                     token,
@@ -277,8 +278,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
             fs.return_type
         } else {
-            self.logger
-                .add_error(ErrorType::UndeclaredIdentifier(token));
+            self.logger.add_error(ET::UndeclaredIdentifier(token));
             None
         };
         self.symbol_table.increment_ref_count(num_refs);
@@ -289,18 +289,18 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         let st = self.check_type(data.idx2);
         let mut next = Some(data.idx);
         while let Some(idx) = next {
-            if let NodeType::Variable(mut data) = self.tree[idx].data {
+            if let NT::Variable(mut data) = self.tree[idx].data {
                 let token = data.token.expect("Variable is missing a token.");
                 if let Some(_) = self.symbol_table.get(token.value) {
-                    self.logger.add_error(ErrorType::Redeclaration(token));
+                    self.logger.add_error(ET::Redeclaration(token));
                 } else {
                     self.symbol_table.insert(token.value, st);
 
                     match st {
-                        SymbolType::ArrayBool(_)
-                        | SymbolType::ArrayInt(_)
-                        | SymbolType::ArrayReal(_)
-                        | SymbolType::ArrayString(_) => {
+                        ST::ArrayBool(_)
+                        | ST::ArrayInt(_)
+                        | ST::ArrayReal(_)
+                        | ST::ArrayString(_) => {
                             // Add an error string to linear memory, since the size check is done
                             // during runtime.
                             data.string_idx = Some(
@@ -322,7 +322,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     data.count = *count;
                     data.depth = *depth;
                     data.st = st;
-                    self.tree[idx].data = NodeType::Variable(data);
+                    self.tree[idx].data = NT::Variable(data);
                 }
             } else {
                 break;
@@ -339,8 +339,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
             None
         };
 
-        if self.current_return_type != rt && Some(SymbolType::Undefined) != rt {
-            self.logger.add_error(ErrorType::MismatchedReturnType(
+        if self.current_return_type != rt && Some(ST::Undefined) != rt {
+            self.logger.add_error(ET::MismatchedReturnType(
                 data.token.expect("Return is missing a token."),
                 rt,
                 self.current_return_type,
@@ -351,25 +351,23 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     fn read_statement(&mut self, idx: usize) {
         let mut next = Some(idx);
         while let Some(idx) = next {
-            if let NodeType::Variable(variable_data) = self.tree[idx].data {
+            if let NT::Variable(variable_data) = self.tree[idx].data {
                 let token = variable_data.token.expect("Variable is missing a token.");
                 if let Some(st) = self.get_variable_type(idx) {
                     match st {
-                        SymbolType::ArrayBool(_)
-                        | SymbolType::ArrayInt(_)
-                        | SymbolType::ArrayReal(_)
-                        | SymbolType::ArrayString(_) => {
-                            self.logger
-                                .add_error(ErrorType::ReadMismatchedType(token, st));
+                        ST::ArrayBool(_)
+                        | ST::ArrayInt(_)
+                        | ST::ArrayReal(_)
+                        | ST::ArrayString(_) => {
+                            self.logger.add_error(ET::ReadMismatchedType(token, st));
                         }
-                        SymbolType::Undefined => {
+                        ST::Undefined => {
                             assert!(false, "Variable type should never be undefined.");
                         }
                         _ => {}
                     }
                 } else {
-                    self.logger
-                        .add_error(ErrorType::UndeclaredIdentifier(token));
+                    self.logger.add_error(ET::UndeclaredIdentifier(token));
                 }
             } else {
                 break;
@@ -394,15 +392,15 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn if_statement(&mut self, data: &TokenIdxIdxOptIdx<'a>) {
         let et = self.get_expression_type(data.idx);
-        if SymbolType::Bool != et && SymbolType::Undefined != et {
-            self.logger.add_error(ErrorType::ExprTypeMismatch(
+        if ST::Bool != et && ST::Undefined != et {
+            self.logger.add_error(ET::ExprTypeMismatch(
                 data.token.expect("If is missing a token."),
-                SymbolType::Bool,
+                ST::Bool,
                 et,
             ));
         }
 
-        if let NodeType::Block(_) = self.tree[data.idx2].data {
+        if let NT::Block(_) = self.tree[data.idx2].data {
             self.statement(data.idx2);
         } else {
             self.symbol_table.step_in(None);
@@ -411,7 +409,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
 
         if let Some(idx) = data.opt_idx {
-            if let NodeType::Block(_) = self.tree[idx].data {
+            if let NT::Block(_) = self.tree[idx].data {
                 self.statement(idx);
             } else {
                 self.symbol_table.step_in(None);
@@ -423,15 +421,15 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn while_statement(&mut self, data: &TokenIdxIdx<'a>) {
         let et = self.get_expression_type(data.idx);
-        if SymbolType::Bool != et && SymbolType::Undefined != et {
-            self.logger.add_error(ErrorType::ExprTypeMismatch(
+        if ST::Bool != et && ST::Undefined != et {
+            self.logger.add_error(ET::ExprTypeMismatch(
                 data.token.expect("While is missing a token."),
-                SymbolType::Bool,
+                ST::Bool,
                 et,
             ));
         }
 
-        if let NodeType::Block(_) = self.tree[data.idx2].data {
+        if let NT::Block(_) = self.tree[data.idx2].data {
             self.statement(data.idx2);
         } else {
             self.symbol_table.step_in(None);
@@ -443,36 +441,32 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // ---------------------------------------------------------------------
     // Type checking
     // ---------------------------------------------------------------------
-    fn check_type(&mut self, idx: usize) -> SymbolType {
-        if let NodeType::VariableType(data) = self.tree[idx].data {
+    fn check_type(&mut self, idx: usize) -> ST {
+        if let NT::VariableType(data) = self.tree[idx].data {
             match data.st {
-                SymbolType::ArrayInt(expr_idx)
-                | SymbolType::ArrayString(expr_idx)
-                | SymbolType::ArrayBool(expr_idx)
-                | SymbolType::ArrayReal(expr_idx) => {
+                ST::ArrayInt(expr_idx)
+                | ST::ArrayString(expr_idx)
+                | ST::ArrayBool(expr_idx)
+                | ST::ArrayReal(expr_idx) => {
                     let et = self.get_expression_type(expr_idx);
-                    if SymbolType::Int != et && SymbolType::Undefined != et {
-                        self.logger.add_error(ErrorType::IndexTypeMismatch(
+                    if ST::Int != et && ST::Undefined != et {
+                        self.logger.add_error(ET::IndexTypeMismatch(
                             data.token.expect("Type is missing a token."),
                             et,
                         ));
                     }
                 }
-                SymbolType::Undefined
-                | SymbolType::Int
-                | SymbolType::String
-                | SymbolType::Bool
-                | SymbolType::Real => {}
+                ST::Undefined | ST::Int | ST::String | ST::Bool | ST::Real => {}
             };
             data.st
         } else {
             assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
-            SymbolType::Undefined
+            ST::Undefined
         }
     }
 
-    fn get_variable_type(&mut self, idx: usize) -> Option<SymbolType> {
-        if let NodeType::Variable(mut data) = self.tree[idx].data {
+    fn get_variable_type(&mut self, idx: usize) -> Option<ST> {
+        if let NT::Variable(mut data) = self.tree[idx].data {
             let mut symbol_type = None;
             let token = data.token.expect("Variable is missing a token.");
 
@@ -483,9 +477,8 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 // 2. The identifier is of type array
                 let st = if let Some(expr_idx) = data.array_idx {
                     let et = self.get_expression_type(expr_idx);
-                    if SymbolType::Int != et && SymbolType::Undefined != et {
-                        self.logger
-                            .add_error(ErrorType::IndexTypeMismatch(token, et));
+                    if ST::Int != et && ST::Undefined != et {
+                        self.logger.add_error(ET::IndexTypeMismatch(token, et));
                     }
 
                     // Store an assertion message, since the array access check is done at runtime.
@@ -502,18 +495,15 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     );
 
                     match st {
-                        st @ SymbolType::Int
-                        | st @ SymbolType::String
-                        | st @ SymbolType::Bool
-                        | st @ SymbolType::Real => {
-                            self.logger.add_error(ErrorType::IllegalIndexing(token, st));
+                        st @ ST::Int | st @ ST::String | st @ ST::Bool | st @ ST::Real => {
+                            self.logger.add_error(ET::IllegalIndexing(token, st));
                             st
                         }
-                        SymbolType::ArrayInt(_) => SymbolType::Int,
-                        SymbolType::ArrayString(_) => SymbolType::String,
-                        SymbolType::ArrayBool(_) => SymbolType::Bool,
-                        SymbolType::ArrayReal(_) => SymbolType::Real,
-                        SymbolType::Undefined => SymbolType::Undefined,
+                        ST::ArrayInt(_) => ST::Int,
+                        ST::ArrayString(_) => ST::String,
+                        ST::ArrayBool(_) => ST::Bool,
+                        ST::ArrayReal(_) => ST::Real,
+                        ST::Undefined => ST::Undefined,
                     }
                 } else {
                     st
@@ -526,10 +516,10 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 data.depth = depth;
                 data.st = st;
                 data.is_ref = is_ref;
-                self.tree[idx].data = NodeType::Variable(data);
+                self.tree[idx].data = NT::Variable(data);
 
                 assert!(
-                    SymbolType::Undefined != st,
+                    ST::Undefined != st,
                     "Symbol type from symbol table should never be undefined."
                 );
                 symbol_type = Some(st);
@@ -543,11 +533,11 @@ impl<'a, 'b> Analyzer<'a, 'b> {
 
     fn match_operands(
         &mut self,
-        type1: SymbolType,
-        type2: SymbolType,
-        accepted_types: &Vec<SymbolType>,
+        type1: ST,
+        type2: ST,
+        accepted_types: &Vec<ST>,
         token: &TokenData<'a>,
-    ) -> SymbolType {
+    ) -> ST {
         // This is a helper function that figures out what is the return type, given two types as
         // input and a vector of allowed types for the operator, e.g. [ST::Int, ST::Bool, ...]
         let type1_accepted = accepted_types.iter().find(|&&t| t == type1).is_some();
@@ -555,14 +545,14 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         let mut log_error = false;
 
         let rt = if type1 == type2 {
-            if SymbolType::Undefined == type1 || type1_accepted {
+            if ST::Undefined == type1 || type1_accepted {
                 type1
             } else {
                 log_error = true;
-                SymbolType::Undefined
+                ST::Undefined
             }
-        } else if SymbolType::Undefined == type1 || SymbolType::Undefined == type2 {
-            let (defined_type, defined_type_accepted) = if SymbolType::Undefined == type1 {
+        } else if ST::Undefined == type1 || ST::Undefined == type2 {
+            let (defined_type, defined_type_accepted) = if ST::Undefined == type1 {
                 (type2, type2_accepted)
             } else {
                 (type1, type1_accepted)
@@ -572,12 +562,12 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 defined_type
             } else {
                 log_error = true;
-                SymbolType::Undefined
+                ST::Undefined
             }
         } else {
             if type1_accepted && type2_accepted {
                 log_error = true;
-                SymbolType::Undefined
+                ST::Undefined
             } else if type1_accepted {
                 log_error = true;
                 type1
@@ -586,182 +576,165 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                 type2
             } else {
                 log_error = true;
-                SymbolType::Undefined
+                ST::Undefined
             }
         };
 
         if log_error {
             self.logger
-                .add_error(ErrorType::IllegalOperation(*token, vec![type1, type2]));
+                .add_error(ET::IllegalOperation(*token, vec![type1, type2]));
         }
 
         rt
     }
 
-    fn get_expression_type(&mut self, idx: usize) -> SymbolType {
+    fn get_expression_type(&mut self, idx: usize) -> ST {
         match self.tree[idx].data {
-            NodeType::RelOp(mut data) => {
+            NT::RelOp(mut data) => {
                 let token = data.token.expect("Relation operator is missing a token.");
                 let type1 = self.get_expression_type(data.idx);
                 let type2 = self.get_expression_type(data.idx2);
 
                 let st = match token.token_type {
-                    TokenType::OperatorEqual
-                    | TokenType::OperatorNotEqual
-                    | TokenType::OperatorGreater
-                    | TokenType::OperatorGreaterEqual
-                    | TokenType::OperatorLess
-                    | TokenType::OperatorLessEqual => self.match_operands(
+                    TT::OperatorEqual
+                    | TT::OperatorNotEqual
+                    | TT::OperatorGreater
+                    | TT::OperatorGreaterEqual
+                    | TT::OperatorLess
+                    | TT::OperatorLessEqual => self.match_operands(
                         type1,
                         type2,
-                        &vec![
-                            SymbolType::Bool,
-                            SymbolType::Int,
-                            SymbolType::Real,
-                            SymbolType::String,
-                        ],
+                        &vec![ST::Bool, ST::Int, ST::Real, ST::String],
                         &token,
                     ),
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
-                        SymbolType::Undefined
+                        ST::Undefined
                     }
                 };
                 data.st = st;
-                self.tree[idx].data = NodeType::RelOp(data);
-                if SymbolType::Undefined == st {
+                self.tree[idx].data = NT::RelOp(data);
+                if ST::Undefined == st {
                     st
                 } else {
-                    SymbolType::Bool
+                    ST::Bool
                 }
             }
-            NodeType::AddOp(mut data) => {
+            NT::AddOp(mut data) => {
                 let token = data.token.expect("Add operator is missing a token.");
                 let st = if let Some(idx) = data.opt_idx {
                     let type1 = self.get_expression_type(data.idx);
                     let type2 = self.get_expression_type(idx);
 
                     match token.token_type {
-                        TokenType::OperatorPlus => self.match_operands(
+                        TT::OperatorPlus => self.match_operands(
                             type1,
                             type2,
-                            &vec![SymbolType::Int, SymbolType::Real, SymbolType::String],
+                            &vec![ST::Int, ST::Real, ST::String],
                             &token,
                         ),
-                        TokenType::OperatorMinus => self.match_operands(
-                            type1,
-                            type2,
-                            &vec![SymbolType::Int, SymbolType::Real],
-                            &token,
-                        ),
-                        TokenType::OperatorOr => {
-                            self.match_operands(type1, type2, &vec![SymbolType::Bool], &token)
+                        TT::OperatorMinus => {
+                            self.match_operands(type1, type2, &vec![ST::Int, ST::Real], &token)
+                        }
+                        TT::OperatorOr => {
+                            self.match_operands(type1, type2, &vec![ST::Bool], &token)
                         }
                         _ => {
                             assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
-                            SymbolType::Undefined
+                            ST::Undefined
                         }
                     }
                 } else {
                     // Operator is sign, and idx is add_op
                     let type1 = self.get_expression_type(data.idx);
                     match type1 {
-                        SymbolType::Int | SymbolType::Real => type1,
+                        ST::Int | ST::Real => type1,
                         _ => {
                             self.logger
-                                .add_error(ErrorType::IllegalOperation(token, vec![type1]));
-                            SymbolType::Undefined
+                                .add_error(ET::IllegalOperation(token, vec![type1]));
+                            ST::Undefined
                         }
                     }
                 };
                 data.st = st;
-                self.tree[idx].data = NodeType::AddOp(data);
+                self.tree[idx].data = NT::AddOp(data);
                 st
             }
-            NodeType::MulOp(mut data) => {
+            NT::MulOp(mut data) => {
                 let token = data.token.expect("Multiply operator is missing a token.");
                 let type1 = self.get_expression_type(data.idx);
                 let type2 = self.get_expression_type(data.idx2);
 
                 let st = match token.token_type {
-                    TokenType::OperatorMultiply | TokenType::OperatorDivide => self.match_operands(
-                        type1,
-                        type2,
-                        &vec![SymbolType::Int, SymbolType::Real],
-                        &token,
-                    ),
-                    TokenType::OperatorModulo => {
-                        self.match_operands(type1, type2, &vec![SymbolType::Int], &token)
+                    TT::OperatorMultiply | TT::OperatorDivide => {
+                        self.match_operands(type1, type2, &vec![ST::Int, ST::Real], &token)
                     }
-                    TokenType::OperatorAnd => {
-                        self.match_operands(type1, type2, &vec![SymbolType::Bool], &token)
-                    }
+                    TT::OperatorModulo => self.match_operands(type1, type2, &vec![ST::Int], &token),
+                    TT::OperatorAnd => self.match_operands(type1, type2, &vec![ST::Bool], &token),
                     _ => {
                         assert!(false, "Unexpected token {:#?}.", self.tree[idx]);
-                        SymbolType::Undefined
+                        ST::Undefined
                     }
                 };
                 data.st = st;
-                self.tree[idx].data = NodeType::MulOp(data);
+                self.tree[idx].data = NT::MulOp(data);
                 st
             }
-            NodeType::Variable(data) => {
+            NT::Variable(data) => {
                 if let Some(vt) = self.get_variable_type(idx) {
                     vt
                 } else {
-                    self.logger.add_error(ErrorType::UndeclaredIdentifier(
+                    self.logger.add_error(ET::UndeclaredIdentifier(
                         data.token.expect("Variable is missing a token."),
                     ));
-                    SymbolType::Undefined
+                    ST::Undefined
                 }
             }
-            NodeType::Literal(mut data) => {
+            NT::Literal(mut data) => {
                 let token = data.token.expect("Literal is missing a token.");
                 match token.token_type {
-                    TokenType::LiteralBool => SymbolType::Bool,
-                    TokenType::LiteralInt => SymbolType::Int,
-                    TokenType::LiteralReal => SymbolType::Real,
-                    TokenType::LiteralString => {
+                    TT::LiteralBool => ST::Bool,
+                    TT::LiteralInt => ST::Int,
+                    TT::LiteralReal => ST::Real,
+                    TT::LiteralString => {
                         data.opt_idx = Some(self.symbol_table.add_string_literal(token.value));
-                        self.tree[idx].data = NodeType::Literal(data);
-                        SymbolType::String
+                        self.tree[idx].data = NT::Literal(data);
+                        ST::String
                     }
-                    _ => SymbolType::Undefined,
+                    _ => ST::Undefined,
                 }
             }
-            NodeType::Not(data) => {
+            NT::Not(data) => {
                 let ft = self.get_expression_type(data.idx);
                 match ft {
-                    SymbolType::Bool | SymbolType::Undefined => {}
+                    ST::Bool | ST::Undefined => {}
                     _ => {
-                        self.logger.add_error(ErrorType::ExprTypeMismatch(
+                        self.logger.add_error(ET::ExprTypeMismatch(
                             data.token.expect("Array size operator is missing a token."),
-                            SymbolType::Bool,
+                            ST::Bool,
                             ft,
                         ));
                     }
                 }
-                SymbolType::Bool
+                ST::Bool
             }
-            NodeType::ArraySize(data) => {
+            NT::ArraySize(data) => {
                 let ft = self.get_expression_type(data.idx);
                 match ft {
-                    SymbolType::Bool | SymbolType::Int | SymbolType::Real | SymbolType::String => {
-                        self.logger.add_error(ErrorType::ArraySizeTypeMismatch(
+                    ST::Bool | ST::Int | ST::Real | ST::String => {
+                        self.logger.add_error(ET::ArraySizeTypeMismatch(
                             data.token.expect("Array size operator is missing a token."),
                             ft,
                         ));
                     }
                     _ => {}
                 }
-                SymbolType::Int
+                ST::Int
             }
-            NodeType::Call(data) => self
-                .call_statement(&data)
-                .unwrap_or_else(|| SymbolType::Undefined),
+            NT::Call(data) => self.call_statement(&data).unwrap_or_else(|| ST::Undefined),
             _ => {
                 assert!(false, "Unexpected node {:#?}.", self.tree[idx]);
-                SymbolType::Undefined
+                ST::Undefined
             }
         }
     }
@@ -770,7 +743,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
     // Auxiliary functions
     // ---------------------------------------------------------------------
     pub fn new(
-        tree: &'b mut LcRsTree<NodeType<'a>>,
+        tree: &'b mut LcRsTree<NT<'a>>,
         logger: &'b mut Logger<'a>,
         symbol_table: &'b mut SymbolTable<'a>,
     ) -> Self {
@@ -790,21 +763,21 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         // - there is an if-then-else clause, where both if and else returns
         fn if_returns<'a, 'b>(analyzer: &mut Analyzer<'a, 'b>, idx: usize) -> bool {
             // This function checks whether or not both the if and the else clauses return
-            if let NodeType::If(data) = analyzer.tree[idx].data {
+            if let NT::If(data) = analyzer.tree[idx].data {
                 // There must exist an else clause for both to return
                 if let Some(else_idx) = data.opt_idx {
                     // Check whether the if returns
                     if match analyzer.tree[data.idx2].data {
-                        NodeType::Return(_) => true,
-                        NodeType::Block(_) => analyzer.block_returns(data.idx2),
-                        NodeType::If(_) => if_returns(analyzer, data.idx2),
+                        NT::Return(_) => true,
+                        NT::Block(_) => analyzer.block_returns(data.idx2),
+                        NT::If(_) => if_returns(analyzer, data.idx2),
                         _ => false,
                     } {
                         // Check whether the else returns
                         match analyzer.tree[else_idx].data {
-                            NodeType::Return(_) => true,
-                            NodeType::Block(_) => analyzer.block_returns(else_idx),
-                            NodeType::If(_) => if_returns(analyzer, else_idx),
+                            NT::Return(_) => true,
+                            NT::Block(_) => analyzer.block_returns(else_idx),
+                            NT::If(_) => if_returns(analyzer, else_idx),
                             _ => false,
                         }
                     } else {
@@ -822,13 +795,13 @@ impl<'a, 'b> Analyzer<'a, 'b> {
         }
 
         let mut every_branch_returns = false;
-        if let NodeType::Block(idx) = self.tree[idx].data {
+        if let NT::Block(idx) = self.tree[idx].data {
             let mut next = Some(idx);
             while let Some(idx) = next {
                 every_branch_returns = match self.tree[idx].data {
-                    NodeType::Return(_) => true,
-                    NodeType::If(_) => if_returns(self, idx),
-                    NodeType::Block(_) => self.block_returns(idx),
+                    NT::Return(_) => true,
+                    NT::If(_) => if_returns(self, idx),
+                    NT::Block(_) => self.block_returns(idx),
                     _ => false,
                 };
 
