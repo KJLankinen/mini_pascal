@@ -347,7 +347,11 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             imports_string.push_str("\" \"offset_length\" (global $offset_length i32))");
 
             for fname in &self.symbol_table.library_functions {
-                if let Some(line) = self.imported_contents.lines().find(|l| l.contains(fname)) {
+                if let Some(line) = self
+                    .imported_contents
+                    .lines()
+                    .find(|l| l.contains("func") && l.contains("export") && l.contains(fname))
+                {
                     imports_string.push_str("\n  (import \"");
                     imports_string.push_str(self.lib_name);
                     imports_string.push_str("\" \"");
