@@ -260,35 +260,47 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         let swap_bytes = |v: i32| -> i32 {
             let mut swapped = 0;
             swapped = swapped | (0xff & v) << 24;
-            swapped = swapped | (0xff << 8 & v) << 16;
-            swapped = swapped | (0xff << 16 & v) << 8;
-            swapped = swapped | (0xff << 24 & v);
+            swapped = swapped | (0xff << 8 & v) << 8;
+            swapped = swapped | (0xff << 16 & v) >> 8;
+            swapped = swapped | (0xff << 24 & v) >> 24;
             swapped
         };
 
         let mut data_segment = String::new();
         let num_strings = self.symbol_table.borrow_string_literal_bytes().len();
         if 0 < num_strings {
+            // Get the pointer to the first free byte so we may write the static string data to that
+            // address. It is (should be) stored in the library after the magic word 'RUST_PARSE_DONT_REMOVE'
+            let magic_word = "RUST_PARSE_DONT_REMOVE";
+            for line in self.imported_contents.lines() {
+                if line.contains(magic_word) {
+                    self.next_free_byte = line.split(magic_word).collect::<Vec<&str>>()[1]
+                        .parse::<usize>()
+                        .expect("This should be a valid number.");
+                }
+            }
+
             data_segment.push_str("(data (i32.const ");
             data_segment.push_str(self.next_free_byte.to_string().as_str());
             data_segment.push_str(") \"");
 
-            // Write the "start" and "len" numbers as bytes in little endian order.
+            // Write pdata (= "start"), len (= "len"), capacity (= len) and stride (= 1) as bytes in little endian order.
             // "start" is the actual, raw address in linear memory where the string data recides.
             for (start, len) in self.symbol_table.borrow_string_literal_bytes() {
-                format!(
-                    "{:08X}",
-                    swap_bytes((*start + self.next_free_byte + 8 * num_strings) as i32)
-                )
-                .chars()
-                .chain(format!("{:08X}", swap_bytes(*len as i32)).chars())
-                .enumerate()
-                .for_each(|(i, c)| {
-                    if 0 == i % 2 {
-                        data_segment.push_str("\\");
-                    }
-                    data_segment.push(c);
-                });
+                let start = (*start + self.next_free_byte + 16 * num_strings) as i32;
+                println!("{}, {:08X}, {:08X}", start, swap_bytes(start), start);
+                format!("{:08X}", swap_bytes(start))
+                    .chars()
+                    .chain(format!("{:08X}", swap_bytes(*len as i32)).chars())
+                    .chain(format!("{:08X}", swap_bytes(*len as i32)).chars())
+                    .chain(format!("{:08X}", swap_bytes(1 as i32)).chars())
+                    .enumerate()
+                    .for_each(|(i, c)| {
+                        if 0 == i % 2 {
+                            data_segment.push_str("\\");
+                        }
+                        data_segment.push(c);
+                    });
             }
 
             // Change " to \" inside the literals
@@ -374,7 +386,6 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         imported_contents: &'b str,
         lib_name: &'a str,
     ) -> Self {
-        // TODO: get next_free_byte from somewhere
         Wasmer {
             instructions: instructions,
             wasm_string: wasm_string,

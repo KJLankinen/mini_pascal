@@ -63,9 +63,13 @@
   (data (i32.const 2156) "\00")             ;; stride: 1
 
   ;; 2160-2163 dynamic mem
-  (data (i32.const 2160) "\00\10")          ;; points to next free byte, arbitrarily set it to 4096
+  ;; RUST_PARSE_DONT_REMOVE4096RUST_PARSE_DONT_REMOVE
+  ;; this number is for getting the pointer to Rust,
+  ;; match it to the value of the pointer below.
+  ;; 0x1000 = 4096
+  (data (i32.const 2160) "\00\10")          
 
-  ;; 2164-2171 pointer to first pointer to static string, and number of pointers
+  ;; 2164-2171 static string pointers & number of strings
   (data (i32.const 2164) "\00")             ;; first pointer to pointer, initialize to zero
   (data (i32.const 2168) "\00")             ;; num pointers, initialize to zero
   
