@@ -9,18 +9,16 @@ begin
 
     writeln(s, t, u, v);
     writeln(s + t + u + v);
+    writeln(s);
+    writeln(t);
+    writeln(u);
+    writeln(v);
     assert(s > t);
-    {*
-    writeln(s - t);
-    writeln(t / u);
-    writeln(u * v);
-    writeln(s % t);
-    *}
     s := t;
     u := v;
-    writeln(s = t, s = u);
-    writeln(u <> v, u <> s);
-    writeln(t >= u, s >= v);
+    writeln(s = t, " ", s = u);
+    writeln(u <> v, " ", u <> s);
+    writeln(t >= u, " ", s >= v);
     writeln(u > v);
     writeln(t <= u);
     writeln(u < v);

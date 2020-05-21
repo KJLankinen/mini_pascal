@@ -723,15 +723,28 @@
     ;; returns the address
     (local $start i32)
     (local $temp i32)
+    (block
+      (block
+        global.get $dyn_mem_ptr
+        i32.load
+        i32.const 16
+        i32.rem_u
+        local.tee $temp
+        i32.eqz
+        br_if 0
+        i32.const 16
+        local.get $temp
+        i32.sub
+        global.get $dyn_mem_ptr
+        i32.load
+        i32.add
+        local.set $start
+        br 1)
+      global.get $dyn_mem_ptr
+      i32.load
+      local.set $start)
     global.get $dyn_mem_ptr
-    global.get $dyn_mem_ptr
-    i32.load
-    local.tee $temp
-    i32.const 16
-    i32.rem_u
-    local.get $temp
-    i32.add
-    local.tee $start
+    local.get $start
     local.get $n_bytes
     i32.add
     i32.store
@@ -815,12 +828,12 @@
     call $array_len
     i32.store
 
-    local.get $dst_buffer
-    global.get $offset_capacity
-    i32.add
-    local.get $src_buffer
-    call $array_capacity
-    i32.store
+    ;;local.get $dst_buffer
+    ;;global.get $offset_capacity
+    ;;i32.add
+    ;;local.get $src_buffer
+    ;;call $array_capacity
+    ;;i32.store
 
     local.get $dst_buffer
     global.get $offset_stride

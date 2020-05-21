@@ -817,9 +817,9 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn emit_set_local_pre_expr(&mut self, data: &VariableData<'a>) {
+        let local_idx = self.get_variable_local_idx(&data);
         match data.st {
             ST::Bool | ST::Int | ST::Real => {
-                let local_idx = self.get_variable_local_idx(&data);
                 if let Some(expr_idx) = data.array_idx {
                     emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
                     self.expression(expr_idx);
@@ -835,8 +835,10 @@ impl<'a, 'b> Stacker<'a, 'b> {
             | ST::ArrayBool(_)
             | ST::ArrayInt(_)
             | ST::ArrayReal(_)
-            | ST::ArrayString(_)
-            | ST::Undefined => {}
+            | ST::ArrayString(_) => {
+                emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
+            }
+            ST::Undefined => {}
         }
     }
 
