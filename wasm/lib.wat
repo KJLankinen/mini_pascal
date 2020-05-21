@@ -589,26 +589,32 @@
   (func $string_concatenate (export "string_concatenate") (param $buffer1 i32) (param $buffer2 i32) (result i32)
     ;; Takes two strings and adds the contents of the second
     ;; to the first, or as many bytes as fit within capacity.
-    ;; This function does not allocate.
-    ;; Returns $buffer1
- 
-    ;; get address of length on stack for the final store op
+    ;; This function allocates a new string and returns its address.
+    (local $new i32)
+    ;; allocate new array
+    ;; copy buffer1 to it
+    ;; leave the address of new's length on stack
+    i32.const 1
+    i32.const 0
+    call $new_array
+    local.tee $new
     local.get $buffer1
+    call $copy_array
     global.get $offset_length
-    i32.add   
+    i32.add 
 
     ;; src = $buffer2
     local.get $buffer2
     i32.load
 
-    ;; dst = $buffer1 + str1.len (in bytes)
-    local.get $buffer1
+    ;; dst = $new + new.len (in bytes)
+    local.get $new
     call $array_end
 
-    ;; str1.capacity - str1.len
-    local.get $buffer1
+    ;; new.capacity - new.len
+    local.get $new
     call $array_capacity
-    local.get $buffer1
+    local.get $new
     call $array_len
     i32.sub
 
@@ -622,12 +628,12 @@
     ;; copy n bytes from $buffer2 to $buffer1 + len
     ;; returns num bytes copied
     call $copy
-    local.get $buffer1
+    local.get $new
     call $array_len
     i32.add
     i32.store
 
-    local.get $buffer1)
+    local.get $new)
 
   ;; -----------------------------------------------------------------
   ;; Array
