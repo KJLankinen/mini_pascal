@@ -57,6 +57,9 @@
   ;; 2144-2151 temp str
   (data (i32.const 2144) "\00")             ;; pointer to data: 0
   (data (i32.const 2148) "\00")             ;; length: 0
+
+  ;; 2152-2155 dynamic mem
+  (data (i32.const 2152) "\00\10")          ;; points to next free byte, arbitrarily set it to 4096
   
   ;; use these offsets when saving byte arrays
   (global $offset_length        i32 (i32.const 4))
@@ -72,46 +75,21 @@
   (global $newline_buffer       i32 (i32.const 2112))
   (global $prompt_buffer        i32 (i32.const 2128))
   (global $temp_str             i32 (i32.const 2144))
+  (global $dyn_mem_ptr          i32 (i32.const 2152))
 
   (func (export "_start")
-    (local $temp i32)
-    call $read_input
-    ;; set temp_str length to stdin length
-    global.get $temp_str
-    global.get $offset_length
-    i32.add
-    global.get $stdin_buffer
-    call $array_len
-    i32.store
-
-    ;; set tmp_str to start from first nonwhitespace from stdin
-    global.get $temp_str
-    global.get $stdin_buffer
-    call $find_nonwhitespace
-    local.tee $temp
-    global.get $stdin_buffer
-    i32.load
-    i32.add
-    i32.store
-    ;; reduce the length of temp_str by the index of the first nonwhitespace
-    global.get $temp_str
-    global.get $offset_length
-    i32.add
-    global.get $temp_str
-    call $array_len
-    local.get $temp
-    i32.sub
-    i32.store
-    ;; find first whitespace from the rest of the stdin string and reset temp_str length
-    global.get $temp_str
-    global.get $offset_length
-    i32.add
-    global.get $temp_str
-    call $find_whitespace
-    i32.store
-    ;; temp_str should be the string sandwiched between whitespaces
-    global.get $temp_str
-    call $writeln)
+    i32.const 1024
+    call $allocate
+    call $write_i32
+    call $write_newline
+    i32.const 555
+    call $allocate
+    call $write_i32
+    call $write_newline
+    i32.const 5
+    call $allocate
+    call $write_i32
+    call $write_newline)
   
   ;; -----------------------------------------------------------------
   ;; Conversions
@@ -443,11 +421,53 @@
     f32.const 0)
   
   (func $string_from_input (export "string_from_input") (result i32)
-    ;; TODO
     ;; creates a new string (call new_array)
     ;; adds the next whitespace delimited value from stdin buffer to that string
     ;; returns the address of the string
-    i32.const 0)
+    (local $buffer i32)
+    call $set_temp_str_to_first_token_from_input 
+    i32.const 1 ;; stride 1 for string
+    call $new_array
+    local.tee $buffer
+    global.get $temp_str
+    call $copy_array
+    drop
+    local.get $buffer)
+
+  (func $set_temp_str_to_first_token_from_input (export "set_temp_str_to_first_token_from_input ")
+    (local $temp i32)
+    ;; set temp_str length to stdin length
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
+    global.get $stdin_buffer
+    call $array_len
+    i32.store
+    ;; set tmp_str to start from first nonwhitespace from stdin
+    global.get $temp_str
+    global.get $stdin_buffer
+    call $find_nonwhitespace
+    local.tee $temp
+    global.get $stdin_buffer
+    i32.load
+    i32.add
+    i32.store
+    ;; reduce the length of temp_str by the index of the first nonwhitespace
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
+    global.get $temp_str
+    call $array_len
+    local.get $temp
+    i32.sub
+    i32.store
+    ;; find first whitespace from the rest of the stdin string and reset temp_str length
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
+    global.get $temp_str
+    call $find_whitespace
+    i32.store)
   
   ;; -----------------------------------------------------------------
   ;; String
@@ -633,10 +653,24 @@
     f32.store)
 
   (func $allocate (export "allocate") (param $n_bytes i32) (result i32)
-    ;; TODO
     ;; allocates n_bytes from linear memory
-    ;; and returns the address
-    i32.const 0)
+    ;; new allocation always starts from a 16 byte aligned address
+    ;; returns the address
+    (local $start i32)
+    (local $temp i32)
+    global.get $dyn_mem_ptr
+    global.get $dyn_mem_ptr
+    i32.load
+    local.tee $temp
+    i32.const 16
+    i32.rem_u
+    local.get $temp
+    i32.add
+    local.tee $start
+    local.get $n_bytes
+    i32.add
+    i32.store
+    local.get $start)
 
   (func $check_bounds (export "check_bounds") (param $buffer i32) (param $idx i32) (param $str_idx i32) (result i32)
     ;; checks that the length of array at $buffer >= $idx
@@ -667,44 +701,74 @@
     local.get $idx)
 
   (func $new_array (export "new_array") (param $stride i32) (result i32)
-    ;; TODO
-    ;; allocates space for four i32 values: pdata, length, capacity, stride
-    ;; allocates 1024 bytes of memory at "pdata" (use "allocate")
+    ;; allocates 1024 consecutive bytes
+    ;; first 16 bytes hold four i32 values: pdata, length, capacity, stride
+    ;; sets pdata to point to the addr + 16 address, set length to 0,
+    ;; stride to stride and capacity to 1008
     ;; returns a pointer to the first of the four consecutive i32 values
-    i32.const 0)
+    (local $buffer i32)
+    ;; allocate
+    i32.const 1024
+    call $allocate
+    ;; set pdata
+    local.tee $buffer
+    local.get $buffer
+    i32.const 16
+    i32.add
+    i32.store
+    ;; set length to 0
+    local.get $buffer
+    global.get $offset_length
+    i32.add
+    i32.const 0
+    i32.store
+    ;; set capacity to 1008 (= 1024 - 16)
+    local.get $buffer
+    global.get $offset_capacity
+    i32.add
+    i32.const 1008
+    i32.store
+    ;; set stride to stride
+    local.get $buffer
+    global.get $offset_stride
+    i32.add
+    local.get $stride
+    i32.store
 
-  (func $copy_array (export "copy_array") (param $dst i32) (param $src i32) (result i32)
+    local.get $buffer)
+
+  (func $copy_array (export "copy_array") (param $dst_buffer i32) (param $src_buffer i32) (result i32)
     ;; copies values of length and capacity from src to dst
     ;; copies bytes from src pdata to dst pdata
     ;; returns the value dst
-    local.get $dst
+    local.get $dst_buffer
     global.get $offset_length
     i32.add
-    local.get $src
+    local.get $src_buffer
     call $array_len
     i32.store
 
-    local.get $dst
+    local.get $dst_buffer
     global.get $offset_capacity
     i32.add
-    local.get $src
+    local.get $src_buffer
     call $array_capacity
     i32.store
 
-    local.get $dst
+    local.get $dst_buffer
     global.get $offset_stride
     i32.add
-    local.get $src
+    local.get $src_buffer
     call $array_stride
     i32.store
 
-    local.get $src
-    local.get $dst
-    local.get $src
+    local.get $src_buffer
+    local.get $dst_buffer
+    local.get $src_buffer
     call $array_len
     call $copy
     drop
-    local.get $dst)
+    local.get $dst_buffer)
  
   ;; -----------------------------------------------------------------
   ;; Misc
