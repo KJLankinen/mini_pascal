@@ -1,5 +1,0 @@
-- testaaminen, eli
-    - useiden eri pascal ohjelmien kirjoittaminen
-    - automaattisten testien kirjoittaminen
-
-- predefined identifiers miettiminen ja lisääminen

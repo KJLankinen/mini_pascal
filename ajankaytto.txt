@@ -19,4 +19,4 @@
 18.5.	& 8,5h      & implementing stacker
 19.5.	& 12h       & implementing wasmer and webassembly lib
 20.5.	& 9h        & implementing webassembly lib and some code base refactoring
-21.5.	& 10--        & 
+21.5.	& 16h       & implementing webassembly lib, testing, fixing bugs
