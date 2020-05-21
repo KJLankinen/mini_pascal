@@ -18,7 +18,7 @@ pub fn link(source_filename: &str, lib_filename: &str) -> Result<(), Box<dyn Err
     // Instantiate our first module which only uses WASI, then register that
     // instance with the linker since the next linking will use it.
     let linking2 = linker.instantiate(&linking2)?;
-    linker.instance("linking2", &linking2)?;
+    linker.instance("lib", &linking2)?;
 
     // And with that we can perform the final link and the execute the module.
     let linking1 = linker.instantiate(&linking1)?;

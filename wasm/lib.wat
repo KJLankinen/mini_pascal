@@ -2,11 +2,7 @@
   (import "wasi_snapshot_preview1" "fd_write" (func $fd_write (param i32 i32 i32 i32) (result i32)))
   (import "wasi_snapshot_preview1" "fd_read" (func $fd_read (param i32 i32 i32 i32) (result i32)))
   
-  (memory 1)
-  (export "memory" (memory 0))
-  (export "dyn_mem_ptr" (global $dyn_mem_ptr))
-  (export "static_str_ptrs" (global $static_str_ptrs))
-  (export "offset_length" (global $offset_length))
+  (memory (export "memory") 1)
 
   ;; -----------------------------------------------------------------
   ;; NOTE!
@@ -74,34 +70,20 @@
   (data (i32.const 2168) "\00")             ;; num pointers, initialize to zero
   
   ;; use these offsets when saving byte arrays
-  (global $offset_length        i32 (i32.const 4))
-  (global $offset_capacity      i32 (i32.const 8))
-  (global $offset_stride        i32 (i32.const 12))
-  
+  (global $offset_length    (export "offset_length")    i32 (i32.const 4))
+  (global $offset_capacity                              i32 (i32.const 8))
+  (global $offset_stride                                i32 (i32.const 12))
   ;; locations of some buffers
-  (global $stdin_buffer         i32 (i32.const 1024))
-  (global $i32_dump             i32 (i32.const 2048))
-  (global $i32_stdout_buffer    i32 (i32.const 2052))
-  (global $true_buffer          i32 (i32.const 2080))
-  (global $false_buffer         i32 (i32.const 2096))
-  (global $newline_buffer       i32 (i32.const 2112))
-  (global $prompt_buffer        i32 (i32.const 2128))
-  (global $temp_str             i32 (i32.const 2144))
-  (global $dyn_mem_ptr          i32 (i32.const 2160))
-  (global $static_str_ptrs      i32 (i32.const 2164))
-
-  (func (export "_start")
-    call $read_input
-    call $string_from_input
-    call $write_string
-    call $write_newline
-    call $i32_from_input
-    call $write_i32
-    call $write_newline
-    call $bool_from_input
-    call $write_bool
-    call $write_newline
-    )
+  (global $stdin_buffer                                 i32 (i32.const 1024))
+  (global $i32_dump                                     i32 (i32.const 2048))
+  (global $i32_stdout_buffer                            i32 (i32.const 2052))
+  (global $true_buffer                                  i32 (i32.const 2080))
+  (global $false_buffer                                 i32 (i32.const 2096))
+  (global $newline_buffer                               i32 (i32.const 2112))
+  (global $prompt_buffer                                i32 (i32.const 2128))
+  (global $temp_str                                     i32 (i32.const 2144))
+  (global $dyn_mem_ptr      (export "dyn_mem_ptr")      i32 (i32.const 2160))
+  (global $static_str_ptrs  (export "static_str_ptrs")  i32 (i32.const 2164))
   
   ;; -----------------------------------------------------------------
   ;; Conversions
@@ -557,7 +539,8 @@
     i32.const 16 ;; static strings save 16 bytes (4 x i32) of data
     local.get $idx
     i32.mul
-    global.get $static_str_ptrs 
+    global.get $static_str_ptrs
+    i32.load
     i32.add)
 
   (func $string_eq (export "string_eq") (param $buffer1 i32) (param $buffer2 i32) (result i32)

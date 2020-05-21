@@ -62,25 +62,13 @@ pub fn run() {
                                     _ => None,
                                 };
 
-                                let lib_name = if let Some(idx) = lib_filename.rfind('/') {
-                                    &lib_filename[idx + 1..]
-                                } else {
-                                    &lib_filename
-                                };
-
-                                let lib_name = if let Some(idx) = lib_name.rfind('.') {
-                                    &lib_name[..idx]
-                                } else {
-                                    &lib_name
-                                };
-
                                 analyze(
                                     &source_str,
                                     &filename,
                                     &out_file,
                                     ast_file.as_ref().map(|s| &**s),
                                     &lib_contents,
-                                    lib_name,
+                                    &lib_filename,
                                 );
                             }
                             Err(err) => {
@@ -115,7 +103,7 @@ fn analyze(
     out_file: &str,
     ast_file: Option<&str>,
     lib_contents: &str,
-    lib_name: &str,
+    lib_filename: &str,
 ) {
     let mut logger = Logger::new(&source_str, filename);
     let mut tree = LcRsTree::new();
@@ -139,6 +127,19 @@ fn analyze(
         Stacker::new(&tree, &mut symbol_table, &mut instructions).stack_ir();
     }
 
+    // Cut the stem of the library filename
+    let lib_name = if let Some(idx) = lib_filename.rfind('/') {
+        &lib_filename[idx + 1..]
+    } else {
+        &lib_filename
+    };
+
+    let lib_name = if let Some(idx) = lib_name.rfind('.') {
+        &lib_name[..idx]
+    } else {
+        &lib_name
+    };
+
     let mut wasm_string = String::new();
     if logger.errors_encountered() {
         logger.print_errors();
@@ -158,6 +159,14 @@ fn analyze(
         Ok(_) => {}
         Err(err) => {
             eprintln!("Error when writing compiled program to file: {}", err);
+            process::exit(1);
+        }
+    }
+
+    match linker::link(out_file, lib_filename) {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("Error when executing the compiled program: {}", err);
             process::exit(1);
         }
     }
