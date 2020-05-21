@@ -4,74 +4,75 @@
   
   (memory 1)
   (export "memory" (memory 0))
-  
-  ;; 0-3 is reserved for a dump of size i32
-  (data (i32.const 0) "\00\00\00\00")     ;; init with 0x00000000
-  
-  ;; 4-31 is reserved for i32 stdout buffer
-  (data (i32.const 4) "\14")              ;; pointer to data: 20
-  (data (i32.const 8) "\00")              ;; length: 0
-  (data (i32.const 12) "\0C")             ;; capacity: 12 bytes
-  (data (i32.const 16) "\01")             ;; stride: 1 byte
-  (data (i32.const 20) "\00")             ;; data
-  
-  ;; 32-51 true
-  (data (i32.const 32) "\30")             ;; pointer to data: 44
-  (data (i32.const 36) "\04")             ;; length: 4
-  (data (i32.const 40) "\04")             ;; capacity: 4 bytes
-  (data (i32.const 44) "\01")             ;; stride: 1
-  (data (i32.const 48) "true")            ;; data
-  
-  ;; 52-75 false
-  (data (i32.const 52) "\44")             ;; pointer to data: 68
-  (data (i32.const 56) "\05")             ;; length: 5
-  (data (i32.const 60) "\08")             ;; capacity: 8 bytes
-  (data (i32.const 64) "\01")             ;; stride: 1
-  (data (i32.const 68) "false\00\00\00")  ;; data, pad with 3 bytes
-  
-  ;; store newline for "writeln"
-  ;; can store more static data
-  (data (i32.const 76) "\5C")             ;; pointer to data: 92
-  (data (i32.const 80) "\01")             ;; length: 1
-  (data (i32.const 84) "\04")             ;; capacity: 4
-  (data (i32.const 88) "\01")             ;; stride: 1
-  (data (i32.const 92) "\n\00\00\00")     ;; data
 
-  ;; testing
-  (data (i32.const 96) "\70") ;; ptr 112
-  (data (i32.const 100) "\0B") ;; len 11
-  (data (i32.const 104) "\14") ;; capacity 20 = 14
-  (data (i32.const 108) "\01") ;; stride 1 
-  (data (i32.const 112) "voi turskan")
+  ;; -----------------------------------------------------------------
+  ;; NOTE!
+  ;; Byte order in data section is little endian
+  ;; ----------------------------------------------------------------- 
 
-  ;; perkeet
-  (data (i32.const 132) "\94") ;; ptr 148
-  (data (i32.const 136) "\08") ;; len 8
-  (data (i32.const 140) "\08") ;; capacity 8
-  (data (i32.const 144) "\01") ;; stride 1 
-  (data (i32.const 148) " perkeet")
+  ;; 0-1023 is reserved for static data
+  (data (i32.const 0) "\n> truefalse")
+
+  ;; 1024-2047 is reserved for stdin buffer
+  (data (i32.const 1024) "\10\04")          ;; pointer to data: 1040
+  (data (i32.const 1028) "\00")             ;; length: 0
+  (data (i32.const 1032) "\F0\03")          ;; capacity: 1008 bytes
+  (data (i32.const 1036) "\01")             ;; stride: 1 byte
+  (data (i32.const 1040) "\00")             ;; data
+
+  ;; 2048-2051 is reserved for a dump of size i32
+  (data (i32.const 2048) "\00\00\00\00")    ;; init with 0x00000000
   
-  (global $i32_dump i32 (i32.const 0))
-  (global $newline_buffer i32 (i32.const 76))
+  ;; 2052-2079 is reserved for i32 stdout buffer
+  (data (i32.const 2052) "\14\08")          ;; pointer to data: 0x0814, 2068
+  (data (i32.const 2056) "\00")             ;; length: 0
+  (data (i32.const 2060) "\0C")             ;; capacity: 12 bytes
+  (data (i32.const 2064) "\01")             ;; stride: 1 byte
+  (data (i32.const 2068) "\00")             ;; data
+  
+  ;; 2080-2095 true
+  (data (i32.const 2080) "\03")             ;; pointer to data: 3
+  (data (i32.const 2084) "\04")             ;; length: 4
+  (data (i32.const 2088) "\04")             ;; capacity: 4 bytes
+  (data (i32.const 2092) "\01")             ;; stride: 1
+  
+  ;; 2096-2111 false
+  (data (i32.const 2096) "\07")             ;; pointer to data: 7
+  (data (i32.const 2100) "\05")             ;; length: 5
+  (data (i32.const 2104) "\05")             ;; capacity: 5 bytes
+  (data (i32.const 2108) "\01")             ;; stride: 1
+  
+  ;; 2112-2127 '\n'
+  (data (i32.const 2112) "\00")             ;; pointer to data: 0
+  (data (i32.const 2116) "\01")             ;; length: 1
+  (data (i32.const 2120) "\01")             ;; capacity: 1 bytes
+  (data (i32.const 2124) "\01")             ;; stride: 1
+  
+  ;; 2128-2143 "> "
+  (data (i32.const 2128) "\01")             ;; pointer to data: 1
+  (data (i32.const 2132) "\02")             ;; length: 2
+  (data (i32.const 2136) "\02")             ;; capacity: 2 bytes
+  (data (i32.const 2140) "\01")             ;; stride: 1
   
   ;; use these offsets when saving byte arrays
   (global $offset_length i32 (i32.const 4))
   (global $offset_capacity i32 (i32.const 8))
   (global $offset_stride i32 (i32.const 12))
   
-  ;; locations of the buffers for printing values
-  (global $i32_stdout_buffer i32 (i32.const 4))
-  (global $true_buffer i32 (i32.const 32))
-  (global $false_buffer i32 (i32.const 52))
-
-  ;; testing
-  (global $turska i32 (i32.const 96))
-  (global $perkeet i32 (i32.const 132))
+  ;; locations of some buffers
+  (global $stdin_buffer i32 (i32.const 1024))
+  (global $i32_dump i32 (i32.const 2048))
+  (global $i32_stdout_buffer i32 (i32.const 2052))
+  (global $true_buffer i32 (i32.const 2080))
+  (global $false_buffer i32 (i32.const 2096))
+  (global $newline_buffer i32 (i32.const 2112))
+  (global $prompt_buffer i32 (i32.const 2128))
 
   (func (export "_start")
-    global.get $turska
-    global.get $perkeet
-    call $string_less
+    call $read_input
+    global.get $stdin_buffer
+    global.get $true_buffer
+    call $string_less_eq
     call $write_bool
     call $write_newline)
   
@@ -82,7 +83,7 @@
     ;; convert an array of bytes to a boolean value, represented as i32
     ;; assumptions:
     ;; * Only 0 is regarded as false, all other numbers are true, even negative ones
-    ;; * Shis function does not try to handle text based values, i.e. it does not convert
+    ;; * This function does not try to handle text based values, i.e. it does not convert
     ;;   "true" or "false" strings to anything. Since it uses atoi, all non-numerical
     ;;   data will lead to garbage values, which in this case probably always yield true,
     ;;   since 0 is the only false value as per above.
@@ -300,10 +301,10 @@
   ;; I/O
   ;; -----------------------------------------------------------------
   (func $write (export "write") (param $pmem i32)
-    ;; write an array of bytes starting at given loc to stdin followed by a newline character
-    ;; assumptions:
-    ;; * The pointer should point to consecutive 8 bytes, that contain
-    ;;   the pointer to data and number of bytes
+    ;; write an array of bytes starting at given loc to stdout
+    ;; $pmem should point to a location of two consecutive i32 values,
+    ;; the first of which points to the location of the data
+    ;; and the second is the length of the data in bytes
     i32.const 1
     local.get $pmem
     i32.const 1
@@ -351,9 +352,42 @@
     )
 
   (func $read_input (export "read_input")
-    ;; TODO
-    ;; reads the contents of stdin to the stdin array (pretty much fd_read)
-    )
+    ;; reads the contents of stdin to the stdin array
+    ;; the length of the buffer should be the maximum capacity always at start,
+    ;; since that determines how many bytes are read from stdin
+    ;; it is overwritten by the fd_read with the actual number of bytes read
+    ;; '\n' is appended at the end, so reduce length by 1
+    global.get $prompt_buffer
+    call $write
+    global.get $stdin_buffer
+    global.get $offset_length
+    i32.add
+    global.get $stdin_buffer
+    call $array_capacity
+    i32.store
+
+    ;; which buffer (in = 0, out = 1, err = 2)
+    i32.const 0
+    ;; where to read
+    global.get $stdin_buffer
+    ;; how many strings (keep as 1 always)
+    i32.const 1
+    ;; where to store the num of bytes read
+    global.get $stdin_buffer
+    global.get $offset_length
+    i32.add
+    ;; read
+    call $fd_read
+    drop
+    ;; reduce length by 1 (drop the trailing '\n')
+    global.get $stdin_buffer
+    global.get $offset_length
+    i32.add
+    global.get $stdin_buffer
+    call $array_len
+    i32.const 1
+    i32.sub
+    i32.store)
   
   (func $bool_from_input (export "bool_from_input") (result i32)
     ;; TODO
@@ -753,6 +787,10 @@
     i32.const 0xfffffffe
     i32.and
     i32.eqz)
+
+  (func $is_whitespace (export "is_whitespace") (param $addr i32) (result i32)
+    local.get $addr
+    i32.load8)
 
   (func $copy (export "copy") (param $src i32) (param $dst i32) (param $n_bytes i32) (result i32)
     ;; returns the number of bytes copied
