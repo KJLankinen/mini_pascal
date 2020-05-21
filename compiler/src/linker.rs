@@ -1,8 +1,8 @@
-use anyhow::Result;
+use std::error::Error;
 use wasmtime::*;
 use wasmtime_wasi::{Wasi, WasiCtx};
 
-pub fn link(source_filename: &str, lib_filename: &str) -> Result<()> {
+pub fn link(source_filename: &str, lib_filename: &str) -> Result<(), Box<dyn Error>> {
     let store = Store::default();
 
     // First set up our linker which is going to be linking modules together. We

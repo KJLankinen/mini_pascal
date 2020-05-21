@@ -23,7 +23,7 @@ pub fn run() {
     let filetype = ".mpc";
 
     match args.len() {
-        0...2 => {
+        0..=2 => {
             eprintln!(
                 "Usage:\n\"cargo run filename lib_filename (--debug)\", where\t
             filename = the program to compile (it must end with {})\t
@@ -35,7 +35,7 @@ pub fn run() {
             );
             process::exit(1);
         }
-        3...4 => {
+        3..=4 => {
             let filename = &args[1];
             let lib_filename = &args[2];
             if filename.ends_with(filetype) {
