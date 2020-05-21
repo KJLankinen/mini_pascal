@@ -1,0 +1,18 @@
+program story;
+
+procedure proc(var str1: string, var str2: string);
+begin
+    writeln("String 1: ", str1);
+    writeln("String 2: ", str2);
+    writeln("String 1 + String 2: ", str1 + str2);
+    str1 := str1 + str2 + "and a satisfying ending.";
+end;
+
+begin
+    var s, t: string;
+    s := "A story needs an inciting incident, ";
+    t := "some conflict and excitement, ";
+    proc(s, t);
+
+    writeln("In conclusion, ", s);
+end.

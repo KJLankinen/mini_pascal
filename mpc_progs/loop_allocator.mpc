@@ -1,0 +1,14 @@
+program loop_allocator;
+begin
+    var i, n: integer;
+    n := 60;
+    {*
+    * n := 61 will cause the program to run out of memory and crash
+    *}
+    while i < n do
+    begin
+        var arr: array[251] of integer;
+        writeln(i);
+        i := i + 1;
+    end;
+end.

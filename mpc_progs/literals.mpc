@@ -4,7 +4,7 @@ begin
     var a, b, c: Boolean;
     var i, j, k: integer;
     var p, q, r: real;
-    {*var s, t, u: string;*}
+    var s, t, u: string;
 
     begin
         var a, b, e: integer;
@@ -16,6 +16,8 @@ begin
             i := false;
             j := true;
             k := false;
+            writeln(i, j, k);
+            writeln(a, ", ", b, ", ", c);
         end;
 
         begin
@@ -23,6 +25,7 @@ begin
             x := 1;
             y := 1;
             z := 1;
+            s := "Foobar bar foo."
         end;
     end;
 
@@ -40,8 +43,8 @@ begin
     r := 0.1000001;
     r := 3.1415;
 
-    {*
     s := "Hello!";
     s := "Ciao!";
-    s := "Moi!"; *}
+    s := "Moi!";
+    writeln(s);
 end.

@@ -68,6 +68,19 @@
   ;; 2164-2171 static string pointers & number of strings
   (data (i32.const 2164) "\00")             ;; first pointer to pointer, initialize to zero
   (data (i32.const 2168) "\00")             ;; num pointers, initialize to zero
+
+  ;; 2172-2203 is reserved for f32 stdout buffer
+  (data (i32.const 2172) "\8C\08")          ;; pointer to data: 0x088C 2188
+  (data (i32.const 2176) "\00")             ;; length: 0
+  (data (i32.const 2180) "\10")             ;; capacity: 16 bytes
+  (data (i32.const 2184) "\01")             ;; stride: 1 byte
+  (data (i32.const 2188) "\00")             ;; data
+
+  ;; 2204-2219 temp str2
+  (data (i32.const 2204) "\00")             ;; pointer to data: 0
+  (data (i32.const 2208) "\00")             ;; length: 0
+  (data (i32.const 2212) "\00")             ;; capacity: 0
+  (data (i32.const 2216) "\00")             ;; stride: 0
   
   ;; use these offsets when saving byte arrays
   (global $offset_length    (export "offset_length")    i32 (i32.const 4))
@@ -84,7 +97,9 @@
   (global $temp_str                                     i32 (i32.const 2144))
   (global $dyn_mem_ptr      (export "dyn_mem_ptr")      i32 (i32.const 2160))
   (global $static_str_ptrs  (export "static_str_ptrs")  i32 (i32.const 2164))
-  
+  (global $f32_stdout_buffer                            i32 (i32.const 2172))
+  (global $temp_str2                                    i32 (i32.const 2204))
+
   ;; -----------------------------------------------------------------
   ;; Conversions
   ;; -----------------------------------------------------------------
@@ -102,8 +117,81 @@
     i32.eqz)
 
   (func $atof (param $buffer i32) (result f32)
-    ;; TODO
-    f32.const 0)
+    (local $dloc i32)
+    (local $v f32)
+    (local $temp f32)
+    (block
+      (block
+        local.get $buffer
+        call $find_decimal_point
+        local.tee $dloc
+        local.get $buffer
+        call $array_len
+        i32.eq
+        br_if 0
+        global.get $temp_str2
+        local.get $buffer
+        i32.load
+        i32.store
+        global.get $temp_str2
+        global.get $offset_length
+        i32.add
+        local.get $dloc
+        i32.store
+        global.get $temp_str2
+        call $atoi
+        f32.convert_i32_s
+        local.set $v
+        global.get $temp_str2
+        global.get $offset_length
+        i32.add
+        global.get $temp_str2
+        global.get $temp_str2
+        call $array_end
+        i32.const 1
+        i32.add
+        i32.store
+        local.get $buffer
+        call $array_end
+        global.get $temp_str2
+        i32.load
+        i32.sub
+        i32.store
+        global.get $temp_str2
+        call $atoi
+        f32.convert_i32_s
+        local.set $temp
+        (block
+          (loop
+            local.get $temp
+            f32.const 1.0
+            f32.lt
+            br_if 1
+            local.get $temp
+            f32.const 10.0
+            f32.div
+            local.set $temp
+            br 0))
+        (block
+          local.get $v
+          f32.const 0.0
+          f32.lt
+          i32.eqz
+          br_if 0
+          f32.const 0.0
+          local.get $temp
+          f32.sub
+          local.set $temp)
+        local.get $v
+        local.get $temp
+        f32.add
+        local.set $v
+        br 1)
+      local.get $buffer
+      call $atoi
+      f32.convert_i32_s
+      local.set $v)
+    local.get $v)
  
   (func $atoi (param $buffer i32) (result i32)
     ;; convert array of bytes to an i32 value
@@ -204,8 +292,75 @@
     i32.mul)
 
   (func $ftoa (param $v f32) (param $buffer i32)
-    ;; TODO
-    )
+    (local $integer i32)
+    (local $temp i32)
+    (local $add_minus i32)
+    local.get $v
+    i32.trunc_f32_s
+    local.tee $integer
+    i32.eqz
+    f32.const 0
+    local.get $v
+    f32.gt
+    i32.and
+    local.set $add_minus
+    local.get $v
+    local.get $integer
+    f32.convert_i32_s
+    f32.sub
+    f32.abs
+    f32.const 10000
+    f32.mul
+    f32.const 10000
+    f32.add
+    i32.trunc_f32_s
+    i32.const 1
+    i32.const 0
+    call $new_array
+    local.tee $temp
+    call $itoa
+    local.get $temp
+    call $array_end
+    i32.const 1
+    i32.sub
+    i32.const 0x2E
+    i32.store8
+    local.get $temp
+    global.get $offset_length
+    i32.add
+    local.get $temp
+    call $array_len
+    i32.const 1
+    i32.add
+    i32.store
+    local.get $integer
+    local.get $buffer
+    call $itoa
+    (block
+      local.get $add_minus
+      i32.eqz
+      br_if 0
+      local.get $buffer
+      call $array_end
+      i32.const 0x2D
+      i32.store8
+      local.get $buffer
+      global.get $offset_length
+      i32.add
+      local.get $buffer
+      call $array_len
+      i32.const 1
+      i32.add
+      i32.store)
+    local.get $buffer
+    local.get $temp
+    local.get $buffer
+    call $string_concatenate
+    local.tee $temp
+    call $reverse_bytes
+    local.get $temp
+    call $copy_array
+    drop)
   
   (func $itoa (param $v i32) (param $buffer i32)
     ;; convert integer to a byte representation, i.e. an array of bytes
@@ -231,10 +386,8 @@
     ;; check if int is negative
     (block
       local.get $v
-      i32.const 0x80000000
-      i32.and
-      i32.const 31
-      i32.shr_u
+      i32.const 0
+      i32.lt_s
       local.tee $is_negative
       i32.eqz
       br_if 0
@@ -370,8 +523,11 @@
     call $write)
   
   (func $write_f32 (export "write_f32") (param $v f32) 
-    ;; TODO
-    )
+    local.get $v
+    global.get $f32_stdout_buffer
+    call $ftoa
+    global.get $f32_stdout_buffer
+    call $write)
   
   (func $write_string (export "write_string") (param $buffer i32) 
     local.get $buffer
@@ -1001,6 +1157,45 @@
     i32.eq
     local.get $temp
     i32.or)
+
+  (func $is_decimal_point (param $addr i32) (result i32)
+    local.get $addr
+    i32.load8_u
+    i32.const 0x2E
+    i32.eq)
+
+  (func $find_decimal_point (param $buffer i32) (result i32)
+    ;; finds the index of the first decimal point from buffer
+    ;; if there are no decimal points, returns the length of buffer
+    (local $i i32)
+    (local $n i32)
+    (local $addr i32)
+    i32.const 0
+    local.set $i
+    local.get $buffer
+    call $array_len
+    local.set $n
+    local.get $buffer
+    i32.load
+    local.set $addr
+    (block
+      (loop
+        local.get $addr
+        local.get $i
+        i32.add
+        call $is_decimal_point
+        local.get $i
+        local.get $n
+        i32.ge_u
+        i32.or
+        br_if 1
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br 0))
+    local.get $i
+    )
 
   (func $find_nonwhitespace (param $buffer i32) (result i32)
     ;; finds the index of the first nonwhitespace from buffer

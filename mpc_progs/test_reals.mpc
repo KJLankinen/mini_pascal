@@ -32,16 +32,16 @@ end;
 begin
     var a, b, c: real;
     read(a, b, c);
-    writeln(a, " + ", b, " = ", add(a, b));
+    writeln(a, " + ", b, " = ", add(a, b), " = ", a + b);
     writeln(a, " - ", b, " = ", sub(a, b));
     writeln(a, " * ", b, " = ", mul(a, b));
     writeln(a, " / ", b, " = ", div(a, b));
 
     writeln("The next four are different ways to calculate ", a, " * ", a, " + ", a);
-    writeln(mad(a, a, a));
-    writeln(add(a, mul(a, a)));
-    writeln(a + mul(a, a));
-    writeln(add(a, a * a));
+    writeln("mad(a, a, a): ", mad(a, a, a));
+    writeln("add(a, mul(a, a)): ", add(a, mul(a, a)));
+    writeln("a + mul(a, a): ", a + mul(a, a));
+    writeln("add(a, a * a): ", add(a, a * a));
 
     return 
 end.
