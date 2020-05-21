@@ -53,33 +53,70 @@
   (data (i32.const 2132) "\02")             ;; length: 2
   (data (i32.const 2136) "\02")             ;; capacity: 2 bytes
   (data (i32.const 2140) "\01")             ;; stride: 1
+
+  ;; 2144-2151 temp str
+  (data (i32.const 2144) "\00")             ;; pointer to data: 0
+  (data (i32.const 2148) "\00")             ;; length: 0
   
   ;; use these offsets when saving byte arrays
-  (global $offset_length i32 (i32.const 4))
-  (global $offset_capacity i32 (i32.const 8))
-  (global $offset_stride i32 (i32.const 12))
+  (global $offset_length        i32 (i32.const 4))
+  (global $offset_capacity      i32 (i32.const 8))
+  (global $offset_stride        i32 (i32.const 12))
   
   ;; locations of some buffers
-  (global $stdin_buffer i32 (i32.const 1024))
-  (global $i32_dump i32 (i32.const 2048))
-  (global $i32_stdout_buffer i32 (i32.const 2052))
-  (global $true_buffer i32 (i32.const 2080))
-  (global $false_buffer i32 (i32.const 2096))
-  (global $newline_buffer i32 (i32.const 2112))
-  (global $prompt_buffer i32 (i32.const 2128))
+  (global $stdin_buffer         i32 (i32.const 1024))
+  (global $i32_dump             i32 (i32.const 2048))
+  (global $i32_stdout_buffer    i32 (i32.const 2052))
+  (global $true_buffer          i32 (i32.const 2080))
+  (global $false_buffer         i32 (i32.const 2096))
+  (global $newline_buffer       i32 (i32.const 2112))
+  (global $prompt_buffer        i32 (i32.const 2128))
+  (global $temp_str             i32 (i32.const 2144))
 
   (func (export "_start")
+    (local $temp i32)
     call $read_input
+    ;; set temp_str length to stdin length
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
     global.get $stdin_buffer
-    global.get $true_buffer
-    call $string_less_eq
-    call $write_bool
-    call $write_newline)
+    call $array_len
+    i32.store
+
+    ;; set tmp_str to start from first nonwhitespace from stdin
+    global.get $temp_str
+    global.get $stdin_buffer
+    call $find_nonwhitespace
+    local.tee $temp
+    global.get $stdin_buffer
+    i32.load
+    i32.add
+    i32.store
+    ;; reduce the length of temp_str by the index of the first nonwhitespace
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
+    global.get $temp_str
+    call $array_len
+    local.get $temp
+    i32.sub
+    i32.store
+    ;; find first whitespace from the rest of the stdin string and reset temp_str length
+    global.get $temp_str
+    global.get $offset_length
+    i32.add
+    global.get $temp_str
+    call $find_whitespace
+    i32.store
+    ;; temp_str should be the string sandwiched between whitespaces
+    global.get $temp_str
+    call $writeln)
   
   ;; -----------------------------------------------------------------
   ;; Conversions
   ;; -----------------------------------------------------------------
-  (func $atob (export "atob") (param $pmem i32) (result i32)
+  (func $atob (export "atob") (param $buffer i32) (result i32)
     ;; convert an array of bytes to a boolean value, represented as i32
     ;; assumptions:
     ;; * Only 0 is regarded as false, all other numbers are true, even negative ones
@@ -87,16 +124,16 @@
     ;;   "true" or "false" strings to anything. Since it uses atoi, all non-numerical
     ;;   data will lead to garbage values, which in this case probably always yield true,
     ;;   since 0 is the only false value as per above.
-    local.get $pmem
+    local.get $buffer
     call $atoi
     i32.eqz
     i32.eqz)
 
-  (func $atof (export "atof") (param $pmem i32) (result f32)
+  (func $atof (export "atof") (param $buffer i32) (result f32)
     ;; TODO
     f32.const 0)
  
-  (func $atoi (export "atoi") (param $pmem i32) (result i32)
+  (func $atoi (export "atoi") (param $buffer i32) (result i32)
     ;; convert array of bytes to an i32 value
     (local $pdata i32)
     (local $pend i32)
@@ -105,23 +142,21 @@
     (local $v i32)
     (local $sign i32)
     ;; assumptions:
-    ;; * $pmem points to a location with 8 consecutive bytes s.t.
+    ;; * $buffer points to a location with 8 consecutive bytes s.t.
     ;;   the first 4 point to the data and the next 4 contain the number of bytes
     ;; * The data is actually numerical data. Byte strings that are not of the form
     ;;   [0x2D] (0x30-0x39)* will result in gargabe values
     ;; * traps if length is 0 or if length is 1 and contains only '-' character or 0x2D byte
     
     ;; setup data pointer and len
-    local.get $pmem
+    local.get $buffer
     i32.load
     local.set $pdata
-    local.get $pmem
-    i32.const 4
-    i32.add
-    i32.load
-    local.tee $n
-    local.get $pdata
-    i32.add
+    local.get $buffer
+    call $array_len
+    local.set $n
+    local.get $buffer
+    call $array_end
     local.set $pend
     
     i32.const 0
@@ -196,11 +231,11 @@
     local.get $sign
     i32.mul)
 
-  (func $ftoa (export "ftoa") (param $v f32) (param $pmem i32)
+  (func $ftoa (export "ftoa") (param $v f32) (param $buffer i32)
     ;; TODO
     )
   
-  (func $itoa (export "itoa") (param $v i32) (param $pmem i32)
+  (func $itoa (export "itoa") (param $v i32) (param $buffer i32)
     ;; convert integer to a byte representation, i.e. an array of bytes
     (local $is_negative i32)
     (local $r i32)
@@ -208,12 +243,12 @@
     (local $b i32)
     (local $pdata i32)
     ;; assumptions:
-    ;; * $pmem is a pointer to memory s.t.
+    ;; * $buffer is a pointer to memory s.t.
     ;;   first 4 bytes contain a pointer to data,
     ;;   next 4 bytes hold the number of bytes in data
     ;;   and last 4 bytes contain maximum capacity of data
     
-    local.get $pmem
+    local.get $buffer
     i32.load
     local.set $pdata
     
@@ -289,7 +324,7 @@
       local.set $i)
     
     ;; store length
-    local.get $pmem
+    local.get $buffer
     global.get $offset_length
     i32.add
     local.get $i
@@ -300,13 +335,13 @@
   ;; -----------------------------------------------------------------
   ;; I/O
   ;; -----------------------------------------------------------------
-  (func $write (export "write") (param $pmem i32)
+  (func $write (export "write") (param $buffer i32)
     ;; write an array of bytes starting at given loc to stdout
-    ;; $pmem should point to a location of two consecutive i32 values,
+    ;; $buffer should point to a location of two consecutive i32 values,
     ;; the first of which points to the location of the data
     ;; and the second is the length of the data in bytes
     i32.const 1
-    local.get $pmem
+    local.get $buffer
     i32.const 1
     global.get $i32_dump
     call $fd_write
@@ -316,8 +351,8 @@
     global.get $newline_buffer
     call $write)
 
-  (func $writeln (export "writeln") (param $pmem i32)
-    local.get $pmem
+  (func $writeln (export "writeln") (param $buffer i32)
+    local.get $buffer
     call $write 
     call $write_newline)
    
@@ -346,8 +381,8 @@
     ;; TODO
     )
   
-  (func $write_string (export "write_string") (param $addr i32) 
-    local.get $addr
+  (func $write_string (export "write_string") (param $buffer i32) 
+    local.get $buffer
     call $write
     )
 
@@ -424,173 +459,173 @@
     ;; returns the address of the string literal
     i32.const 0)
 
-  (func $string_eq (export "string_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_eq (export "string_eq") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.eq)
   
-  (func $string_neq (export "string_neq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_neq (export "string_neq") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.ne)
  
-  (func $string_great (export "string_great") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_great (export "string_great") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.gt_u)
   
-  (func $string_great_eq (export "string_great_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_great_eq (export "string_great_eq") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.ge_u)
   
-  (func $string_less (export "string_less") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_less (export "string_less") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.lt_u)
   
-  (func $string_less_eq (export "string_less_eq") (param $addr1 i32) (param $addr2 i32) (result i32)
-    local.get $addr1
+  (func $string_less_eq (export "string_less_eq") (param $buffer1 i32) (param $buffer2 i32) (result i32)
+    local.get $buffer1
     call $array_len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
     i32.le_u)
 
-  (func $string_concatenate (export "string_concatenate") (param $addr1 i32) (param $addr2 i32) (result i32)
+  (func $string_concatenate (export "string_concatenate") (param $buffer1 i32) (param $buffer2 i32) (result i32)
     ;; Takes two strings and adds the contents of the second
     ;; to the first, or as many bytes as fit within capacity.
     ;; This function does not allocate.
-    ;; Returns $addr1
+    ;; Returns $buffer1
  
     ;; get address of length on stack for the final store op
-    local.get $addr1
+    local.get $buffer1
     global.get $offset_length
     i32.add   
 
-    ;; src = $addr2
-    local.get $addr2
+    ;; src = $buffer2
+    local.get $buffer2
     i32.load
 
-    ;; dst = $addr1 + str1.len (in bytes)
-    local.get $addr1
+    ;; dst = $buffer1 + str1.len (in bytes)
+    local.get $buffer1
     call $array_end
 
     ;; str1.capacity - str1.len
-    local.get $addr1
+    local.get $buffer1
     call $array_capacity
-    local.get $addr1
+    local.get $buffer1
     call $array_len
     i32.sub
 
     ;; str2.len
-    local.get $addr2
+    local.get $buffer2
     call $array_len
 
     ;; min(str2.len, str1.capacity - str1.len)
     call $i32_min
 
-    ;; copy n bytes from $addr2 to $addr1 + len
+    ;; copy n bytes from $buffer2 to $buffer1 + len
     ;; returns num bytes copied
     call $copy
-    local.get $addr1
+    local.get $buffer1
     call $array_len
     i32.add
     i32.store
 
-    local.get $addr1)
+    local.get $buffer1)
 
   ;; -----------------------------------------------------------------
   ;; Array
   ;; -----------------------------------------------------------------
-  (func $array_data (export "array_data") (param $addr i32) (param $idx i32) (result i32)
-    ;; returns the member of the array at addr
-    local.get $addr
+  (func $array_data (export "array_data") (param $buffer i32) (param $idx i32) (result i32)
+    ;; returns the member of the array at buffer
+    local.get $buffer
     local.get $idx
     i32.add
     i32.load)
   
-  (func $array_len (export "array_len") (param $addr i32) (result i32)
-    ;; returns the length of the array at addr
+  (func $array_len (export "array_len") (param $buffer i32) (result i32)
+    ;; returns the length of the array at buffer
     ;; get len
-    local.get $addr
+    local.get $buffer
     global.get $offset_length
     call $array_data)
   
-  (func $array_capacity (export "array_capacity") (param $addr i32) (result i32)
-    ;; returns the capacity of the array at addr
-    local.get $addr
+  (func $array_capacity (export "array_capacity") (param $buffer i32) (result i32)
+    ;; returns the capacity of the array at buffer
+    local.get $buffer
     global.get $offset_capacity
     call $array_data)
 
-  (func $array_stride (export "array_stride") (param $addr i32) (result i32)
-    local.get $addr
+  (func $array_stride (export "array_stride") (param $buffer i32) (result i32)
+    local.get $buffer
     global.get $offset_stride
     call $array_data)
   
-  (func $array_size (export "array_size") (param $addr i32) (result i32)
-    ;; returns the length of the array at addr divided by stride
-    local.get $addr
+  (func $array_size (export "array_size") (param $buffer i32) (result i32)
+    ;; returns the length of the array at buffer divided by stride
+    local.get $buffer
     call $array_len
-    local.get $addr
+    local.get $buffer
     call $array_stride
     i32.div_s)
 
-  (func $array_end (export "array_last") (param $addr i32) (result i32)
-    ;; returns the address of the first free byte
-    local.get $addr
+  (func $array_end (export "array_last") (param $buffer i32) (result i32)
+    ;; returns the bufferess of the first free byte
+    local.get $buffer
     i32.load
-    local.get $addr
+    local.get $buffer
     call $array_len
     i32.add)
 
-  (func $array_access (param $addr i32) (param $idx i32) (param $str_idx i32)  (result i32)
+  (func $array_access (param $buffer i32) (param $idx i32) (param $str_idx i32)  (result i32)
     ;; this function validates the array access (checks oob)
-    ;; and returns the address if everything is ok
-    local.get $addr
+    ;; and returns the bufferess if everything is ok
+    local.get $buffer
     local.get $idx
     local.get $str_idx
     call $check_bounds
-    local.get $addr
+    local.get $buffer
     call $array_stride
     i32.mul
-    local.get $addr
+    local.get $buffer
     i32.load
     i32.add)
   
-  (func $array_access_i (export "array_access_i") (param $addr i32) (param $idx i32) (param $str_idx i32)  (result i32)
-    local.get $addr
+  (func $array_access_i (export "array_access_i") (param $buffer i32) (param $idx i32) (param $str_idx i32)  (result i32)
+    local.get $buffer
     local.get $idx
     local.get $str_idx
     call $array_access
     i32.load)
   
-  (func $array_assign_i (export "array_assign_i") (param $addr i32) (param $idx i32) (param $str_idx i32) (param $value i32)
-    local.get $addr
+  (func $array_assign_i (export "array_assign_i") (param $buffer i32) (param $idx i32) (param $str_idx i32) (param $value i32)
+    local.get $buffer
     local.get $idx
     local.get $str_idx
     call $array_access
     local.get $value
     i32.store)
   
-  (func $array_access_f (export "array_access_f") (param $addr i32) (param $idx i32) (param $str_idx i32)  (result f32)
-    local.get $addr
+  (func $array_access_f (export "array_access_f") (param $buffer i32) (param $idx i32) (param $str_idx i32)  (result f32)
+    local.get $buffer
     local.get $idx
     local.get $str_idx
     call $array_access
     f32.load)
   
-  (func $array_assign_f (export "array_assign_f") (param $addr i32) (param $idx i32) (param $str_idx i32) (param $value f32)
-    local.get $addr
+  (func $array_assign_f (export "array_assign_f") (param $buffer i32) (param $idx i32) (param $str_idx i32) (param $value f32)
+    local.get $buffer
     local.get $idx
     local.get $str_idx
     call $array_access
@@ -603,12 +638,12 @@
     ;; and returns the address
     i32.const 0)
 
-  (func $check_bounds (export "check_bounds") (param $addr i32) (param $idx i32) (param $str_idx i32) (result i32)
-    ;; checks that the length of array at $addr >= $idx
+  (func $check_bounds (export "check_bounds") (param $buffer i32) (param $idx i32) (param $str_idx i32) (result i32)
+    ;; checks that the length of array at $buffer >= $idx
     ;; returns $idx if yes, otherwise prints the literal string at $str_idx and becomes unreachable
 
     ;; assumptions:
-    ;; - addr points to a location that contains 4 32 bit values:
+    ;; - buffer points to a location that contains 4 32 bit values:
     ;;   - 0 = pointer to data
     ;;   - 1 = length
     ;;   - 2 = capacity
@@ -617,10 +652,10 @@
     ;;   i.e. i = 1 -> bytes 4-7
     (block
       (block
-        local.get $addr
+        local.get $buffer
         call $array_len
         local.get $idx
-        local.get $addr
+        local.get $buffer
         call $array_stride
         i32.mul
         i32.gt_u
@@ -674,7 +709,7 @@
   ;; -----------------------------------------------------------------
   ;; Misc
   ;; -----------------------------------------------------------------
-  (func $reverse_bytes (export "reverse_bytes")  (param $pmem i32)
+  (func $reverse_bytes (export "reverse_bytes")  (param $buffer i32)
     ;; reverse bytes in place.
     (local $i i32)
     (local $j i32)
@@ -683,17 +718,15 @@
     (local $t i32)
     (local $pdata i32)
     ;; assumptions:
-    ;; * $pmem contains 8 bytes of data, with first 4 bytes pointing
+    ;; * $buffer contains 8 bytes of data, with first 4 bytes pointing
     ;;   to location of data and next 4 bytes being the number of bytes at that loc
     ;; * works for strings, if string consists of one byte characters
     
-    local.get $pmem
+    local.get $buffer
     i32.load
     local.set $pdata
-    local.get $pmem
-    i32.const 4
-    i32.add
-    i32.load
+    local.get $buffer
+    call $array_len
     local.set $n
     
     (block
@@ -706,7 +739,7 @@
       local.get $pdata
       local.set $i
     
-      ;; n2 points to midpoint, i.e. floor(n/2) + pmem
+      ;; n2 points to midpoint, i.e. floor(n/2) + buffer
       local.get $n
       i32.const 1
       i32.shr_u
@@ -789,8 +822,98 @@
     i32.eqz)
 
   (func $is_whitespace (export "is_whitespace") (param $addr i32) (result i32)
+    (local $v i32)
+    (local $temp i32)
     local.get $addr
-    i32.load8)
+    i32.load8_u
+    
+    ;; space
+    local.tee $v
+    i32.const 0x20
+    i32.eq
+    local.get $temp
+    i32.or
+    local.set $temp
+    
+    ;; tab
+    local.get $v
+    i32.const 0x09
+    i32.eq
+    local.get $temp
+    i32.or
+    local.set $temp
+    
+    ;; line feed
+    local.get $v
+    i32.const 0x0A
+    i32.eq
+    local.get $temp
+    i32.or)
+
+  (func $find_nonwhitespace (export "find_nonwhitespace") (param $buffer i32) (result i32)
+    ;; finds the index of the first nonwhitespace from buffer
+    ;; if there are only whitespaces, returns the length of buffer
+    (local $i i32)
+    (local $n i32)
+    (local $addr i32)
+    i32.const 0
+    local.set $i
+    local.get $buffer
+    call $array_len
+    local.set $n
+    local.get $buffer
+    i32.load
+    local.set $addr
+    (block
+      (loop
+        local.get $addr
+        local.get $i
+        i32.add
+        call $is_whitespace
+        i32.eqz
+        local.get $i
+        local.get $n
+        i32.ge_u
+        i32.or
+        br_if 1
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br 0))
+    local.get $i)
+
+  (func $find_whitespace (export "find_whitespace") (param $buffer i32) (result i32)
+    ;; finds the index of the first whitespace from buffer
+    ;; if there are no whitespaces, returns the length of buffer
+    (local $i i32)
+    (local $n i32)
+    (local $addr i32)
+    i32.const 0
+    local.set $i
+    local.get $buffer
+    call $array_len
+    local.set $n
+    local.get $buffer
+    i32.load
+    local.set $addr
+    (block
+      (loop
+        local.get $addr
+        local.get $i
+        i32.add
+        call $is_whitespace
+        local.get $i
+        local.get $n
+        i32.ge_u
+        i32.or
+        br_if 1
+        local.get $i
+        i32.const 1
+        i32.add
+        local.set $i
+        br 0))
+    local.get $i)
 
   (func $copy (export "copy") (param $src i32) (param $dst i32) (param $n_bytes i32) (result i32)
     ;; returns the number of bytes copied
