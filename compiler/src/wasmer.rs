@@ -336,15 +336,15 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             // Import globals
             imports_string.push_str("\n  (import \"");
             imports_string.push_str(self.lib_name);
-            imports_string.push_str("\" \"global\" (global $dyn_mem_ptr))");
+            imports_string.push_str("\" \"dyn_mem_ptr\" (global $dyn_mem_ptr i32))");
 
             imports_string.push_str("\n  (import \"");
             imports_string.push_str(self.lib_name);
-            imports_string.push_str("\" \"global\" (global $static_str_ptrs))");
+            imports_string.push_str("\" \"static_str_ptrs\" (global $static_str_ptrs i32))");
 
             imports_string.push_str("\n  (import \"");
             imports_string.push_str(self.lib_name);
-            imports_string.push_str("\" \"global\" (global $offset_length))");
+            imports_string.push_str("\" \"offset_length\" (global $offset_length i32))");
 
             for fname in &self.symbol_table.library_functions {
                 if let Some(line) = self.imported_contents.lines().find(|l| l.contains(fname)) {
@@ -399,31 +399,28 @@ impl<'a, 'b> Wasmer<'a, 'b> {
 
     fn global_store(&mut self) -> String {
         let mut store_string = String::new();
-        // dynamic memory pointer
-        store_string.push_str("global.get $dyn_mem_ptr");
-        store_string.push_str("\n    i32.const ");
-        store_string.push_str(self.next_free_byte.to_string().as_str());
-        store_string.push_str("\n    i32.store");
+        let num_static_strings = self.symbol_table.borrow_string_literal_bytes().len();
+        if 0 < num_static_strings {
+            // dynamic memory pointer
+            store_string.push_str("global.get $dyn_mem_ptr");
+            store_string.push_str("\n    i32.const ");
+            store_string.push_str(self.next_free_byte.to_string().as_str());
+            store_string.push_str("\n    i32.store");
 
-        // static string pointers
-        store_string.push_str("\n    global.get $static_str_ptrs");
-        store_string.push_str("\n    i32.const ");
-        store_string.push_str(self.stat_str_byte.to_string().as_str());
-        store_string.push_str("\n    i32.store");
+            // static string pointers
+            store_string.push_str("\n    global.get $static_str_ptrs");
+            store_string.push_str("\n    i32.const ");
+            store_string.push_str(self.stat_str_byte.to_string().as_str());
+            store_string.push_str("\n    i32.store");
 
-        // number of static strings
-        store_string.push_str("\n    global.get $static_str_ptrs");
-        store_string.push_str("\n    global.get $offset_length");
-        store_string.push_str("\n    i32.add");
-        store_string.push_str("\n    i32.const ");
-        store_string.push_str(
-            self.symbol_table
-                .borrow_string_literal_bytes()
-                .len()
-                .to_string()
-                .as_str(),
-        );
-        store_string.push_str("\n    i32.store");
+            // number of static strings
+            store_string.push_str("\n    global.get $static_str_ptrs");
+            store_string.push_str("\n    global.get $offset_length");
+            store_string.push_str("\n    i32.add");
+            store_string.push_str("\n    i32.const ");
+            store_string.push_str(num_static_strings.to_string().as_str());
+            store_string.push_str("\n    i32.store");
+        }
         store_string
     }
 

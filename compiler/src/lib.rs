@@ -1,5 +1,6 @@
 mod data_types;
 mod lcrs_tree;
+mod linker;
 mod logger;
 mod parser;
 mod scanner;
