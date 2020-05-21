@@ -4,17 +4,19 @@
   
   (memory 1)
   (export "memory" (memory 0))
+  (export "dyn_mem_ptr" (global $dyn_mem_ptr))
+  (export "static_str_ptrs" (global $static_str_ptrs))
+  (export "offset_length" (global $offset_length))
 
   ;; -----------------------------------------------------------------
   ;; NOTE!
   ;; Byte order in data section is little endian
   ;; ----------------------------------------------------------------- 
-
   ;; 0-1023 is reserved for static data
   (data (i32.const 0) "\n> truefalse")
 
   ;; 1024-2047 is reserved for stdin buffer
-  (data (i32.const 1024) "\10\04")          ;; pointer to data: 1040
+  (data (i32.const 1024) "\10\04")          ;; pointer to data: 1040 = 0x0410
   (data (i32.const 1028) "\00")             ;; length: 0
   (data (i32.const 1032) "\F0\03")          ;; capacity: 1008 bytes
   (data (i32.const 1036) "\01")             ;; stride: 1 byte
@@ -54,12 +56,18 @@
   (data (i32.const 2136) "\02")             ;; capacity: 2 bytes
   (data (i32.const 2140) "\01")             ;; stride: 1
 
-  ;; 2144-2151 temp str
+  ;; 2144-2159 temp str
   (data (i32.const 2144) "\00")             ;; pointer to data: 0
   (data (i32.const 2148) "\00")             ;; length: 0
+  (data (i32.const 2152) "\00")             ;; capacity: 0
+  (data (i32.const 2156) "\00")             ;; stride: 1
 
-  ;; 2152-2155 dynamic mem
-  (data (i32.const 2152) "\00\10")          ;; points to next free byte, arbitrarily set it to 4096
+  ;; 2160-2163 dynamic mem
+  (data (i32.const 2160) "\00\10")          ;; points to next free byte, arbitrarily set it to 4096
+
+  ;; 2164-2171 pointer to first pointer to static string, and number of pointers
+  (data (i32.const 2164) "\00")             ;; first pointer to pointer, initialize to zero
+  (data (i32.const 2168) "\00")             ;; num pointers, initialize to zero
   
   ;; use these offsets when saving byte arrays
   (global $offset_length        i32 (i32.const 4))
@@ -75,26 +83,26 @@
   (global $newline_buffer       i32 (i32.const 2112))
   (global $prompt_buffer        i32 (i32.const 2128))
   (global $temp_str             i32 (i32.const 2144))
-  (global $dyn_mem_ptr          i32 (i32.const 2152))
+  (global $dyn_mem_ptr          i32 (i32.const 2160))
+  (global $static_str_ptrs      i32 (i32.const 2164))
 
   (func (export "_start")
-    i32.const 1024
-    call $allocate
+    call $read_input
+    call $string_from_input
+    call $write_string
+    call $write_newline
+    call $i32_from_input
     call $write_i32
     call $write_newline
-    i32.const 555
-    call $allocate
-    call $write_i32
+    call $bool_from_input
+    call $write_bool
     call $write_newline
-    i32.const 5
-    call $allocate
-    call $write_i32
-    call $write_newline)
+    )
   
   ;; -----------------------------------------------------------------
   ;; Conversions
   ;; -----------------------------------------------------------------
-  (func $atob (export "atob") (param $buffer i32) (result i32)
+  (func $atob (param $buffer i32) (result i32)
     ;; convert an array of bytes to a boolean value, represented as i32
     ;; assumptions:
     ;; * Only 0 is regarded as false, all other numbers are true, even negative ones
@@ -107,11 +115,11 @@
     i32.eqz
     i32.eqz)
 
-  (func $atof (export "atof") (param $buffer i32) (result f32)
+  (func $atof (param $buffer i32) (result f32)
     ;; TODO
     f32.const 0)
  
-  (func $atoi (export "atoi") (param $buffer i32) (result i32)
+  (func $atoi (param $buffer i32) (result i32)
     ;; convert array of bytes to an i32 value
     (local $pdata i32)
     (local $pend i32)
@@ -209,11 +217,11 @@
     local.get $sign
     i32.mul)
 
-  (func $ftoa (export "ftoa") (param $v f32) (param $buffer i32)
+  (func $ftoa (param $v f32) (param $buffer i32)
     ;; TODO
     )
   
-  (func $itoa (export "itoa") (param $v i32) (param $buffer i32)
+  (func $itoa (param $v i32) (param $buffer i32)
     ;; convert integer to a byte representation, i.e. an array of bytes
     (local $is_negative i32)
     (local $r i32)
@@ -313,7 +321,7 @@
   ;; -----------------------------------------------------------------
   ;; I/O
   ;; -----------------------------------------------------------------
-  (func $write (export "write") (param $buffer i32)
+  (func $write (param $buffer i32)
     ;; write an array of bytes starting at given loc to stdout
     ;; $buffer should point to a location of two consecutive i32 values,
     ;; the first of which points to the location of the data
@@ -329,10 +337,30 @@
     global.get $newline_buffer
     call $write)
 
-  (func $writeln (export "writeln") (param $buffer i32)
+  (func $writeln (param $buffer i32)
     local.get $buffer
     call $write 
     call $write_newline)
+
+  (func $write_buffer_data (param $buffer i32)
+    local.get $buffer
+    i32.load
+    call $write_i32
+    call $write_newline
+    local.get $buffer
+    call $array_len
+    call $write_i32
+    call $write_newline
+    local.get $buffer
+    call $array_capacity
+    call $write_i32
+    call $write_newline
+    local.get $buffer
+    call $array_stride
+    call $write_i32
+    call $write_newline
+    local.get $buffer
+    call $writeln)
    
   (func $write_bool (export "write_bool") (param $value i32)
     (block
@@ -361,8 +389,7 @@
   
   (func $write_string (export "write_string") (param $buffer i32) 
     local.get $buffer
-    call $write
-    )
+    call $write)
 
   (func $read_input (export "read_input")
     ;; reads the contents of stdin to the stdin array
@@ -403,25 +430,40 @@
     i32.store)
   
   (func $bool_from_input (export "bool_from_input") (result i32)
-    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a bool(i32, [0, 1]) value (atob)
     ;; returns the converted value
-    i32.const 0)
+    (local $v i32)
+    call $set_temp_str_to_first_token_from_input
+    global.get $temp_str
+    call $atob
+    local.set $v
+    call $remove_temp_str_from_input
+    local.get $v)
   
   (func $i32_from_input (export "i32_from_input")  (result i32)
-    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a i32 value (atoi)
     ;; returns the converted value
-    i32.const 0)
+    (local $v i32)
+    call $set_temp_str_to_first_token_from_input
+    global.get $temp_str
+    call $atoi
+    local.set $v
+    call $remove_temp_str_from_input
+    local.get $v)
   
   (func $f32_from_input (export "f32_from_input") (result f32)
-    ;; TODO
     ;; converts the next whitespaced delimited value from stdin buffer to a f32 value (atof)
     ;; returns the converted value
-    f32.const 0)
+    (local $v f32)
+    call $set_temp_str_to_first_token_from_input
+    global.get $temp_str
+    call $atof
+    local.set $v
+    call $remove_temp_str_from_input
+    local.get $v)
   
   (func $string_from_input (export "string_from_input") (result i32)
-    ;; creates a new string (call new_array)
+    ;; creates a new string
     ;; adds the next whitespace delimited value from stdin buffer to that string
     ;; returns the address of the string
     (local $buffer i32)
@@ -432,9 +474,30 @@
     global.get $temp_str
     call $copy_array
     drop
+    call $remove_temp_str_from_input
     local.get $buffer)
 
-  (func $set_temp_str_to_first_token_from_input (export "set_temp_str_to_first_token_from_input ")
+  (func $remove_temp_str_from_input
+    ;; use only with xx_from_input functions above
+    global.get $stdin_buffer
+    global.get $offset_length
+    i32.add
+    ;; src is first byte not used by us
+    global.get $temp_str
+    call $array_end
+    ;; dst is start of stdin_buffer
+    global.get $stdin_buffer
+    i32.load
+    ;; length is number of bytes in between
+    global.get $stdin_buffer
+    call $array_end
+    global.get $temp_str
+    call $array_end
+    i32.sub
+    call $copy
+    i32.store)
+
+  (func $set_temp_str_to_first_token_from_input
     (local $temp i32)
     ;; set temp_str length to stdin length
     global.get $temp_str
@@ -467,17 +530,31 @@
     i32.add
     global.get $temp_str
     call $find_whitespace
+    i32.store
+    ;; set temp_str capacity to temp_str length
+    global.get $temp_str
+    global.get $offset_capacity
+    i32.add
+    global.get $temp_str
+    call $array_len
+    i32.store
+    ;; set temp_str stride to 1
+    global.get $temp_str
+    global.get $offset_stride
+    i32.add
+    i32.const 1
     i32.store)
   
   ;; -----------------------------------------------------------------
   ;; String
   ;; -----------------------------------------------------------------
   (func $get_string_literal (export "get_string_literal") (param $idx i32) (result i32)
-    ;; TODO
-    ;; gets the index of a stored string literal
-    ;; calculates/fetches the address from that index
-    ;; returns the address of the string literal
-    i32.const 0)
+    ;; calculates the address of a saved static string from the given idx
+    i32.const 16 ;; static strings save 16 bytes (4 x i32) of data
+    local.get $idx
+    i32.mul
+    global.get $static_str_ptrs 
+    i32.add)
 
   (func $string_eq (export "string_eq") (param $buffer1 i32) (param $buffer2 i32) (result i32)
     local.get $buffer1
@@ -567,27 +644,27 @@
   ;; -----------------------------------------------------------------
   ;; Array
   ;; -----------------------------------------------------------------
-  (func $array_data (export "array_data") (param $buffer i32) (param $idx i32) (result i32)
+  (func $array_data (param $buffer i32) (param $idx i32) (result i32)
     ;; returns the member of the array at buffer
     local.get $buffer
     local.get $idx
     i32.add
     i32.load)
   
-  (func $array_len (export "array_len") (param $buffer i32) (result i32)
+  (func $array_len (param $buffer i32) (result i32)
     ;; returns the length of the array at buffer
     ;; get len
     local.get $buffer
     global.get $offset_length
     call $array_data)
   
-  (func $array_capacity (export "array_capacity") (param $buffer i32) (result i32)
+  (func $array_capacity (param $buffer i32) (result i32)
     ;; returns the capacity of the array at buffer
     local.get $buffer
     global.get $offset_capacity
     call $array_data)
 
-  (func $array_stride (export "array_stride") (param $buffer i32) (result i32)
+  (func $array_stride (param $buffer i32) (result i32)
     local.get $buffer
     global.get $offset_stride
     call $array_data)
@@ -600,7 +677,7 @@
     call $array_stride
     i32.div_s)
 
-  (func $array_end (export "array_last") (param $buffer i32) (result i32)
+  (func $array_end (param $buffer i32) (result i32)
     ;; returns the bufferess of the first free byte
     local.get $buffer
     i32.load
@@ -763,7 +840,9 @@
     i32.store
 
     local.get $src_buffer
+    i32.load
     local.get $dst_buffer
+    i32.load
     local.get $src_buffer
     call $array_len
     call $copy
@@ -773,7 +852,7 @@
   ;; -----------------------------------------------------------------
   ;; Misc
   ;; -----------------------------------------------------------------
-  (func $reverse_bytes (export "reverse_bytes")  (param $buffer i32)
+  (func $reverse_bytes (param $buffer i32)
     ;; reverse bytes in place.
     (local $i i32)
     (local $j i32)
@@ -852,7 +931,7 @@
           local.set $j
           br 0))))
   
-  (func $i32_min (export "i32_min") (param i32) (param i32) (result i32)
+  (func $i32_min (param i32) (param i32) (result i32)
     (local $min i32)
     local.get 0
     local.set $min
@@ -865,7 +944,7 @@
       local.set $min)
     local.get $min)
   
-  (func $i32_max (export "i32_max") (param i32) (param i32) (result i32)
+  (func $i32_max (param i32) (param i32) (result i32)
     (local $max i32)
     local.get 0
     local.set $max
@@ -878,14 +957,14 @@
       local.set $max)
     local.get $max)
   
-  (func $is_one_or_zero (export "is_one_or_zero") (param i32) (result i32)
+  (func $is_one_or_zero (param i32) (result i32)
     ;; check if given integer is zero everywhere except LSB
     local.get 0
     i32.const 0xfffffffe
     i32.and
     i32.eqz)
 
-  (func $is_whitespace (export "is_whitespace") (param $addr i32) (result i32)
+  (func $is_whitespace (param $addr i32) (result i32)
     (local $v i32)
     (local $temp i32)
     local.get $addr
@@ -914,7 +993,7 @@
     local.get $temp
     i32.or)
 
-  (func $find_nonwhitespace (export "find_nonwhitespace") (param $buffer i32) (result i32)
+  (func $find_nonwhitespace (param $buffer i32) (result i32)
     ;; finds the index of the first nonwhitespace from buffer
     ;; if there are only whitespaces, returns the length of buffer
     (local $i i32)
@@ -947,7 +1026,7 @@
         br 0))
     local.get $i)
 
-  (func $find_whitespace (export "find_whitespace") (param $buffer i32) (result i32)
+  (func $find_whitespace (param $buffer i32) (result i32)
     ;; finds the index of the first whitespace from buffer
     ;; if there are no whitespaces, returns the length of buffer
     (local $i i32)
@@ -979,7 +1058,7 @@
         br 0))
     local.get $i)
 
-  (func $copy (export "copy") (param $src i32) (param $dst i32) (param $n_bytes i32) (result i32)
+  (func $copy (param $src i32) (param $dst i32) (param $n_bytes i32) (result i32)
     ;; returns the number of bytes copied
     (local $i i32)
     i32.const 0
