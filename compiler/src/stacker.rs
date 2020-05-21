@@ -76,10 +76,17 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 // memory, the base address of which is stored in the local special variable "refs".
                 if 0 < nr {
                     emit!(self, Instr::Local(Some("refs"), WT::I32(None)));
+
+                    // Must be done as the first possible instruction in "_start"
+                    emit!(self, Instr::GlobalPointers);
+
                     emit!(self, Instr::Const(WT::I32(Some((nr * 4) as i32)))); // 4 bytes per variable
                     emit!(self, Instr::LibFunc("allocate"));
                     emit!(self, Instr::SetLocal(WT::Str("refs")));
                 }
+            } else {
+                // Must be done as the first possible instruction in "_start"
+                emit!(self, Instr::GlobalPointers);
             }
 
             emit!(self, Instr::BlockBegin(Some("FB")));

@@ -6,6 +6,7 @@ pub struct Wasmer<'a, 'b> {
     wasm_string: &'b mut String,
     symbol_table: &'b SymbolTable<'a>,
     next_free_byte: usize,
+    stat_str_byte: usize,
     imported_contents: &'b str,
     lib_name: &'a str,
 }
@@ -51,6 +52,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                 }
                 Instruction::DataSegment => self.literal_string_segment(),
                 Instruction::Imports => self.imports(),
+                Instruction::GlobalPointers => self.global_store(),
                 Instruction::Param(wtype) => {
                     start_from_new_line = false;
                     format!("(param {}) ", wtype)
@@ -280,6 +282,8 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                 }
             }
 
+            self.stat_str_byte = self.next_free_byte;
+
             data_segment.push_str("(data (i32.const ");
             data_segment.push_str(self.next_free_byte.to_string().as_str());
             data_segment.push_str(") \"");
@@ -288,7 +292,6 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             // "start" is the actual, raw address in linear memory where the string data recides.
             for (start, len) in self.symbol_table.borrow_string_literal_bytes() {
                 let start = (*start + self.next_free_byte + 16 * num_strings) as i32;
-                println!("{}, {:08X}, {:08X}", start, swap_bytes(start), start);
                 format!("{:08X}", swap_bytes(start))
                     .chars()
                     .chain(format!("{:08X}", swap_bytes(*len as i32)).chars())
@@ -325,9 +328,24 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         // compiled program uses.
         let mut imports_string = String::new();
         if 0 < self.symbol_table.library_functions.len() {
+            // Import memory
             imports_string.push_str("(import \"");
             imports_string.push_str(self.lib_name);
             imports_string.push_str("\" \"memory\" (memory 0))");
+
+            // Import globals
+            imports_string.push_str("\n  (import \"");
+            imports_string.push_str(self.lib_name);
+            imports_string.push_str("\" \"global\" (global $dyn_mem_ptr))");
+
+            imports_string.push_str("\n  (import \"");
+            imports_string.push_str(self.lib_name);
+            imports_string.push_str("\" \"global\" (global $static_str_ptrs))");
+
+            imports_string.push_str("\n  (import \"");
+            imports_string.push_str(self.lib_name);
+            imports_string.push_str("\" \"global\" (global $offset_length))");
+
             for fname in &self.symbol_table.library_functions {
                 if let Some(line) = self.imported_contents.lines().find(|l| l.contains(fname)) {
                     imports_string.push_str("\n  (import \"");
@@ -379,6 +397,36 @@ impl<'a, 'b> Wasmer<'a, 'b> {
         imports_string
     }
 
+    fn global_store(&mut self) -> String {
+        let mut store_string = String::new();
+        // dynamic memory pointer
+        store_string.push_str("global.get $dyn_mem_ptr");
+        store_string.push_str("\n    i32.const ");
+        store_string.push_str(self.next_free_byte.to_string().as_str());
+        store_string.push_str("\n    i32.store");
+
+        // static string pointers
+        store_string.push_str("\n    global.get $static_str_ptrs");
+        store_string.push_str("\n    i32.const ");
+        store_string.push_str(self.stat_str_byte.to_string().as_str());
+        store_string.push_str("\n    i32.store");
+
+        // number of static strings
+        store_string.push_str("\n    global.get $static_str_ptrs");
+        store_string.push_str("\n    global.get $offset_length");
+        store_string.push_str("\n    i32.add");
+        store_string.push_str("\n    i32.const ");
+        store_string.push_str(
+            self.symbol_table
+                .borrow_string_literal_bytes()
+                .len()
+                .to_string()
+                .as_str(),
+        );
+        store_string.push_str("\n    i32.store");
+        store_string
+    }
+
     pub fn new(
         instructions: &'b Vec<Instruction<'a>>,
         wasm_string: &'b mut String,
@@ -391,6 +439,7 @@ impl<'a, 'b> Wasmer<'a, 'b> {
             wasm_string: wasm_string,
             symbol_table: symbol_table,
             next_free_byte: 0,
+            stat_str_byte: 0,
             imported_contents: imported_contents,
             lib_name: lib_name,
         }

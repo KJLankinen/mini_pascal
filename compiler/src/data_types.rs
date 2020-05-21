@@ -695,6 +695,7 @@ pub enum Instruction<'a> {
     End,
     DataSegment,
     Imports,
+    GlobalPointers,
     Param(WasmType<'a>),
     Result(WasmType<'a>),
     Local(Option<&'a str>, WasmType<'a>),
