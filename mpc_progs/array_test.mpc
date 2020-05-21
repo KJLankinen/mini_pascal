@@ -7,6 +7,7 @@ begin
     k := 0;
     
     var arr: array[i + j / i] of integer;
+    writeln("Array size: ", arr.size, ", size expr: ", i + j / i);
     assert(arr.size = 6);
     arr[5] := 5;
 

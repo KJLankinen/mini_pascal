@@ -426,7 +426,7 @@
     call $remove_temp_str_from_input
     local.get $v)
   
-  (func $i32_from_input (export "i32_from_input")  (result i32)
+  (func $i32_from_input (export "i32_from_input") (result i32)
     ;; converts the next whitespaced delimited value from stdin buffer to a i32 value (atoi)
     ;; returns the converted value
     (local $v i32)
@@ -455,6 +455,7 @@
     (local $buffer i32)
     call $set_temp_str_to_first_token_from_input 
     i32.const 1 ;; stride 1 for string
+    i32.const 0
     call $new_array
     local.tee $buffer
     global.get $temp_str
@@ -764,10 +765,10 @@
       unreachable)
     local.get $idx)
 
-  (func $new_array (export "new_array") (param $stride i32) (result i32)
+  (func $new_array (export "new_array") (param $stride i32) (param $length i32) (result i32)
     ;; allocates 1024 consecutive bytes
     ;; first 16 bytes hold four i32 values: pdata, length, capacity, stride
-    ;; sets pdata to point to the addr + 16 address, set length to 0,
+    ;; sets pdata to point to the addr + 16 address, set length to length * stride,
     ;; stride to stride and capacity to 1008
     ;; returns a pointer to the first of the four consecutive i32 values
     (local $buffer i32)
@@ -780,11 +781,13 @@
     i32.const 16
     i32.add
     i32.store
-    ;; set length to 0
+    ;; set length to length * stride
     local.get $buffer
     global.get $offset_length
     i32.add
-    i32.const 0
+    local.get $length
+    local.get $stride
+    i32.mul
     i32.store
     ;; set capacity to 1008 (= 1024 - 16)
     local.get $buffer

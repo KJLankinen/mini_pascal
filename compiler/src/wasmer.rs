@@ -311,8 +311,8 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                 .borrow_string_literals()
                 .chars()
                 .for_each(|c| {
-                    if '\"' == c {
-                        data_segment.push_str("\\");
+                    if '"' == c {
+                        data_segment.push('\\');
                     }
                     data_segment.push(c);
                 });
@@ -359,10 +359,9 @@ impl<'a, 'b> Wasmer<'a, 'b> {
                     imports_string.push_str("\" (func $");
                     imports_string.push_str(fname);
 
-                    let mut result_idx = None;
+                    let result_idx = line.find("result");
                     if let Some(start) = line.find("param") {
                         imports_string.push_str(" (param");
-                        result_idx = line.find("result");
                         let line = match result_idx {
                             Some(idx) => &line[start..idx],
                             None => &line[start..line.len()],

@@ -249,6 +249,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
         emit!(self, Instr::Const(WT::I32(Some(idx as i32))));
         emit!(self, Instr::LibFunc("get_string_literal"));
         emit!(self, Instr::LibFunc("write_string"));
+        emit!(self, Instr::LibFunc("write_newline"));
         emit!(self, Instr::Unreachable);
         emit!(self, Instr::End);
     }
@@ -356,6 +357,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                                 // by value.
                                 let stride = if ST::String == symbol_type { 1 } else { 4 };
                                 emit!(self, Instr::Const(WT::I32(Some(stride))));
+                                emit!(self, Instr::Const(WT::I32(Some(0))));
                                 emit!(self, Instr::LibFunc("new_array"));
                                 emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32,))));
                                 emit!(self, Instr::LibFunc("copy_array"));
@@ -461,6 +463,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     }
                     ST::String => {
                         emit!(self, Instr::Const(WT::I32(Some(1)))); // stride of the array, 1 byte
+                        emit!(self, Instr::Const(WT::I32(Some(0)))); // lenght of the array, 0 bytes
                         emit!(self, Instr::LibFunc("new_array"));
                     }
                     ST::ArrayBool(expr_idx)
@@ -478,9 +481,11 @@ impl<'a, 'b> Stacker<'a, 'b> {
                         emit!(self, Instr::Const(WT::I32(Some(str_idx as i32))));
                         emit!(self, Instr::LibFunc("get_string_literal"));
                         emit!(self, Instr::LibFunc("write_string"));
+                        emit!(self, Instr::LibFunc("write_newline"));
                         emit!(self, Instr::Unreachable);
                         emit!(self, Instr::End);
                         emit!(self, Instr::Const(WT::I32(Some(4)))); // stride of the array, 4 bytes
+                        self.expression(expr_idx);
                         emit!(self, Instr::LibFunc("new_array"));
                     }
                     _ => {
@@ -591,6 +596,7 @@ impl<'a, 'b> Stacker<'a, 'b> {
         emit!(self, Instr::BlockBegin(None));
         emit!(self, Instr::LoopBegin(None));
         self.expression(data.idx);
+        emit!(self, Instr::Eqz);
         emit!(self, Instr::BrIf(WT::I32(Some(1))));
         self.statement(data.idx2);
         emit!(self, Instr::Br(WT::I32(Some(0))));
@@ -714,7 +720,19 @@ impl<'a, 'b> Stacker<'a, 'b> {
                 emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
                 match data.st {
                     ST::Bool | ST::Int | ST::Real => {
-                        if data.is_ref {
+                        if let Some(arr_idx) = data.array_idx {
+                            self.expression(arr_idx);
+                            let string_idx = data
+                                .string_idx
+                                .expect("Variable should have some string index at array access.");
+                            emit!(self, Instr::Const(WT::I32(Some(string_idx as i32))));
+                            let func_name = if let ST::ArrayReal(_) = data.st {
+                                "array_access_f"
+                            } else {
+                                "array_access_i"
+                            };
+                            emit!(self, Instr::LibFunc(func_name));
+                        } else if data.is_ref {
                             let wt = if ST::Real == data.st {
                                 WT::F32(None)
                             } else {
@@ -730,19 +748,6 @@ impl<'a, 'b> Stacker<'a, 'b> {
                     ST::ArrayBool(_) | ST::ArrayInt(_) | ST::ArrayReal(_) | ST::ArrayString(_) => {
                         // Array references pass their actual address, non-references pass the
                         // address of a copy. In either case, the value already points to the data.
-                        if let Some(arr_idx) = data.array_idx {
-                            self.expression(arr_idx);
-                            let string_idx = data
-                                .string_idx
-                                .expect("Variable should have some string index at array access.");
-                            emit!(self, Instr::Const(WT::I32(Some(string_idx as i32))));
-                            let func_name = if let ST::ArrayReal(_) = data.st {
-                                "array_access_f"
-                            } else {
-                                "array_access_i"
-                            };
-                            emit!(self, Instr::LibFunc(func_name));
-                        }
                     }
                     _ => {
                         assert!(false, "Unexpected symbol type {:#?}", data);
@@ -812,29 +817,40 @@ impl<'a, 'b> Stacker<'a, 'b> {
     }
 
     fn emit_set_local_pre_expr(&mut self, data: &VariableData<'a>) {
-        let is_bir = self.is_bir(data.st);
-        if is_bir && data.is_ref || !is_bir {
-            let local_idx = self.get_variable_local_idx(&data);
-            emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
-
-            if let Some(expr_idx) = data.array_idx {
-                assert!(
-                    !is_bir && data.st != ST::String,
-                    "Array index should never be set on non-array types."
-                );
-                self.expression(expr_idx);
-                let string_idx = data
-                    .string_idx
-                    .expect("Variable should have some string index at set local pre_expr.");
-                emit!(self, Instr::Const(WT::I32(Some(string_idx as i32))));
+        match data.st {
+            ST::Bool | ST::Int | ST::Real => {
+                let local_idx = self.get_variable_local_idx(&data);
+                if let Some(expr_idx) = data.array_idx {
+                    emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
+                    self.expression(expr_idx);
+                    let string_idx = data
+                        .string_idx
+                        .expect("Variable should have some string index at set local pre_expr.");
+                    emit!(self, Instr::Const(WT::I32(Some(string_idx as i32))));
+                } else if data.is_ref {
+                    emit!(self, Instr::GetLocal(WT::I32(Some(local_idx as i32))));
+                }
             }
+            ST::String
+            | ST::ArrayBool(_)
+            | ST::ArrayInt(_)
+            | ST::ArrayReal(_)
+            | ST::ArrayString(_)
+            | ST::Undefined => {}
         }
     }
 
     fn emit_set_local_post_expr(&mut self, data: &VariableData<'a>) {
         match data.st {
             ST::Bool | ST::Int | ST::Real => {
-                let instr = if data.is_ref {
+                let instr = if data.array_idx.is_some() {
+                    let func_name = if let ST::Real = data.st {
+                        "array_assign_f"
+                    } else {
+                        "array_assign_i"
+                    };
+                    Instr::LibFunc(func_name)
+                } else if data.is_ref {
                     let wt = if ST::Real == data.st {
                         WT::F32(None)
                     } else {
@@ -852,21 +868,8 @@ impl<'a, 'b> Stacker<'a, 'b> {
             | ST::ArrayInt(_)
             | ST::ArrayReal(_)
             | ST::ArrayString(_) => {
-                if data.array_idx.is_some() {
-                    assert!(
-                        ST::String != data.st,
-                        "Array index should never be set on string."
-                    );
-                    let func_name = if let ST::ArrayReal(_) = data.st {
-                        "array_assign_f"
-                    } else {
-                        "array_assign_i"
-                    };
-                    emit!(self, Instr::LibFunc(func_name));
-                } else {
-                    emit!(self, Instr::LibFunc("copy_array"));
-                    emit!(self, Instr::Drop);
-                }
+                emit!(self, Instr::LibFunc("copy_array"));
+                emit!(self, Instr::Drop);
             }
             _ => {
                 assert!(false, "Unexpected symbol type {:#?}", data);
