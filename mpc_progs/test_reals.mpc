@@ -30,9 +30,10 @@ end;
 
 {* Main block *}
 begin
-    var a, b, c: real;
+    var a, b, c, d: real;
+    d := 1.4e5;
     read(a, b, c);
-    writeln(a, " + ", b, " = ", add(a, b), " = ", a + b);
+    writeln(a, " + ", d, " = ", add(a, d));
     writeln(a, " - ", b, " = ", sub(a, b));
     writeln(a, " * ", b, " = ", mul(a, b));
     writeln(a, " / ", b, " = ", div(a, b));

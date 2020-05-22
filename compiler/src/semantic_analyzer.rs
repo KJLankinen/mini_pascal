@@ -710,7 +710,7 @@ impl<'a, 'b> Analyzer<'a, 'b> {
                     ST::Bool | ST::Undefined => {}
                     _ => {
                         self.logger.add_error(ET::ExprTypeMismatch(
-                            data.token.expect("Array size operator is missing a token."),
+                            data.token.expect("Not factor is missing a token."),
                             ST::Bool,
                             ft,
                         ));

@@ -163,7 +163,7 @@ fn analyze(
         }
     }
 
-    match linker::link(out_file, lib_filename) {
+    match linker::link(out_file, lib_filename, lib_name) {
         Ok(_) => {}
         Err(err) => {
             eprintln!("Error when executing the compiled program: {}", err);
