@@ -1,1 +1,4 @@
-This is a repository for a mini-Pascal language compiler. The language is a simplified version of Pascal.
+This is a repository for a compiler written in Rust. The compiler accepts a Pascal-like language called mini Pascal as input and it outputs WebAssembly,
+if the input program was accepted.
+
+The compiler contains a scanner, a parser, a semantic analyzer, a stacker and a wasmer. No optimizations are done to the input code.
